@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependency directories
+node_modules/
+
+# uni-app build outputs
+/dist/
+/unpackage/
+/script/docker/dist/
+
+/lottery_build/
+
+# IDE & Editor specific files
+.hbuilderx/
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# TypeScript cache
+*.tsbuildinfo
+
+GEMINI.md
+/.clinerules
+
+*/svg_normalized
+
+*.zip
+
+.env.development.local
+.env.development.bak
+.env.production.bak
+app-release.dm
+*.apk
+.cursor
+pnpm-lock.yaml

@@ -1,0 +1,97 @@
+import { tokenStorage, user } from "@/store/user.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { exchangeToken } from "@/api/user.uts";
+import { ApiResponse } from "@/types/index.uts";
+
+export type RedirectConfig = {
+  from?: string;
+  to?: string;
+  action?: string;
+  toAction?: string;
+  fromAction?: string;
+};
+
+/**
+ * 执行重定向逻辑（供外部调用，如 modal 关闭后）
+ * @param redirectConfig 重定向配置
+ * @param logoutAigfCallback 登出 AIGF 的回调函数（可选）
+ */
+export async function executeRedirect(
+  redirectConfig: RedirectConfig,
+  logoutAigfCallback?: () => Promise<void>,
+): Promise<void> {
+  /** 根据不同路由拦截器的action,适配业务处理 */
+  if (!!redirectConfig.to) {
+    uni[redirectConfig.toAction || redirectConfig.action || "navigateTo"]({
+      url: redirectConfig.to,
+    });
+  } else {
+    uni.redirectTo({
+      url: "/pages/index/index?tabbar=home", // 重定向到首页
+    });
+  }
+  
+  if (logoutAigfCallback != null) {
+    await logoutAigfCallback();
+  }
+}
+
+/**
+ * 处理三方登录成功后的通用逻辑
+ * @param accessToken 三方登录返回的 accessToken
+ * @param redirectConfig 重定向配置
+ * @param logoutAigfCallback 登出 AIGF 的回调函数（可选）
+ * @param bindEmailResponse 如果是从 handleMergeEmailSuccess 调用，传入 auth/bindemail 的返回值，此时不执行 exchangeToken
+ */
+export async function handleThirdPartyLoginSuccess(
+  accessToken: string,
+  redirectConfig: RedirectConfig,
+  logoutAigfCallback?: () => Promise<void>,
+  bindEmailResponse?: ApiResponse<any> | null,
+): Promise<void> {
+  let userRes: ApiResponse<any> | null = null;
+  
+  // 如果传入了 bindEmailResponse，说明是从 handleMergeEmailSuccess 调用的，直接使用该返回值
+  if (bindEmailResponse != null) {
+    userRes = bindEmailResponse;
+    console.log("res:", userRes);
+  } else {
+    // 否则执行 exchangeToken
+    tokenStorage.set<string>("provider_token", accessToken);
+    const provider = tokenStorage.get<string>("provider");
+    userRes = await exchangeToken(provider, accessToken);
+    console.log("res:", userRes);
+    if (userRes.data.bindEmail) {
+      tokenStorage.set<string>("mailemail", 'true');
+    } else {
+      tokenStorage.set<string>("mailemail", 'false');
+    }
+  }
+  
+  // 获取用户信息
+  if (userRes != null && userRes.success && userRes.data != null) {
+    user.value = userRes.data.user;
+    tokenStorage.set<string>("token", userRes.data.accessToken);
+  }
+
+  uni.$emit("login:close");
+  uni.$emit("refresh:balance");
+
+  // GA 埋点上报: 登录成功
+  execGTagEvent("login", { result: "success" } as AnyObject);
+
+  /** 根据不同路由拦截器的action,适配业务处理 */
+  if (!!redirectConfig.to) {
+    uni[redirectConfig.toAction || redirectConfig.action || "navigateTo"]({
+      url: redirectConfig.to,
+    });
+  } else {
+    uni.redirectTo({
+      url: "/pages/index/index?tabbar=home", // 重定向到首页
+    });
+  }
+  
+  if (logoutAigfCallback != null) {
+    await logoutAigfCallback();
+  }
+}

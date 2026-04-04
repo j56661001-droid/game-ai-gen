@@ -1,0 +1,163 @@
+<template>
+    <view class="waterfall-content">
+      <view class="waterfall-column">
+        <view v-for="item in column1Items" :key="item.id"
+              :id="getItemId(item.id)"
+              class="waterfall-item-wrapper">
+          <slot :item="item" :onItemReady="onItemReady"></slot>
+        </view>
+      </view>
+      <view class="waterfall-column">
+        <view v-for="item in column2Items" :key="item.id"
+              :id="getItemId(item.id)"
+              class="waterfall-item-wrapper">
+          <slot :item="item" :onItemReady="onItemReady"></slot>
+        </view>
+      </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+import { ref, watch, nextTick } from 'vue';
+
+type WaterfallItem = {
+  id: string;
+}
+
+const props = defineProps<{
+  items: WaterfallItem[];
+}>();
+
+const emits = defineEmits(['scrolltolower']);
+
+// --- State ---
+const column1Items = ref<WaterfallItem[]>([]);
+const column2Items = ref<WaterfallItem[]>([]);
+
+// 高度缓存
+const itemHeightCache = new Map<string, number>();
+// 瀑布流每项底部的间距
+const ITEM_MARGIN_BOTTOM = 10;
+
+const getItemId = (id: string) => {
+  return "waterfall-item-" + id;
+}
+
+const triggerLayoutCalculation = (id: string = '') => {
+  // 测量并缓存新加载项的高度
+  // 遍历所有当前渲染在DOM中的项目，如果其高度尚未缓存，则进行测量
+  if(id != ''){
+    itemHeightCache.delete(id);
+  }
+  const itemsToMeasureNow = props.items.filter(item => !itemHeightCache.has(item.id));
+
+  for (const item of itemsToMeasureNow) {
+    const element = uni.getElementById(getItemId(item.id));
+    if (element != null && element.offsetHeight != null) {
+      itemHeightCache.set(item.id, element.offsetHeight);
+    } else {
+      // console.warn(`Failed to measure item ${item.id}. Using default height 200.`);
+      itemHeightCache.set(item.id, 200); // 设置一个默认高度
+    }
+  }
+
+  // 重新分配所有项目
+  const newCol1: WaterfallItem[] = [];
+  const newCol2: WaterfallItem[] = [];
+  let height1: number = 0;
+  let height2: number = 0;
+
+  for (const item of props.items) {
+    const itemHeight = itemHeightCache.get(item.id);
+    
+    if (itemHeight == null) {
+      console.error(`Height for item ${item.id} not found in cache. Using default.`);
+      newCol1.push(item); // Fallback to column 1
+      height1 += 200 + ITEM_MARGIN_BOTTOM; // Use default height
+      continue;
+    }
+    
+    if (height1 <= height2) {
+      newCol1.push(item);
+      height1 += Math.floor(itemHeight) + ITEM_MARGIN_BOTTOM;
+    } else {
+      newCol2.push(item);
+      height2 += Math.ceil(itemHeight) + ITEM_MARGIN_BOTTOM;
+    }
+  }
+  
+  column1Items.value = newCol1;
+  column2Items.value = newCol2;
+};
+
+
+// --- Core Logic ---
+
+// 由父组件调用，通知某个item的图片已加载完成
+const onItemReady = (itemId: string) => {
+  nextTick(() => {
+    triggerLayoutCalculation(itemId); // 立即触发重新布局
+  });
+};
+
+const distributeItems = async () => {
+  // 找出所有需要测量的新项目（即不在缓存中的项目）
+  const newItems = props.items.filter(item => !itemHeightCache.has(item.id));
+
+  // 初始平均分配新项目到两列进行渲染，以便测量
+  const tempCol1: WaterfallItem[] = [];
+  const tempCol2: WaterfallItem[] = [];
+  newItems.forEach((item, index) => {
+    if (index % 2 == 0) {
+      tempCol1.push(item);
+    } else {
+      tempCol2.push(item);
+    }
+  });
+  column1Items.value.push(...tempCol1);
+  column2Items.value.push(...tempCol2);
+
+  // 确保 DOM 更新后立即触发布局计算
+  await nextTick();
+  triggerLayoutCalculation();
+};
+
+const onScrollToLower = () => {
+  emits('scrolltolower');
+};
+
+// 监听 props.items 的变化
+watch(() => props.items, (newItems: WaterfallItem[]) => {
+  if (newItems != null && newItems.length > 0) {
+    distributeItems();
+  } else {
+    // 如果传入的 items 为空，则清空所有列
+    column1Items.value = [];
+    column2Items.value = [];
+    itemHeightCache.clear(); // 清空缓存
+  }
+}, { immediate: true, deep: true });
+</script>
+
+
+<style scoped>
+.waterfall-container {
+  flex-direction: row;
+}
+.waterfall-content {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 0;
+  width: 100%;
+}
+.waterfall-column {
+  display: flex;
+  flex-direction: column;
+  width: 49%;
+}
+.waterfall-item-wrapper {
+  margin-bottom: 10px;
+  transition: opacity 0.3s ease-in-out; /* Smooth transition for opacity */
+}
+</style>

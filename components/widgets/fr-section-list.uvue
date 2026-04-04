@@ -1,0 +1,119 @@
+<template>
+  <list-view
+    class="section-list-container"
+    :refresher-enabled="refresherEnabled"
+    :refresher-triggered="refreshing"
+    @refresherrefresh="onRefresh"
+    @scrolltolower="onLoadMore"
+  >
+    <template v-for="(record, idx) in dataSource" :key="record.key || idx">
+      <list-item :type="1">
+        <slot name="head" :record="record">
+          <view class="section-head">
+            <slot name="title" :record="record">
+              <text class="section-list-title">{{ record.title }}</text>
+            </slot>
+            <text v-if="!!record.desc" class="section-list-desc">{{ record.desc }}</text>
+          </view>
+        </slot>
+      </list-item>
+      <template v-if="!!record.items?.length">
+        <list-item class="section-list-item" v-for="(item, itemIdx) in record.items" :key="item[itemKey || 'key'] || itemIdx" :type="0">
+          <slot name="item" :item="item">
+            <view> </view>
+          </slot>
+        </list-item>
+      </template>
+    </template>
+  </list-view>
+</template>
+
+<script setup lang="uts">
+import { TPagination } from "./type";
+
+/**
+ * TODO: 带组件功能完善，及应用测试
+ */
+
+type Item = { key?: string | number };
+
+type Record = {
+  key?: string | number;
+  title: string;
+  desc?: string;
+  items: Item[];
+};
+
+type Props = {
+  dataSource: Record[];
+  itemKey?: string;
+  pagination?: any;
+  loading?: boolean;
+  refresherEnabled?: boolean;
+};
+
+const DEFAULT_PAGE_SIZE = 20;
+
+let loadingMode: "init" | "refresh" | "loadmore" = "init";
+
+defineSlots<{
+  title(props: { record: Record }): any;
+  item(props: { item: Item }): any;
+}>();
+
+const props = defineProps<Props>();
+const emit = defineEmits<{
+  (e: "refresh", initPagination: TPagination): void;
+  (e: "loadmore", nextPagination: TPagination): void;
+}>();
+
+const { pagination, dataSource, itemKey = "key", loading = false, refresherEnabled = false } = toRefs<any>(props);
+
+const refreshing = computed((): boolean => loadingMode == "refresh" && loading == true);
+
+const onRefresh = () => {
+  const { size = DEFAULT_PAGE_SIZE, total = 0 } = toRaw<TPagination>(props.pagination) || {};
+
+  loadingMode = "refresh";
+  emit("refresh", { page: 1, size, total });
+};
+
+const onLoadMore = () => {
+  const { page = 1, size = DEFAULT_PAGE_SIZE, total = 0, pages = 0 } = toRaw<TPagination>(props.pagination) || {};
+  if (!pagination && page >= pages) {
+    return;
+  }
+
+  loadingMode = "loadmore";
+  emit("loadmore", { page: page + 1, size, total });
+};
+</script>
+
+<style scoped>
+.section-list-container {
+  flex: 1;
+}
+
+.section-head {
+  padding: 10px 16px;
+}
+
+.section-list-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 17px;
+}
+
+.section-list-desc {
+  font-size: 12px;
+  color: #707070;
+  line-height: 17px;
+  margin-top: 4px;
+}
+
+.section-list-item {
+  padding: 0 24px;
+  margin-bottom: 16px;
+}
+</style>

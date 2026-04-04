@@ -1,0 +1,267 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <view class="container">
+        <gen-nav-bar :title="genBtnInfo.title" />
+        <generator-form class="body" ref="formRef" :fields="result.data?.uiConfig?.fields" :toolId="toolId"></generator-form>
+        <fr-button class="gen-button" :loading="submitting" @click="onGenerate">
+          <icon-font name="thunderbolt_outlined" :size="16" color="#FFFF03"></icon-font>
+          <text style="margin-left: 2px; margin-right: 16px" class="gen-button-text">{{ displayCount }}</text>
+          <text class="gen-button-text">{{ genButtonText }}</text>
+        </fr-button>
+
+
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import IconFont from "../../components/IconFont/IconFont.uvue";
+import GenNavBar from "./panel/nav-bar.uvue";
+import GeneratorForm from "./panel/generator-form.uvue";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import { useLoadDataRequest, LoadDataRequestOptions, useSubmitRequest } from "@/hooks";
+import { FrSpin, FrButton } from "@/components/widgets/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { execGTagEvent, openExternalTopupPage } from "@/utils/index.uts";
+import { user, logout } from "@/store/user"; // Import user store
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+
+const textToVideoText = computed(() => $i18n_t("publish.textToVideo"));
+const imageToVideoText = computed(() => $i18n_t("publish.imageToVideo"));
+
+type TabKey = "text" | "image";
+
+type GenerateButton = {
+  count: number;
+  type: string;
+  title: string;
+};
+
+type FormExpose = {
+  submit(cb: (c: UTSJSONObject) => void): void;
+  reset(): void;
+  setValues(values: UTSJSONObject): void;
+};
+
+const formRef = ref<FormExpose | null>(null);
+
+const currentTabKey = ref<TabKey>("text");
+const toolId = ref<string | null>(null);
+const generationId = ref<string | null>(null);
+
+const genBtnInfo = reactive<GenerateButton>({
+  count: 10,
+  type: "image-generation",
+  title: $i18n_t("publish.generateImage"),
+});
+
+
+
+onLoad((options) => {
+  toolId.value = options.id as string;
+  generationId.value = options.generationID as string;
+});
+
+const { loadDataRequest, loading, result } = useLoadDataRequest({
+  url: (p) => `ai-tools/${p.id}`,
+} as LoadDataRequestOptions);
+
+const {
+  loadDataRequest: loadGeneration,
+  loading: generationLoading,
+  result: generationResult,
+} = useLoadDataRequest({
+  url: (p) => `ai-generations/${p.id}`,
+  onSuccess({ data }) {
+    formRef.value?.setValues(data?.generationParameters);
+    if (data?.toolID != null) {
+      toolId.value = data.toolID;
+      loadDataRequest({ id: data.toolID });
+    }
+  },
+} as LoadDataRequestOptions);
+
+const { submitRequest, submitting } = useSubmitRequest({
+  url: `ai-generations`,
+  customErrorHanlder: () => {},
+  onSuccess() {
+    formRef.value?.reset();
+
+    // GA 埋点上报: 创作成功
+    execGTagEvent("generation_click", { toolID: toolId.value, result: "success" } as AnyObject);
+
+    uni.navigateTo({ url: `/pages/publish/processing-records` });
+  },
+  onFail(err: any) {
+    // GA 埋点上报: 创作失败
+    execGTagEvent("generation_click", { toolID: toolId.value, result: "fail", error_code: err?.code } as AnyObject);
+
+    // 余额不足
+    if (err?.code == 8001) {
+      uni.showModal({
+        content: $i18n_t("account.pleaseTopUp"),
+        cancelText: $i18n_t("common.cancel"),
+        confirmText: $i18n_t("account.topUp"),
+        success({ confirm }) {
+          if (confirm) {
+            openExternalTopupPage("ai_generator");
+          }
+        },
+      });
+    } else if (err?.code == 401) {
+      uni.showToast({
+        title: $i18n_t("common.loginExpired"),
+        icon: "none",
+      });
+      logout();
+    } else {
+      const localeMessage = $i18n_t(`s_msg.err_${err.code}`);
+      const displayMessage = localeMessage || err.message;
+
+      uni.showToast({
+        title: displayMessage,
+        icon: "none",
+      });
+    }
+  },
+});
+
+watch(
+  () => ({ toolId: toolId.value, generationId: generationId.value }),
+  ({ generationId, toolId }) => {
+    if (generationId != null) {
+      loadGeneration({ id: generationId });
+    } else if (toolId != null) {
+      loadDataRequest({ id: toolId });
+    }
+  },
+  { immediate: true },
+);
+
+watchEffect(() => {
+  genBtnInfo.title = fmtBackendLang(result.data?.displayName);
+  genBtnInfo.type = result.data?.toolType;
+  genBtnInfo.count = result.data?.costPoints;
+});
+
+const onSwitchTab = (key: TabKey) => {
+  currentTabKey.value = key;
+};
+
+const onSwiperChange = (d: UniSwiperChangeEvent) => {
+  currentTabKey.value = d.detail?.currentItemId as TabKey;
+};
+
+const onBack = () => {
+  uni.navigateBack();
+};
+
+const displayCount = computed(() => {
+  if (user.value != null && user.value.accountType === "guest" && (user.value.aiGenerationsCount == null || user.value.aiGenerationsCount === 0)) {
+    return 0;
+  }
+  return genBtnInfo.count;
+});
+
+const genButtonText = computed(() => {
+  if (user.value != null && user.value.accountType === "guest" && (user.value.aiGenerationsCount == null || user.value.aiGenerationsCount === 0)) {
+    return $i18n_t("publish.freeGenerateOnce");
+  }
+  return $i18n_t("publish.generate");
+});
+
+const onGenerate = () => {
+  // if (user.value != null && user.value.accountType === 'guest' && (user.value.aiGenerationsCount != null && user.value.aiGenerationsCount > 0)) {
+  if (user.value == null) {
+    uni.$emit("login:show", { page: "register" });
+  } else {
+    formRef.value?.submit((data) => {
+      submitRequest({
+        generationParameters: data,
+        toolID: toolId.value,
+      });
+    });
+  }
+};
+</script>
+
+<style scoped>
+.container {
+  flex: 1;
+  background-color: #000;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding-top: 20px;
+}
+
+.body {
+  flex: 1;
+}
+
+.tabs {
+  flex-direction: row;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.active-tab-indicator {
+  width: 36px;
+  height: 8px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tab-btn {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.selected-tab {
+  color: #fff;
+}
+
+.tab-font {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.tab-title {
+  font-family: PingFang SC-Semibold;
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.gen-button {
+  position: absolute;
+  height: 40px;
+  /* padding: 0 36px; */
+  width: 60%;
+  line-height: 40px;
+  bottom: 16px;
+  background: linear-gradient(to bottom right, #ff00d8, #fff500);
+  transform: translateX(33.33%);
+  border-radius: 20px;
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.gen-button-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+</style>

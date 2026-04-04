@@ -1,0 +1,13 @@
+export type ClaimItem = {
+  claimedAt: string;
+  point: number;
+  requairedNum: number;
+  rewardLevel: number;
+  status: number;
+};
+
+export type ClaimRewardsData = {
+  userID: string;
+  rewardLevel: number;
+  claimedAt: string;
+};

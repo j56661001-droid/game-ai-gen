@@ -1,0 +1,418 @@
+<template>
+  <view class="container">
+    <!-- 搜索框 -->
+    <view class="search-container">
+      <view v-if="showSearch" class="search-input-container">
+        <IconFont name="search" :size="14" color="rgba(255, 255, 255, 0.5)" />
+        <input type="text" class="search-input" :placeholder="$i18n_t('publish.searchAssets')" :value="searchKeyword" @input="handleSearchInput" />
+      </view>
+      <text class="search-input-hint">{{ props.hintText }}</text>
+    </view>
+
+    <!-- 列表 -->
+    <fr-adaptive-list
+      class="resource-list"
+      :min-column="2"
+      :min-width="230"
+      :loading="props.loading"
+      :data-source="list"
+      :pagination="props.pagination"
+      :empty-text="emptyText"
+      paddingBottom="100px"
+      @loadmore="handleLoadMore"
+    >
+      <template #record="{ record }">
+        <view class="list-item" :class="{ 'list-item-active': record.id === props.selectedId }">
+          <view class="item-image-container">
+            <bp-image-display
+              v-if="record.contentType === 'image'"
+              class="item-image"
+              :src="record.fileURL"
+              :cover="record.cover"
+              :autoresize="false"
+              mode="aspectFill"
+              :showCenterPlayBtn="true"
+              @click="handleItemClick(record as ResourceItem)"
+              list-play
+            ></bp-image-display>
+            <bp-video-display
+              v-else-if="record.contentType === 'video'"
+              class="item-image"
+              :src="record.fileURL"
+              :cover="record.cover"
+              :autoresize="false"
+              imageMode="aspectFill"
+              object-fit="cover"
+              :showCenterPlayBtn="true"
+              @click="handleItemClick(record as ResourceItem)"
+              @click:play="handlePlayClick(record as ResourceItem)"
+              list-play
+            ></bp-video-display>
+            
+            <!-- 视频播放按钮 -->
+            <!-- <view v-if="record.contentType === 'video'" class="video-play-button" @click.stop="handlePlayClick(record as ResourceItem)">
+              <IconFont name="play" :size="18" color="#FFFFFF" />
+            </view> -->
+          </view>
+
+          <!-- 标签 - 可选 -->
+          <view v-if="record.tag != null && record.tag !== ''" class="item-tag">
+            {{ record.tag }}
+          </view>
+
+          <!-- 勾选图标 -->
+          <view v-if="record.id === props.selectedId" class="item-selected">
+            <image src="/static/icons/selected.png" style="width: 16px; height: 16px" />
+          </view>
+
+          <!-- 描述 - 可选 -->
+          <view v-if="record.description != null && record.description !== ''" class="item-description">
+            <view class="item-description-box">
+              <!-- #ifdef APP -->
+              <text class="item-description-text" :lines="1">{{ record.description }}</text>
+              <!-- #endif -->
+              <!-- #ifndef APP -->
+              <text class="item-description-text">{{ record.description }}</text>
+              <!-- #endif -->
+            </view>
+          </view>
+        </view>
+      </template>
+    </fr-adaptive-list>
+
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, computed, watch } from "vue";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { FrAdaptiveList } from "@/components/widgets";
+import { $i18n_t } from "@/locale/index.uts";
+import { debounce } from "@/utils/debounce.uts";
+import BpVideoDisplay from "@/components/panels/bp-video-display.uvue";
+import BpImageDisplay from "@/components/panels/bp-image-display.uvue";
+
+// 定义资源项类型
+type ResourceItem = {
+  id: string;
+  contentType: string;
+  fileURL: string;
+  cover?: string;
+  tag?: string; // 可选标签
+  description?: string; // 可选描述
+  // encryptionKey?: string;
+};
+
+// Props定义
+type Props = {
+  list: ResourceItem[]; // 资源列表
+  selectedId?: string | null; // 选中的项目ID
+  loading?: boolean; // 加载状态
+  pagination?: UTSJSONObject | null; // 分页信息对象
+  emptyText?: string; // 空状态文本
+  hintText?: string; // 提示文本
+  resourceType?: 'image' | 'video' | 'all'; // 资源类型过滤：image-仅图片，video-仅视频，all-全部
+  searchKeyword?: string;
+  showSearch?: boolean;
+};
+
+const props = withDefaults(defineProps<Props>(), {
+  list: () => [],
+  selectedId: null,
+  loading: false,
+  pagination: null,
+  emptyText: "",
+  hintText: "",
+  resourceType: 'all',
+  searchKeyword: '',
+  showSearch: false,
+});
+
+// 是否播放视频
+const playVideo = ref<boolean>(false);
+
+// Emits定义
+const emit = defineEmits<{
+  select: [id: string | null]; // 选中/取消选中事件
+  loadMore: []; // 加载更多事件
+  searchKeyword: [keyword: string]; // 搜索关键词事件
+}>();
+
+// 创建防抖搜索函数
+const debouncedSearch = debounce((keyword: string) => {
+  emit("searchKeyword", keyword);
+}, 500);
+
+// 处理搜索输入
+function handleSearchInput(event: UniInputEvent): void {
+  debouncedSearch(event.detail.value);
+}
+
+// 处理视频播放
+function handlePlayClick(record: ResourceItem): void {
+  playVideo.value = true;
+}
+
+// 空状态文本
+const emptyText = computed((): string => {
+  return props.emptyText !== "" ? props.emptyText : $i18n_t("common.noData");
+});
+
+// 处理项目点击（选中/取消选中）
+function handleItemClick(item: ResourceItem | UTSJSONObject): void {
+  const itemId = (item as UTSJSONObject).id as string;
+  
+  // 选中逻辑：如果当前项已选中，则取消选中；否则选中该项
+  if (itemId === props.selectedId) {
+    emit("select", null);
+  } else {
+    emit("select", itemId);
+  }
+}
+
+// 处理加载更多
+function handleLoadMore(pagination: UTSJSONObject): void {
+  const hasNext = (props.pagination?.has_next as boolean) || false;
+  if (!props.loading && hasNext) {
+    emit("loadMore");
+  }
+}
+
+// 处理视频结束
+function handleVideoEnded(record: ResourceItem): void {
+  playVideo.value = false;
+}
+</script>
+
+<style scoped>
+.container {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-container {
+  padding: 14px 24px 0;
+}
+
+.search-input-container {
+  background-color: rgba(62, 62, 62, 1);
+  margin-bottom: 14px;
+  border-radius: 20px;
+  height: 35px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-input {
+  flex: 1;
+  height: 100%;
+  font-size: 12px;
+  background-color: transparent;
+  border: none;
+  color: #fff;
+  margin-left: 10px;
+}
+
+.search-input-hint {
+  font-size: 12px;
+  color: rgba(111, 111, 111, 1);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.resource-list {
+  flex: 1;
+  /* padding: 0 16px; */
+}
+
+/* 列表项样式 */
+.list-item {
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent;
+}
+
+.list-item-active {
+  border-color: #fb22b8;
+}
+
+/* 3:4比例容器 */
+.item-image-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 110%;
+  overflow: hidden;
+  background-color: #1a1a1a;
+}
+
+.item-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.video-play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+}
+
+:deep(.uni-list-view-container) {
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.item-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: #fde017;
+  color: #000;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+  z-index: 2;
+}
+
+.item-selected {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+}
+
+.item-description {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.item-description-box {
+  padding: 6px 12px;
+  border-radius: 20px;
+  min-height: 30px;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.item-description-text {
+  font-size: 12px;
+  color: #fff;
+  max-width: 100%;
+}
+
+/* 空状态样式 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+}
+
+.empty-image {
+  width: 160px;
+  height: 160px;
+  margin-bottom: 16px;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #999;
+  text-align: center;
+}
+
+/* 加载状态样式 */
+.loading-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+/* Web 平台：使用标准 CSS 实现省略号 */
+/* #ifndef APP */
+.item-description-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* #endif */
+
+/* App 平台：通过 lines 属性实现省略号，不需要额外 CSS */
+
+/* 视频预览模态框 */
+.video-preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-preview-content {
+  position: relative;
+  width: 90%;
+  max-width: 600px;
+  aspect-ratio: 3 / 4;
+  background-color: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video-preview-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.video-preview-player {
+  width: 100%;
+  height: 100%;
+}
+</style>

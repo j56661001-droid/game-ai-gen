@@ -1,0 +1,14 @@
+export type TaskItem = {
+  category: string;
+  current: number;
+  isClaimed: boolean;
+  isCompleted: boolean;
+  reward: number;
+  target: number;
+  taskType: string;
+};
+
+export type PointsData = {
+  pointsEarned: number;
+  pointsMissing: number;
+};

@@ -1,0 +1,109 @@
+<template>
+  <fr-page style="padding-top: 20px" :title="systemNotificationsText">
+    <template v-if="routeParams.type != 'system'" #navbar-title>
+      <view style="flex-direction: row; align-items: center; padding: 16px 0">
+        <fr-avatar :size="36"></fr-avatar>
+        <view style="flex: 1; margin-left: 12px">
+          <fr-typography-title>Kmi</fr-typography-title>
+          <fr-typography-text>Online 10 minutes ago</fr-typography-text>
+        </view>
+      </view>
+    </template>
+    <view style="flex: 1; padding: 16px 24px">
+      <view style="align-items: center" v-if="routeParams.type != 'system'">
+        <fr-avatar :size="60"></fr-avatar>
+        <fr-typography-title style="font-size: 18px; line-height: 25px; margin: 4px 0">Kmi</fr-typography-title>
+        <fr-typography-text style="margin-bottom: 4px">xxxx@gmail.com</fr-typography-text>
+        <fr-typography-text style="color: #fff">84M Followers · 1.1k posts</fr-typography-text>
+        <fr-button style="height: 30px; margin: 12px 0"> {{ viewProfileText }} </fr-button>
+      </view>
+      <fr-scroll-list
+        :data-source="records"
+        refresher-enabled
+        :loading="listing"
+        :pagination="pagination"
+        @refresh="onRefreshNotifications"
+        @loadmore="onLoadMoreNotifications"
+      >
+        <template #record="{ record }">
+          <view class="chat-card">
+            <text style="color: #fff; font-size: 14px; line-height: 20px">{{ record.message }}</text>
+          </view>
+        </template>
+      </fr-scroll-list>
+    </view>
+  </fr-page>
+</template>
+
+<script setup lang="uts">
+import { FrPage, FrAvatar, FrTypographyText, FrTypographyTitle, FrButton, FrScrollList } from "@/components/widgets";
+import { useLoadDataRequest, useLoadListRequest } from "@/hooks";
+import { $i18n_t } from "@/locale/index.uts";
+import { FREventBus } from "@/utils/index.uts";
+
+const systemNotificationsText = computed(() => $i18n_t("common.systemNotifications"));
+const viewProfileText = computed(() => $i18n_t("account.viewProfile"));
+
+type RouteParams = {
+  id?: string;
+  userID?: string;
+  type?: string;
+  isRead?: boolean;
+};
+
+const routeParams = ref<RouteParams>({});
+
+const { loadDataRequest, loading } = useLoadDataRequest({
+  url: (p) => `notifications/${p.id}`,
+  onSuccess() {
+    if (!routeParams.value.isRead) {
+      FREventBus.emit("reload:notifications");
+    }
+  },
+});
+const {
+  loadListRequest,
+  loading: listing,
+  result,
+} = useLoadListRequest({
+  url: "notifications",
+});
+
+const { records, pagination } = toRefs<any>(result);
+
+onLoad(({ id, userID, type, isRead }: any) => {
+  routeParams.value = { id, userID, type, isRead: isRead == "true" } as RouteParams;
+});
+
+onMounted(() => {
+  loadDataRequest({ id: routeParams.value.id });
+  loadListRequest(null);
+});
+
+const onRefreshNotifications = () => {
+  loadListRequest(null);
+};
+
+const onLoadMoreNotifications = ({ page }) => {
+  loadListRequest({ page });
+};
+</script>
+
+<style scoped>
+.user-text {
+  lines: 1;
+  overflow: hidden;
+
+  /* #ifdef WEB */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+
+.chat-card {
+  max-width: 90%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background-color: #1b1b1b;
+}
+</style>

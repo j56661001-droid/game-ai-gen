@@ -1,0 +1,30 @@
+<template>
+  <fr-page-navbar @back="onBack">
+    <template #actions>
+      <credits-balance-icon class="navbar-flash-action"></credits-balance-icon>
+      <processing-generations-icon></processing-generations-icon>
+    </template>
+  </fr-page-navbar>
+</template>
+
+<script setup lang="uts">
+import { parseNumToThousands } from "@/utils/parse.uts";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import FrPageNavbar from "@/components/widgets/fr-page-navbar.uvue";
+import CreditsBalanceIcon from "./credits-balance-icon.uvue";
+import ProcessingGenerationsIcon from "./processing-generations-icon.uvue";
+
+const onBack = () => {
+  uni.navigateBack();
+};
+</script>
+
+<style scoped>
+.navbar-flash-action {
+  padding: 0 10px !important;
+}
+
+.fr-page-navbar uni-view {
+  overflow: unset !important;
+}
+</style>

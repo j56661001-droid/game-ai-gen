@@ -1,0 +1,102 @@
+import { request } from "./request";
+import { ApiResponse, UserItem } from "../types";
+
+// {
+//     "success": true,
+//     "data": {
+//         "user": {
+//             "id": "3420626662272798802",
+//             "username": "sese_3420626662243438592",
+//             "nickname": "sese",
+//             "postsCount": 0,
+//             "followersCount": 0,
+//             "followingCount": 0,
+//             "preferredLanguage": null,
+//             "preferredCountry": null,
+//             "accountType": "guest",
+//             "aiGenerationsCount": 0
+//         },
+//         "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X3R5cGUiOiJndWVzdCIsImV4cCI6MTc2NTgyNTc0OCwiaWRlbnRpdHkiOiIzNDIwNjI2NjYyMjcyNzk4ODAyIiwiaXNzIjoiZnJnYW1pbmctYmFja2VuZCIsImp0aSI6IjM0MjA2MjY2NjIzMTQ3NDE3NjAiLCJvcmlnX2lhdCI6MTc2MjIyNTc0OCwic2Vzc2lvbl9pZCI6IjM0MjA2MjY2NjIzMjMxMzA0NTEifQ.ubffpqKauRpnRDMz79V1uprdpoWOGLU4Wa5FmM7Czdo",
+//         "expiresAt": "2025-12-16T03:09:08.474698+08:00"
+//     },
+//     "meta": {
+//         "request_id": "25699819-a810-4bab-805d-60e16024911e",
+//         "timestamp": "2025-11-04T11:09:08.474802+08:00"
+//     }
+// }
+export interface GuestAuthResponse {
+  accessToken: string;
+  expiresAt: string;
+  user: UserItem;
+}
+
+export interface GuestAutoAuthParams {
+  deviceFingerprint: string;
+  tg_username?: string;
+  tg_token?: string;
+  promotional_code?: string;
+}
+
+export function guestAutoAuth(data: GuestAutoAuthParams): Promise<ApiResponse<GuestAuthResponse>> {
+  const { deviceFingerprint, ...restData } = data;
+  return request({
+    url: `guest/auto-auth`,
+    method: "POST",
+    data: data,
+    header: {
+      "X-Device-Fingerprint": deviceFingerprint
+    }
+  });
+  // Mock data for guestAutoAuth
+  // const mockResponse: ApiResponse<GuestAuthResponse> = {
+  //   data: {
+  //     accessToken: "mock_access_token_12345",
+  //     expiresAt: "2025-12-31T23:59:59Z",
+  //     user: {
+  //       accountType: "guest",
+  //       aiGenerationsCount: 100,
+  //       avatar: "https://example.com/avatar.png",
+  //       bio: "This is a mock user bio.",
+  //       email: "mock@example.com",
+  //       followersCount: 50,
+  //       followingCount: 30,
+  //       id: 12345,
+  //       isFollowing: false,
+  //       isMutual: false,
+  //       location: "Mock City",
+  //       nickname: "MockUser",
+  //       postsCount: 5,
+  //       preferredCountry: "US",
+  //       preferredLanguage: "en",
+  //       username: "mockuser",
+  //     },
+  //   },
+  //   error: {
+  //     code: 0,
+  //     details: [],
+  //     message: "",
+  //   },
+  //   meta: {
+  //     pagination: {
+  //       has_next: false,
+  //       has_prev: false,
+  //       page: 1,
+  //       pages: 1,
+  //       size: 1,
+  //       total: 1,
+  //     },
+  //     request_id: "mock_request_id_123",
+  //     timestamp: "2025-12-31T23:59:59Z",
+  //   },
+  //   success: true,
+  // };
+  // return Promise.resolve(mockResponse);
+}
+
+export function getFingerprintParams(params: FingerprintParams): Promise<ApiResponse<any>> {
+  return request({
+    url: `device-fingerprints`,
+    method: "GET",
+    data: params
+  });
+}

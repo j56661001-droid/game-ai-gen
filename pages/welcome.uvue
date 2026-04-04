@@ -1,0 +1,229 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="page-container">
+      <template v-if="!showSplash">
+        <!-- 背景视频 -->
+        <video class="background-video" src="/static/hello.mp4" :autoplay="true" :loop="true" :muted="true" :controls="false" :object-fit="videoObjectFit"></video>
+
+        <!-- 半透明遮罩 -->
+        <view class="video-mask"></view>
+
+        <!-- 内容层 -->
+        <view class="content-overlay">
+          <!-- Logo -->
+          <image class="logo-image" src="/static/icons/welcome@2x.png"></image>
+
+          <image class="webname-image" src="/static/icons/welcome_logo@2x.png"></image>
+
+          <image class="x18-image" src="/static/icons/18x@2x.png"></image>
+
+          <!-- 标题 -->
+          <text class="title">{{ $i18n_t("welcome.title") }}</text>
+
+          <!-- 副标题 -->
+          <text class="subtitle">{{ $i18n_t("welcome.subtitle") }}</text>
+
+          <!-- 我年满18岁 - 登录 按钮 -->
+          <button class="action-button login-button" @click="handleLogin">{{ $i18n_t("welcome.login_button") }}</button>
+
+          <!-- 我未满18岁 - 退出 按钮 -->
+          <button class="action-button exit-button" @click="handleExit">{{ $i18n_t("welcome.exit_button") }}</button>
+        </view>
+      </template>
+      <template v-else>
+        <SplashContent v-if="!user || user.accountType === 'guest'" :welcomeData="welcomeData" />
+        <NewContentPrompt v-else />
+      </template>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { onMounted, ref, onUnmounted } from "vue";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { getSettings } from "@/api/file.uts";
+import type { WelcomeSettings } from '@/types/index.uts';
+import { user, userInited } from '@/store/user.uts';
+import SplashContent from '@/components/pages/welcome/SplashContent.uvue';
+import NewContentPrompt from '@/components/pages/welcome/NewContentPrompt.uvue';
+
+const showSplash = ref(false);
+const welcomeData = ref<WelcomeSettings | null>(null);
+
+const videoObjectFit = ref<'cover' | 'contain'>('cover'); // 默认为 cover
+
+const updateVideoObjectFit = () => {
+  if (window.innerWidth && window.innerHeight) { // 确保 window 对象可用
+    const aspectRatio = window.innerWidth / window.innerHeight;
+    if (aspectRatio > 768/1024) {
+      videoObjectFit.value = 'contain'; // 宽屏时，高度优先，两侧黑边
+    } else {
+      videoObjectFit.value = 'cover';  // 窄屏或方屏时，填充，裁剪高度
+    }
+  }
+};
+
+const waitForUserInit = (timeout: number): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (userInited.value) {
+      resolve(true);
+      return;
+    }
+
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      if (userInited.value) {
+        clearInterval(interval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeout) {
+        clearInterval(interval);
+        resolve(false);
+      }
+    }, 100); // Check every 100ms
+  });
+};
+
+
+const handleLogin = async () => {
+  await waitForUserInit(1000); // Wait for max 1 second
+  showSplash.value = true;
+};
+
+const handleExit = () => {
+  console.log("User chose to exit (under 18)");
+  uni.navigateTo({
+    url: "/pages/welcome_18",
+  });
+};
+
+onMounted(async () => {
+  updateVideoObjectFit(); // 初始化
+  window.addEventListener('resize', updateVideoObjectFit);
+
+  const response = await getSettings("welcome");
+  if (response != null && response.data != null) {
+    welcomeData.value = response.data?.extra as WelcomeSettings;
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateVideoObjectFit);
+});
+</script>
+
+<style scoped>
+.page-container {
+  /* 相对定位，作为视频绝对定位的父容器 */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.background-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* 确保视频在最底层 */
+  z-index: -1;
+}
+
+.video-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.content-overlay {
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 将内容推到底部 */
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  /* padding-bottom: 25%; */
+}
+
+.logo-image {
+  width: 90px;
+  height: 90px;
+  margin-bottom: 25px;
+}
+
+
+.webname-image {
+  width: 264.5px;
+  height: 41px;
+  margin-bottom: 25px;
+}
+
+.x18-image {
+  width: 66px;
+  height: 85px;
+  margin-bottom: 10px;
+}
+
+.title {
+  /* font-family: "Baloo Thambi 2-ExtraBold"; */
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  /* 添加轻微的文字阴影，使其在各种背景下都清晰可见 */
+  text-shadow: 0px 2px 4px rgba(0, 0, 0, 0.5);
+  margin-bottom: 25px;
+}
+
+.subtitle {
+  font-family: "Baloo Thambi 2-Regular";
+  font-weight: 400;
+  font-size: 14px;
+  max-width: 460px;
+  color: #ffffff;
+  white-space: pre-line;
+  width: 70%;
+  text-align: center;
+  margin-top: 8px;
+  text-shadow: 0px 2px 4px rgba(0, 0, 0, 0.5);
+  margin-bottom: 20px; /* Added margin-bottom to separate from buttons */
+}
+
+.action-button {
+  margin-top: 16px;
+  background-color: #ffffff;
+  color: #000000;
+  /* 使用较大的值实现胶囊形状 */
+  border-radius: 25px;
+  min-width: 293px;
+  height: 50px;
+  padding-top: 11px;
+  padding-bottom: 11px;
+  padding-left: 32px;
+  padding-right: 32px;
+  font-size: 14px;
+  font-weight: bold;
+  /* 移除uni-app按钮的默认边框 */
+  border-width: 0;
+  /* 确保文本垂直居中 */
+  line-height: 2;
+}
+
+.login-button {
+  background-color: #ff23b8; /* Green for login */
+  color: white;
+  margin-bottom: 20px;
+}
+
+.exit-button {
+  background-color: #fff; /* Red for exit */
+  color: black;
+}
+</style>

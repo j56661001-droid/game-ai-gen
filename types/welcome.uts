@@ -1,0 +1,18 @@
+export type MultiLangString = {
+  [key: string]: string;
+};
+
+export type WelcomeSettings = {
+  title: MultiLangString;
+  subtitle: MultiLangString;
+  renderings: {
+    source: {
+      fileURL: string;
+      displayName: MultiLangString;
+    };
+    target: {
+      fileURL: string;
+      displayName: MultiLangString;
+    };
+  };
+};

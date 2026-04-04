@@ -1,0 +1,237 @@
+<template>
+  <view class="modal-container" v-if="visible">
+    <view class="modal-mask" @click="handleMaskClick"></view>
+    <view :class="['modal-content', !showTitle ? 'no-title' : '']">
+      <!-- 标题 -->
+      <text class="modal-title" v-if="showTitle">{{ title }}</text>
+
+      <!-- 内容 -->
+      <scroll-view :class="['modal-content-scroll', !showTitle ? 'no-title' : '']">
+        <rich-text class="modal-content-text" :nodes="processedContent"></rich-text>
+      </scroll-view>
+
+      <!-- 底部按钮 -->
+      <view class="modal-footer">
+        <view class="modal-button" @click="handleConfirm">
+          <text class="button-text">{{ confirmText }}</text>
+        </view>
+      </view>
+    </view>
+    <view class="modal-close-button" @click="handleClose">
+      <IconFont name="close" :size="16" color="#000" />
+    </view>
+  </view>
+</template>
+
+<script>
+import IconFont from '@/components/IconFont/IconFont.uvue'
+
+export default {
+  name: "bp-modal",
+  components: {
+    IconFont
+  },
+  props: {
+    // 是否显示弹框
+    visible: {
+      type: Boolean,
+      default: false,
+    },
+    // 是否显示标题
+    showTitle: {
+      type: Boolean,
+      default: true,
+    },
+    // 标题
+    title: {
+      type: String,
+      default: "提示",
+    },
+    // 内容
+    content: {
+      type: String,
+      default: "",
+    },
+    // 确认按钮文字
+    confirmText: {
+      type: String,
+      default: "确定",
+    },
+    // 点击遮罩层是否关闭
+    maskClosable: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  computed: {
+    // 处理内容中的换行符
+    processedContent() {
+      if (!this.content) return '';
+      
+      // 将 \n 换行符转换为 <br> 标签
+      // 同时确保内容被包裹在 div 中以确保正确渲染
+      const contentWithBreaks = this.content.replace(/\n/g, '<br>');
+      return `<div style="color: #ffffff; font-size: 12px; line-height: 1.5;">${contentWithBreaks}</div>`;
+    },
+  },
+  methods: {
+    // 处理遮罩层点击
+    handleMaskClick() {
+      if (this.maskClosable) {
+        this.$emit("close");
+      }
+    },
+    // 处理确认按钮点击
+    handleConfirm() {
+      this.$emit("confirm");
+    },
+    // 处理关闭按钮点击
+    handleClose() {
+      this.$emit("close");
+    },
+  },
+};
+</script>
+
+<style scoped>
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: relative;
+  width: 80%;
+  max-width: 600px;
+  padding: 24px;
+  border-radius: 20px 20px 20px 20px;
+  background: linear-gradient(135deg, #ff00d8 0%, #fff500 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  max-height: 70%;
+}
+
+.modal-content.no-title {
+  padding-top: 24px;
+}
+
+.modal-title {
+  font-size: 24px;
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-weight: 700;
+  color: #ffffff;
+  text-align: left;
+  margin-bottom: 16px;
+  display: block;
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 0;
+  z-index: 10002;
+}
+
+.modal-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 48px; /* 为绝对定位的标题留出空间 */
+  margin-bottom: 24px;
+  /* 自定义滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.modal-content-scroll.no-title {
+  margin-top: 0;
+}
+
+/* Webkit 浏览器滚动条样式 */
+.modal-content-scroll::-webkit-scrollbar {
+  width: 2px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 2px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.modal-content-text {
+  font-size: 12px;
+  color: #ffffff;
+  line-height: 1.5;
+  text-align: left;
+  display: block;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.modal-button {
+  height: 40px;
+  min-width: 120px;
+  background-color: #000000;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+.button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.butterfly-decoration {
+  position: absolute;
+  top: -25px;
+  right: 0px;
+  width: 78px;
+  height: 78px;
+  border-radius: 21px;
+  z-index: 10001;
+}
+
+.modal-close-button {
+  margin-top: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 10003;
+}
+</style>

@@ -1,0 +1,46 @@
+<template>
+	<view v-if="props.btnSize != null && props.btnSize > 0" @click="onClick"
+		:style="{ width: props.btnSize + 'px', height: props.btnSize + 'px', justifyContent: 'center', alignItems: 'center', backgroundColor: props.showBg ? (bgColor || '#4A4A4A') : 'transparent', borderRadius: '50%' }">
+		<text :style="{ fontSize: size + 'px', color: color, opacity: opacity, marginTop: '1px' }"
+			class="font_family">{{ iconUnicode }}</text>
+	</view>
+	<text v-else @click="onClick" :style="{ fontSize: size + 'px', color: color, opacity: opacity }"
+		class="font_family">{{ iconUnicode }}</text>
+</template>
+
+<script setup lang="uts">
+	import { computed } from 'vue';
+	import { IconFontMap } from '@/common/iconfont.uts';
+
+	const props = defineProps<{
+		name : string;
+		size ?: number;
+		btnSize ?: number;
+		color ?: string;
+		opacity ?: number;
+		showBg ?: boolean;
+		bgColor ?: string;
+	}>();
+
+	const emit = defineEmits<{
+		(e : 'click') : void;
+	}>();
+
+	const iconUnicode = computed(() => {
+		return IconFontMap[props.name as string] != null ? IconFontMap[props.name as string] as string : '';
+	});
+
+	const size = computed(() => props.size != null ? props.size : 20);
+	const color = computed(() => props.color != null ? props.color : '#ffffff');
+	const opacity = computed(() => props.opacity != null ? props.opacity : 1);
+
+	const onClick = () => {
+		emit('click');
+	};
+</script>
+
+<style scoped>
+	.font_family {
+		font-family: "font_family" !important;
+	}
+</style>

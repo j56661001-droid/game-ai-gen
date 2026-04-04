@@ -1,0 +1,221 @@
+<template>
+  <view class="new-content-container">
+    <image class="webname-image" src="/static/icons/welcome_logo@2x.png"></image>
+    <!-- <text class="title">{{ $i18n_t('welcome.new_content.title') }}</text> -->
+    <image src="/static/new.png" class="new-icon"></image>
+    
+    <view class="toolname-container">
+      <view class="toolnameblur"></view>
+      <text class="toolname">{{ currentToolName }}</text>
+    </view>
+
+    <view class="banner-container">
+      <image :src="currentToolInfo.image" class="banner-image" mode="aspectFit"></image>
+      <button class="create-button" @click="handleNext">{{ $i18n_t('welcome.new_content.create_button') }}</button>
+    </view>
+
+    <view class="footer-link" @click="goToHome">
+      <text class="footer-text">{{ $i18n_t('welcome.new_content.go_home') }}</text>
+      <IconFont name="arrowright" :size="8" color="#ffffff"></IconFont>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+import { computed, onMounted, ref } from 'vue';
+
+type ToolInfo = {
+  key: string;
+  image: string;
+};
+
+const toolInfos: ToolInfo[] = [
+  { key: 'disney_cowgirl', image: '/static/new-tools/3d_disney_cowgirl.png' },
+  { key: 'eva_rei_real', image: '/static/new-tools/eva_rei_real.png' },
+  { key: 'm_binding_disney', image: '/static/new-tools/m_binding_disney.png' },
+  { key: 'm_binding_chinese_3d', image: '/static/new-tools/m_binding_chinese_3d.png' },
+  { key: 'robin_chinese_3d', image: '/static/new-tools/robin_chinese_3d.png' },
+  { key: 'onepiece_nami_real', image: '/static/new-tools/onepiece_nami_real.png' }
+];
+
+const currentToolInfo = ref<ToolInfo>({
+  key: '',
+  image: ''
+});
+
+const currentToolName = computed((): string => {
+	if (!currentToolInfo.value.key) {
+		return ''
+	}
+	return $i18n_t(`welcome.new_content.tools.${currentToolInfo.value.key}`)
+})
+
+onMounted(() => {
+  const randomIndex = Math.floor(Math.random() * toolInfos.length);
+  currentToolInfo.value = toolInfos[randomIndex];
+});
+
+const handleNext = async () => {
+  try {
+    await uni.redirectTo({ url: "/pages/index/index?tabbar=publish&catecategory=image_to_anime" });
+  } catch (err: any) {
+    if (err != null) {
+      console.error("navigateTo failed", err);
+    } else {
+      console.error("navigateTo failed: unknown error");
+    }
+  }
+};
+
+const goToHome = async () => {
+  try {
+    await uni.redirectTo({ url: "/pages/index/index?tabbar=home" });
+  } catch (err: any) {
+    if (err != null) {
+      console.error("navigateTo failed", err);
+    } else {
+      console.error("navigateTo failed: unknown error");
+    }
+  }
+};
+</script>
+
+<style scoped>
+.new-content-container {
+  display: flex;
+	flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+	background: #000;
+	color: #fff;
+  padding: 36px;
+  box-sizing: border-box;
+  background-image: url('/static/newtool_bg.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.gradient-next-button {
+  background: linear-gradient(90deg, #F820B3 0%, #FDCB0A 100%);
+  color: white;
+  border-radius: 50px;
+  width: 90%;
+  height: 50px;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: auto; /* 将按钮固定在底部 */
+  padding: 0;
+	margin-top: 50px;
+  line-height: 1;
+}
+
+.action-button {
+  margin-top: 16px;
+  border-width: 0;
+}
+
+.webname-image {
+  width: 265px;
+  height: 41px;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 22px;
+  color: #FF23B8;
+  text-align: center;
+  font-weight: bold;
+}
+
+.new-icon {
+  width: 36px;
+  height: 26px;
+  margin: 8px 0px 4px 0;
+}
+
+.toolname-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+  overflow: visible;
+}
+
+.toolnameblur {
+  position: absolute;
+  background: #ff23b8;
+  width: 180px;
+  height: 24px;
+  border-radius: 24px;
+  top: 12px;
+  filter: blur(19px);
+  opacity: 0.8;
+}
+
+.toolname {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+  text-shadow: 0px 5px 8px rgba(255, 0, 255, 0.75);
+  z-index: 1;
+}
+
+.banner-container {
+  position: relative;
+  width: 100%;
+  margin-top: -15px;
+  display: flex;
+  justify-content: center;
+  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+}
+
+.banner-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
+
+.create-button {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, #f820b3 0%, #fdcb0a 100%);
+  color: white;
+  border-radius: 50px;
+  width: 120px;
+  height: 36px;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-width: 0;
+  line-height: 1;
+}
+
+.footer-link {
+  margin-top: 50px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  border-bottom: 1px solid #ffffff;
+  padding-bottom: 2px;
+}
+
+.footer-text {
+  color: #ffffff;
+  font-size: 14px;
+  margin-right: 4px;
+}
+</style>

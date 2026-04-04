@@ -1,0 +1,66 @@
+<template>
+  <slot v-if="hideBadge"></slot>
+  <view v-else class="fr-badge">
+    <slot></slot>
+    <view v-if="props.dot" class="fr-badge-dot-tr fr-badge-dot"> </view>
+    <view v-else class="fr-badge-count-tr fr-badge-count" :class="props.countClass">
+      <text class="fr-badge-value">{{ props.count != null ? props.count : 0 }}</text>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * TODO: 带组件功能实现，及应用
+ */
+type Props = {
+  count: number;
+  dot?: boolean;
+  countClass?: any;
+};
+
+const props = defineProps<Props>();
+
+const hideBadge = computed<boolean>(() => props.count == null || props.count == 0);
+</script>
+
+<style scoped>
+.fr-badge {
+  display: inline-flex;
+  position: relative;
+  z-index: 10;
+}
+
+.fr-badge-dot {
+  position: absolute;
+  height: 4px;
+  width: 4px;
+  background: linear-gradient(135deg, #ff00d8 0%, #fff500 100%);
+  border-radius: 2px;
+  z-index: 10;
+}
+
+.fr-badge-count {
+  position: absolute;
+  height: 14px;
+  padding: 0 4px;
+  background-color: #ff23b8;
+  border-radius: 7px;
+  z-index: 10;
+}
+
+.fr-badge-value {
+  font-size: 10px;
+  color: #fff;
+}
+
+.fr-badge-dot-tr {
+  top: 0px;
+  right: -4px;
+}
+
+.fr-badge-count-tr {
+  top: -6px;
+  right: -6px;
+}
+</style>

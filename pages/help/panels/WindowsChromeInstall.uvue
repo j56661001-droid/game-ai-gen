@@ -1,0 +1,202 @@
+<template>
+  <!-- Guide for Windows Chrome -->
+  <div class="tutorial-card">
+    <h2 class="tutorial-title">{{ $i18n_t('pwa_install.windows_chrome.title') }}</h2>
+
+    <!-- Step 1 -->
+    <div class="step-section">
+      <p class="tutorial-step">{{ $i18n_t('pwa_install.windows_chrome.step1') }}</p>
+      <div class="step-image-container">
+        <!-- 注意：请确保图片比例正确 -->
+        <img src="/static/pwahelp/windows-chrome-1.png" class="guide-image" alt="Chrome Address Bar" />
+        <!-- 这里的 left/top 需要根据你的实际截图位置微调 -->
+        <div class="address-bar-text">{{ currentDomain }}</div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-section">
+      <p class="tutorial-step">{{ $i18n_t('pwa_install.windows_chrome.step2') }}</p>
+      
+      <!-- 模拟 Chrome 安装弹窗 UI -->
+      <div class="chrome-mock-dialog">
+        <div class="dialog-header">
+          <span class="dialog-title">{{ $i18n_t("pwa_install.windows_chrome.dialog_title") }}</span>
+        </div>
+        
+        <div class="dialog-body">
+          <img src="/static/icons/welcome@2x.png" class="app-icon" alt="App Icon" />
+          <div class="app-info">
+            <span class="app-name">{{ currentDomain }}</span>
+            <span class="app-url">{{ currentDomain }}</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button class="btn btn-install">{{ $i18n_t("pwa_install.install") }}</button>
+          <button class="btn btn-cancel">{{ $i18n_t("pwa_install.cancel") }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { defineProps } from 'vue';
+import { $i18n_t } from "@/locale"; // 假设这是你的 i18n 路径
+
+defineProps<{
+  currentDomain: string;
+}>();
+</script>
+
+<style scoped>
+/* 卡片容器 */
+.tutorial-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.tutorial-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #202124;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.step-section {
+  margin-bottom: 24px;
+}
+
+.tutorial-step {
+  font-size: 15px;
+  color: #3c4043;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+/* Step 1: 地址栏模拟 */
+.step-image-container {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #dadce0;
+}
+
+.guide-image {
+  width: 100%;
+  display: block;
+  height: auto;
+}
+
+.address-bar-text {
+  position: absolute;
+  top: 50%; /* 根据图片实际内容调整 */
+  left: 14%; /* 根据图片实际内容调整 */
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #fff; /* 如果截图地址栏是深色模式，改为 #fff */
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Step 2: 模拟 Chrome 弹窗 */
+.chrome-mock-dialog {
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px; /* 限制弹窗最大宽度，看起来更像真实弹窗 */
+  margin: 0 auto; /* 居中显示 */
+}
+
+.dialog-header {
+  margin-bottom: 16px;
+}
+
+.dialog-title {
+  font-size: 16px;
+  color: #202124;
+  font-weight: 500;
+}
+
+.dialog-body {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.app-icon {
+  width: 40px;
+  height: 40px;
+  margin-right: 16px;
+  border-radius: 50%; /* 如果图标是圆形的 */
+}
+
+.app-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 防止超长域名溢出 */
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-url {
+  font-size: 12px;
+  color: #5f6368;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.btn {
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+/* 安装按钮 - 仿 Chrome 蓝色 */
+.btn-install {
+  background-color: #1a73e8;
+  color: #ffffff;
+}
+.btn-install:hover {
+  background-color: #1557b0;
+}
+
+/* 取消按钮 - 仿 Chrome 灰色/边框 */
+.btn-cancel {
+  background-color: transparent;
+  color: #1a73e8;
+  border: 1px solid #dadce0;
+}
+.btn-cancel:hover {
+  background-color: #f1f3f4;
+}
+</style>

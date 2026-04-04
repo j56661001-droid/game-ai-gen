@@ -1,0 +1,176 @@
+<template>
+  <fr-page style="padding-top: 20px; width: 100%; max-width: 1400px; margin: 0 auto" :title="$i18n_t('publish.processingRecords')">
+    <fr-section-tabs style="margin-top: 16px" :tabs="navTabs" :active-tab-key="state.activeTabKey" @change:tab="onTabChange">
+      <template #tab-extra="{ tab }">
+        <view v-if="tab.key == 'completed' && hasCompletedRecords" class="changed-mark"></view>
+      </template>
+      <template #default="{ tab, selected }">
+        <history-list :reload="selected" :status="tab.key" :columns="showTabsCondition ? 1 : 2"></history-list>
+      </template>
+    </fr-section-tabs>
+  </fr-page>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+import { FrPage, FrSectionTabs } from "@/components/widgets/index.uts";
+import HistoryList from "./panel/history-list.uvue";
+import { LoadListRequestOptions, useLoadListRequest } from "@/hooks";
+import { user } from "@/store/user";
+
+const navTabs = [
+  {
+    key: "processing",
+    title: $i18n_t("common.processing"),
+  },
+  {
+    key: "completed",
+    title: $i18n_t("common.records"),
+  },
+];
+
+const completedIntervalFlag = ref<number | null>(null);
+const toastTimeoutFlag = ref<number | null>(null);
+const hasCompletedRecords = ref<boolean>(false);
+
+const state = reactive<{ activeTabKey: string }>({ activeTabKey: "processing" });
+
+const { loadListRequest, result } = useLoadListRequest({
+  url: `ai-generations/history`,
+  pageSize: 1,
+  defaultParams: {
+    status: ["completed"],
+  },
+} as LoadListRequestOptions);
+
+const { loadListRequest: loadProcessingList, result: processingResult } = useLoadListRequest({
+  url: `ai-generations/history`,
+  pageSize: 1,
+  defaultParams: {
+    status: ["pending", "processing"],
+  },
+} as LoadListRequestOptions);
+
+watch(
+  () => processingResult.pagination?.total,
+  (total, prevTotal) => {
+    if (prevTotal != null && total != prevTotal) {
+      if (state.activeTabKey == "processing") {
+        uni.$emit("refresh:records");
+      }
+    }
+  },
+);
+
+watch(
+  () => result.pagination?.total,
+  (total, prevTotal) => {
+    if (prevTotal != null && total > prevTotal) {
+      hasCompletedRecords.value = true;
+
+      uni.$emit("refresh:balance");
+      uni.$emit("refresh:records");
+
+      if (toastTimeoutFlag.value != null) {
+        clearTimeout(toastTimeoutFlag.value);
+      }
+
+      toastTimeoutFlag.value = setTimeout(() => {
+        uni.showToast({
+          title: $i18n_t("common.finished"),
+        });
+      }, 200);
+    }
+  },
+);
+
+watch(
+  () => state.activeTabKey,
+  (key: string) => {
+    if (key == "completed") {
+      hasCompletedRecords.value = false;
+    }
+  },
+);
+
+onLoad(({ tabKey }) => {
+  state.activeTabKey = tabKey != null ? tabKey : "processing";
+});
+
+const reloadProcessingList = () => {
+  loadProcessingList({ page: 1 });
+};
+
+onMounted(() => {
+  loadProcessingList({ page: 1 });
+  loadListRequest({ page: 1 });
+
+  uni.$on("reload:processing", reloadProcessingList);
+
+  completedIntervalFlag.value = setInterval(() => {
+    if (user.value == null) {
+      return;
+    }
+
+    if (state.activeTabKey == "processing") {
+      loadProcessingList({ page: 1 });
+    }
+
+    loadListRequest({ page: 1 });
+  }, 1000 * 5); // 5s
+});
+
+onUnmounted(() => {
+  uni.$off("reload:processing", reloadProcessingList);
+
+  if (completedIntervalFlag.value != null) {
+    clearInterval(completedIntervalFlag.value);
+    completedIntervalFlag.value = null;
+  }
+
+  if (toastTimeoutFlag.value != null) {
+    clearTimeout(toastTimeoutFlag.value);
+    toastTimeoutFlag.value = null;
+  }
+});
+
+const onTabChange = (key: string) => {
+  state.activeTabKey = key;
+};
+
+// 添加屏幕宽度判断
+const screenWidth = ref(0);
+const showTabsCondition = computed(() => screenWidth.value < 900);
+// 获取屏幕宽度的方法
+const getScreenWidth = () => {
+  screenWidth.value = window.innerWidth;
+};
+
+onLoad((options: any) => {
+  // 初始化时获取屏幕宽度
+  getScreenWidth();
+  // H5端监听窗口变化
+  if (uni.onWindowResize) {
+    uni.onWindowResize((res) => {
+      screenWidth.value = res.size.windowWidth;
+    });
+  }
+});
+</script>
+
+<style scoped>
+.container {
+  flex: 1;
+  background-color: #000;
+}
+
+.changed-mark {
+  position: relative;
+  top: -4px;
+  left: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff00d8 0%, #fff500 100%);
+}
+</style>

@@ -1,0 +1,259 @@
+<template>
+  <view>
+    <view class="divider-line">
+      <view class="divider-line-item"></view>
+      <text class="divider-line-text">or</text>
+      <view class="divider-line-item"></view>
+    </view>
+    <view class="third-party-login-buttons">
+      <button class="third-party-login-button" @click="handleGoogleLogin">
+        <image src="/static/icons/Google@2x.png" mode="aspectFit" class="third-party-login-button-icon"></image>
+        <text class="third-party-login-button-text">Google</text>
+        <!-- 右上角角标图片 -->
+        <image src="/static/icons/bonus@2x.png" mode="aspectFit" class="third-party-login-button-icon-badge"></image>
+      </button>
+      <!-- <button class="third-party-login-button" @click="handleFacebookLogin">
+        <image src="/static/icons/Facebook@2x.png" mode="aspectFit" class="third-party-login-button-icon"></image>
+        <text class="third-party-login-button-text">Facebook</text>
+        <image src="/static/icons/bonus@2x.png" mode="aspectFit" class="third-party-login-button-icon-badge"></image>
+      </button> -->
+      <button class="third-party-login-button" @click="handleXLogin">
+        <image src="/static/icons/Twitter X@2x.png" mode="aspectFit" class="third-party-login-button-icon"></image>
+        <text class="third-party-login-button-text">Twitter X</text>
+      </button>
+      <!-- <button class="third-party-login-button" @click="handleAppleLogin">
+        <image src="/static/icons/Apple@2x.png" mode="aspectFit" class="third-party-login-button-icon"></image>
+        <text class="third-party-login-button-text">Apple</text>
+      </button> -->
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { postThirdPartyLogin } from "@/api/user.uts";
+import { storage } from "@/store/index.uts";
+import { fingerprintFromUrl } from "@/store/user.uts";
+import { generateDeviceFingerprint } from "@/utils/fingerprint.uts";
+import { getFingerprintParams } from "@/api/fingerprint.uts";
+
+type ThirdPartyProvider = "google" | "meta" | "x" | "apple";
+
+const isCapacitorEnv = computed<boolean>(() => {
+  // #ifdef WEB
+  return typeof window !== "undefined" && window.Capacitor != null;
+  // #endif
+  return false;
+});
+
+// 从剪切板读取数据（参考 register 页）
+const readFromClipboard = async (): Promise<string | null> => {
+  // #ifdef WEB
+  if (typeof window !== "undefined" && window.Capacitor) {
+    try {
+      const { Clipboard } = window.Capacitor.Plugins;
+      if (Clipboard) {
+        const result = await Clipboard.read();
+        if (result && result.value) {
+          const clipboardFingerprint = result.value.trim();
+          if (clipboardFingerprint.length > 10) {
+            return clipboardFingerprint;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to read from clipboard:", error);
+    }
+  }
+  // #endif
+  return null;
+};
+
+const thirdPartyExtraData = reactive<any>({
+  promotional_code: "",
+  utm_campaign: "",
+  utm_id: "",
+  utm_medium: "",
+  utm_source: "",
+  deviceFingerprint: "",
+  click_id: "",
+});
+
+onMounted(async () => {
+  // 1) 优先使用 URL 指纹（fg），否则生成设备指纹
+  let fingerprint = "";
+  if (fingerprintFromUrl.value != null && fingerprintFromUrl.value.length > 0) {
+    fingerprint = fingerprintFromUrl.value;
+  } else {
+    fingerprint = (await generateDeviceFingerprint()) || "";
+  }
+  thirdPartyExtraData.deviceFingerprint = fingerprint;
+
+  // 2) Capacitor 环境：尝试通过指纹服务获取 promotional_code（以及可能的 UTM 字段）
+  if (isCapacitorEnv.value) {
+    const clipboardFingerprint = await readFromClipboard();
+    if (fingerprint.length > 0 || clipboardFingerprint != null) {
+      try {
+        const result = await getFingerprintParams({
+          fingerprint: fingerprint,
+          randomcode: clipboardFingerprint,
+        });
+        if (result != null && result.success && result.data != null && result.data.value != null) {
+          const fingerprintData = result.data.value;
+          if (fingerprintData.promotional_code != null) {
+            thirdPartyExtraData.promotional_code = fingerprintData.promotional_code;
+            storage.set("promotional_code", fingerprintData.promotional_code);
+          }
+          if (fingerprintData.utm_campaign != null) {
+            thirdPartyExtraData.utm_campaign = fingerprintData.utm_campaign;
+            storage.set("utm_campaign", fingerprintData.utm_campaign);
+          }
+          if (fingerprintData.utm_id != null) thirdPartyExtraData.utm_id = fingerprintData.utm_id;
+          if (fingerprintData.utm_medium != null) thirdPartyExtraData.utm_medium = fingerprintData.utm_medium;
+          if (fingerprintData.utm_source != null) thirdPartyExtraData.utm_source = fingerprintData.utm_source;
+        }
+      } catch (error: any) {
+        console.error("Error getting fingerprint parameters in third-party login:", error);
+      }
+    }
+  }
+
+  // 3) 备用：从存储中读取 promotional_code / utm_campaign
+  if (thirdPartyExtraData.promotional_code == null || thirdPartyExtraData.promotional_code.length == 0) {
+    const storedPromotionalCode = storage.get<string>("promotional_code");
+    if (storedPromotionalCode != null && storedPromotionalCode.length > 0) {
+      thirdPartyExtraData.promotional_code = storedPromotionalCode;
+    }
+  }
+  if (thirdPartyExtraData.utm_campaign == null || thirdPartyExtraData.utm_campaign.length == 0) {
+    const storedUtmCampaign = storage.get<string>("utm_campaign");
+    if (storedUtmCampaign != null && storedUtmCampaign.length > 0) {
+      thirdPartyExtraData.utm_campaign = storedUtmCampaign;
+    }
+  }
+
+  // 4) 从 affiliate_params 里补齐 utm_*（参考 register 页）
+  const affiliateParams = storage.get<any>("affiliate_params");
+  if (affiliateParams != null) {
+    if (affiliateParams.utm_id != null && String(affiliateParams.utm_id).length > 0) {
+      thirdPartyExtraData.utm_id = affiliateParams.utm_id;
+    }
+    if (affiliateParams.utm_source != null && String(affiliateParams.utm_source).length > 0) {
+      thirdPartyExtraData.utm_source = affiliateParams.utm_source;
+    }
+    if (affiliateParams.utm_medium != null && String(affiliateParams.utm_medium).length > 0) {
+      thirdPartyExtraData.utm_medium = affiliateParams.utm_medium;
+    }
+    if (affiliateParams.utm_campaign != null && String(affiliateParams.utm_campaign).length > 0) {
+      thirdPartyExtraData.utm_campaign = affiliateParams.utm_campaign;
+    }
+  }
+
+  // 5) 从存储中读取 click_id
+  const storedClickId = storage.get<string>("click_id");
+  if (storedClickId != null && storedClickId.length > 0) {
+    thirdPartyExtraData.click_id = storedClickId;
+  }
+});
+
+const props = defineProps<{
+  getPromotionalCode: () => string | undefined;
+}>();
+
+const handleThirdPartyLogin = async (provider: ThirdPartyProvider) => {
+  const userEnteredPromotionalCode = props.getPromotionalCode != null ? props.getPromotionalCode() : null;
+
+  // Prioritize user-entered code. If not present, retain the one already in thirdPartyExtraData (from onMounted/fingerprint/storage)
+  if (userEnteredPromotionalCode != null && userEnteredPromotionalCode.length > 0) {
+    thirdPartyExtraData.promotional_code = userEnteredPromotionalCode;
+  }
+
+  const res = await postThirdPartyLogin(provider, { ...thirdPartyExtraData });
+  console.log(res);
+  if (res?.data?.url) {
+    window.location.href = res.data.url;
+  }
+};
+
+const handleGoogleLogin = () => {
+  handleThirdPartyLogin("google");
+}
+
+// 注意：当前模板里的 Facebook / Apple 按钮是注释掉的，但这里保留 handler，方便后续打开按钮直接可用
+const handleFacebookLogin = () => {
+  handleThirdPartyLogin("meta");
+}
+
+const handleXLogin = () => {
+  handleThirdPartyLogin("x");
+}
+
+const handleAppleLogin = () => {
+  handleThirdPartyLogin("apple");
+}
+</script>
+
+<style scoped>
+.divider-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  margin-top: 24px;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
+.divider-line-item {
+  flex: 1;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.divider-line-text {
+  padding: 0 16px;
+  font-size: 14px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.third-party-login-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  margin-top: 24px;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
+.third-party-login-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: none;
+}
+
+.third-party-login-button-icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 4px;
+}
+
+.third-party-login-button-icon-badge {
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.third-party-login-button-text {
+  font-size: 12px;
+  color: #fff;
+  text-align: center;
+}
+</style>

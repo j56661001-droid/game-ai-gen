@@ -1,0 +1,148 @@
+import { user, creditsBalance } from "@/store/user.uts";
+import { getLocale } from "@/locale/index.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { storage } from "@/store/index.uts";
+type WhiteName = {
+  path: string;
+  match?: "strict";
+};
+
+const NOT_NEED_LOGIN_WHITE_NAME_PATHS: (WhiteName | string)[] = [
+  {
+    path: "/pages/index/index",
+    match: "strict",
+  },
+  "/pages/index/index?tabbar=home",
+  "/pages/index/index?tabbar=video",
+  "/pages/index/index?tabbar=compass",
+  "/pages/index/index?tabbar=publish",
+  "/pages/account/register",
+  "/pages/account/login",
+  "/pages/account/forgot-password",
+  "/pages/account/merge-email",
+  "/pages/account/auth",
+  "/pages/profile/PrivacyPolicy",
+  "/pages/profile/TermsOfService",
+  "/pages/profile/personal?userId=",
+  "/pages/search",
+  "/pages/stars",
+  "/pages/topics",
+  "/pages/zones",
+  "/pages/welcome",
+  "/pages/video",
+  "/pages/daily-checkin",
+  "/pages/daily-task/"
+];
+
+const matchWhiteNamePath = (routePath: string) => {
+  if (!routePath) {
+    return true;
+  }
+
+  return NOT_NEED_LOGIN_WHITE_NAME_PATHS.some((item) => {
+    if (typeof item == "string") {
+      return routePath.includes(item);
+    } else if (typeof item.path == "string") {
+      if (item.match == "strict") {
+        return item.path == routePath;
+      }
+
+      return routePath.includes(item.path);
+    }
+
+    return false;
+  });
+};
+
+const NavigateToInterceptor = {
+  invoke(options: NavigateToOptions) {
+    console.log("拦截 navigateTo 接口传入参数为：", options);
+
+    if (matchWhiteNamePath(options.url as string)) {
+      return true;
+    }
+
+    if (!user.value) {
+      // 当目标页面需要登录才能访问时，附带 successRedirectOnly=true 参数,
+      // 避免用户在登录/注册页面点击关闭后,再次被重定向到目标页,从而产生死循环
+      uni.$emit("login:show", { to: options.url, action: "navigateTo", successRedirectOnly: true });
+      return false;
+    } else {
+      return true;
+    }
+  },
+  success(res: NavigateToSuccess) {
+    // TODO: 根据业务需求后续完善
+  },
+  fail(err: NavigateToFail) {
+    // TODO: 根据业务需求后续完善
+  },
+  complete(res: NavigateToComplete) {
+    // TODO: 根据业务需求后续完善
+  },
+} as AddInterceptorOptions;
+
+const RedirectToInterceptor = {
+  invoke(options: NavigateToOptions) {
+    console.log("拦截 redirectTo 接口传入参数为：", options);
+
+    if (matchWhiteNamePath(options.url as string)) {
+      return true;
+    }
+
+    if (!user.value) {
+      // 当目标页面需要登录才能访问时，附带 successRedirectOnly=true 参数,
+      // 避免用户在登录/注册页面点击关闭后,再次被重定向到目标页,从而产生死循环
+      uni.$emit("login:show", { to: options.url, action: "redirectTo", successRedirectOnly: true });
+      return false;
+    } else {
+      return true;
+    }
+  },
+  success(res: NavigateToSuccess) {
+    // TODO: 根据业务需求后续完善
+  },
+  fail(err: NavigateToFail) {
+    // TODO: 根据业务需求后续完善
+  },
+  complete(res: NavigateToComplete) {
+    // TODO: 根据业务需求后续完善
+  },
+} as AddInterceptorOptions;
+
+export class NavigatorInterceptor {
+  static on() {
+    uni.addInterceptor("navigateTo", NavigateToInterceptor);
+    uni.addInterceptor("redirectTo", RedirectToInterceptor);
+  }
+
+  static off() {
+    uni.removeInterceptor("navigateTo", NavigateToInterceptor);
+    uni.removeInterceptor("redirectTo", RedirectToInterceptor);
+  }
+}
+
+export function openExternalTopupPage(from: string | null = null) {
+  const from_url: string | null = window.location.href;
+  if (user.value == null) {
+    return;
+  }
+  
+  // Record current balance and timestamp before navigating to top-up page
+  storage.set('preTopUpBalance', creditsBalance.value);
+  storage.set('preTopUpTimestamp', Date.now());
+
+  const lang = getLocale();
+  const hostnameParts = window.location.hostname.split(".");
+  let cid = "";
+  if (hostnameParts.length >= 3) {
+    cid = hostnameParts[hostnameParts.length - 3];
+  }
+
+  from = from || 'unkown';
+  let url = `${window.location.origin}/static/topup.html?uid=${user.value.id}&lang=${lang}&cid=${cid}${'&from=' + from}`;
+  if (from_url) {
+	url += `&from_url=${encodeURIComponent(from_url)}`;
+  }
+  window.location.href = url;
+}

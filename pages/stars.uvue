@@ -1,0 +1,335 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <view class="container">
+        <!-- 顶部导航和搜索栏 -->
+        <view class="header">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" @click="() => goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ $i18n_t("stars.title") }}</text>
+          <view @click="goToSearch">
+            <IconFont name="search" :size="16" style="margin-right: 16px" color="rgba(255,255,255,1)" />
+          </view>
+        </view>
+
+        <!-- 新增的水平滚动分类栏 -->
+        <FrTabs :tabs="categoryTabs" :activeTabKey="currentCategoryTab" @switch="changeCategory" />
+
+        <!-- 用户列表 -->
+        <swiper class="swiper" :current="currentCategory" @change="onSwiperChange">
+          <swiper-item v-for="(category, index) in categories" :key="index">
+            <scroll-view scroll-y class="user-list-scroll">
+              <view v-for="(user, userIndex) in category.users" :key="userIndex" class="list-item">
+                <!-- 头像及徽章 -->
+                <view class="avatar-container" @click="goToProfile(user.id)">
+                  <FrAvatar :size="48" :url="user.avatar" />
+                  <!-- <image v-if="user.isVerified" class="badge" src="/static/icons/v_small@2x.png"></image> -->
+                </view>
+                <view class="user-info" @click="goToProfile(user.id)">
+                  <text class="user-name">{{ user.nickname }}</text>
+                  <text class="user-followers">{{ $i18n_t("common.followers") + ": " + user.followersCount }}</text>
+                </view>
+                <view :class="['follow-button', user.isFollowing ? 'following' : '']" @click="toggleFollow(user)">
+                  <text class="button-text">{{ user.isFollowing ? $i18n_t("stars.following") : $i18n_t("common.follow") }}</text>
+                </view>
+              </view>
+            </scroll-view>
+          </swiper-item>
+        </swiper>
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { FrAvatar, FrTabs } from "@/components/widgets";
+import { ref, onMounted, computed } from "vue";
+import IconFont from "../components/IconFont/IconFont.uvue";
+import { appStore, setStarsData } from "@/store/index.uts"; // 导入 appStore 和 setStarsData
+import { getStars } from "@/api/home.uts"; // 导入 getStars API
+import type { CategoryListWithChildren, UserItem } from "@/types/index.uts"; // 导入 CategoryListWithChildren
+import { goBack } from "../utils/page.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import i18n from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+const searchText = ref("");
+const currentCategory = ref<number>(0);
+const currentCategoryTab = computed<string>(() => {
+  return "tab-" + currentCategory.value.toString();
+});
+const categories = ref<CategoryListWithChildren[]>([]);
+
+const categoryTabs = computed(() => {
+  return categories.value.map((category, index) => {
+    return {
+      key: "tab-" + index,
+      title: category.hashtag.displayName[i18n.global.locale.value],
+    };
+  });
+});
+
+const clearSearch = () => {
+  searchText.value = "";
+};
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+async function loadCategoriesData() {
+  if (appStore.value.starsData != null) {
+    // 从 store 中读取数据
+    categories.value = appStore.value.starsData;
+    // console.log("Stars data loaded from store.");
+  } else {
+    // 从 API 获取数据并存入 store
+    const res = await getStars();
+    if (res != null && res.success) {
+      setStarsData(res.data); // 存储到 store
+      categories.value = res.data;
+      // console.log("Stars data loaded from API and saved to store.");
+    } else {
+      console.error("Failed to load stars data:", res?.error?.message);
+      // Fallback to mock data if API fails
+      // 这里不再需要 loadMockCategoriesData，因为 CategoryListWithChildren 结构与 mock 数据不兼容
+      // 如果需要 mock 数据，需要重新定义 mock 数据的结构以匹配 CategoryListWithChildren
+    }
+  }
+}
+
+onMounted(() => {
+  loadCategoriesData();
+});
+
+function changeCategory(key: string) {
+  currentCategory.value = parseInt(key.split("-")[1]);
+}
+
+function onSwiperChange(e: UniSwiperChangeEvent) {
+  currentCategory.value = e.detail.current;
+}
+
+import { followUser, unfollowUser } from "@/api/social.uts"; // 导入关注/取消关注API
+
+// ... (其他代码不变)
+
+function toggleFollow(user: UserItem) {
+  if (user != null) {
+    if (user.isFollowing) {
+      // Unfollow
+      unfollowUser(user.id).then((res) => {
+        if (res != null && res.success) {
+          user.isFollowing = false;
+          user.followersCount -= 1;
+          // console.log(`User ${user.nickname} unfollowed`);
+        } else {
+          console.error(`Failed to unfollow user ${user.nickname}:`, res?.error?.message);
+        }
+      });
+    } else {
+      // Follow
+      followUser(user.id).then((res) => {
+        if (res != null && res.success) {
+          user.isFollowing = true;
+          user.followersCount += 1;
+          // console.log(`User ${user.nickname} followed`);
+        } else {
+          console.error(`Failed to follow user ${user.nickname}:`, res?.error?.message);
+        }
+      });
+    }
+  }
+}
+
+function goToProfile(userId: string) {
+  uni.navigateTo({
+    url: `/pages/profile/personal?userId=${userId}`,
+  });
+}
+</script>
+
+<style scoped>
+/* 页面整体容器 */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.search-icon {
+  font-size: 16px;
+  color: #8e8e93;
+  margin-right: 8px;
+}
+
+.clear-icon {
+  font-size: 12px;
+  color: #8e8e93;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+}
+
+/* 筛选器 */
+.filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 10px;
+}
+
+.filter-text {
+  font-size: 14px;
+  margin-right: 2px;
+  color: #ff23b8;
+}
+
+.filter-arrow {
+  font-size: 14px;
+  transform: scaleY(0.6); /* 使V形箭头更扁平 */
+  color: #ff23b8;
+}
+
+/* 新增的分类标签样式 */
+.categories-tabs {
+  display: flex;
+  flex-direction: row;
+  padding: 10px 15px;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.category-item-wrapper {
+  flex-direction: row;
+  align-items: center;
+  position: relative;
+  height: 26px;
+  justify-content: flex-end;
+  padding: 0 16px;
+  min-width: 64px;
+}
+
+.category-item-text {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.category-item-text.active {
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.active-category-indicator {
+  width: 36px;
+  height: 8px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* swiper 样式 */
+.swiper {
+  flex: 1;
+}
+
+/* 用户列表滚动区域 */
+.user-list-scroll {
+  height: 100%; /* 确保swiper-item内的scroll-view有高度 */
+  padding: 0 15px;
+}
+
+/* 列表项 */
+.list-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 16px;
+}
+
+/* 头像容器 */
+.avatar-container {
+  position: relative;
+  width: 48px;
+  height: 54px;
+  border-radius: 24px;
+  margin-right: 8px;
+}
+
+/* 'V' 认证徽章 */
+.badge {
+  position: absolute;
+  bottom: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+}
+
+/* 用户信息区域 */
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.user-name {
+  font-size: 16px;
+  font-weight: 400;
+  color: #ffffff;
+}
+
+.user-followers {
+  font-size: 13px;
+  color: #8e8e93;
+  margin-top: 3px;
+}
+
+/* 关注按钮样式 */
+.follow-button {
+  background-color: #ff23b8;
+  border-radius: 15px;
+  padding: 5px 15px;
+  margin-left: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.follow-button.following {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+</style>

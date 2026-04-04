@@ -1,0 +1,31 @@
+export function debounce(func: any, delay: number): (...args: any[]) => void {
+  let timeout: number | null = null;
+
+  return function (this: unknown, ...args: any[]) {
+    const context = this;
+    const later = () => {
+      timeout = null;
+      func.apply(context, args);
+    };
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(later, delay);
+  };
+}
+
+const lockMap: Map<string, number> = new Map();
+export function checkLock(tag: string, timeout: number = 2000) {
+  let lasttime = lockMap.get(tag);
+  if (!lasttime) {
+    return true;
+  }
+  return Date.now() - lasttime > timeout;
+}
+
+export function setLock(tag: string, time: number = 0) {
+  if (!time) {
+    time = Date.now();
+  }
+  lockMap.set(tag, time);
+}

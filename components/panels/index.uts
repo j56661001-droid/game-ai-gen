@@ -1,0 +1,2 @@
+/** 通知 icon */
+export { default as BpNotificationIcon } from "./bp-notification-icon.uvue";

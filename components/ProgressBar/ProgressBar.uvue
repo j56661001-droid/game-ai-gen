@@ -1,0 +1,149 @@
+<template>
+	<view id="progressBarContainer" class="progress-bar-container" 
+	@touchstart="handleTouchStart" 
+	@touchmove="handleTouchMove" 
+	@touchend="handleTouchEnd" 
+	<!-- #ifdef WEB --> 
+	@mousedown="handleMouseDown" 
+	<!-- #endif -->>
+		<view class="progress-bar-bg"></view>
+		<view class="progress-bar" :style="{ width: displayPercentage + '%' }"></view>
+		<view class="progress-thumb" :style="{ left: displayPercentage + '%' }"></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, ref } from 'vue';
+
+	interface ProgressBarProps {
+		value: number; 
+		min: number; 
+		max: number; 
+		step: number; 
+	}
+
+	const props = defineProps<ProgressBarProps>();
+
+	const emit = defineEmits<{
+		(e: 'valueChange', value: number): void; 
+		(e: 'dragstart'): void;
+		(e: 'dragend'): void;
+	}>();
+
+	const isDragging = ref(false);
+	let containerWidth: number = 0; 
+	let progressBarOffsetLeft: number = 0;
+
+	const displayPercentage = computed(() => {
+		return ((props.value - props.min) / (props.max - props.min)) * 100;
+	});
+
+	const updateProgress = (clientX: number) => {
+		if (containerWidth == 0) {
+			return;
+		}
+		const touchX = clientX - progressBarOffsetLeft;
+		let percentage = touchX / containerWidth;
+		percentage = Math.max(0, Math.min(1, percentage));
+		let newValue = props.min + (percentage * (props.max - props.min));
+		newValue = Math.round(newValue / props.step) * props.step;
+		newValue = Math.max(props.min, Math.min(props.max, newValue));
+		emit('valueChange', newValue);
+	};
+
+	const commonDragStart = (clientX: number) => {
+		isDragging.value = true;
+		emit('dragstart');
+		const progressBarElement = uni.getElementById('progressBarContainer');
+		if (progressBarElement != null) {
+			const rect = progressBarElement.getBoundingClientRect();
+			containerWidth = rect.width;
+			progressBarOffsetLeft = rect.left;
+		}
+		updateProgress(clientX); 
+	};
+
+	const commonDragMove = (clientX: number) => {
+		if (isDragging.value) {
+			updateProgress(clientX);
+		}
+	};
+
+	const commonDragEnd = () => {
+		isDragging.value = false;
+		emit('dragend');
+	};
+
+	const handleTouchStart = (event: UniTouchEvent) => {
+		commonDragStart(event.touches[0].clientX);
+		event.preventDefault(); 
+	};
+
+	const handleTouchMove = (event: UniTouchEvent) => {
+		commonDragMove(event.touches[0].clientX);
+		event.preventDefault(); 
+	};
+
+	const handleTouchEnd = (event: UniTouchEvent) => {
+		commonDragEnd();
+		event.preventDefault(); 
+	};
+
+	<!-- #ifdef WEB -->
+	const handleMouseDown = (event: MouseEvent) => {
+		commonDragStart(event.clientX);
+		document.addEventListener("mousemove", handleMouseMove);
+		document.addEventListener("mouseup", handleMouseUp);
+	};
+
+	const handleMouseMove = (event: MouseEvent) => {
+		commonDragMove(event.clientX);
+	};
+
+	const handleMouseUp = () => {
+		commonDragEnd();
+		document.removeEventListener("mousemove", handleMouseMove);
+		document.removeEventListener("mouseup", handleMouseUp);
+	};
+<!-- #endif -->
+</script>
+
+<style scoped>
+	.progress-bar-container {
+		position: absolute;
+		height: 9px;
+		position: relative;;
+		border-radius: 1px;
+		background-color: transparent;
+	}
+
+	.progress-bar-bg {
+		position: absolute;
+		top: 3px;
+		height: 2px;
+		left: 0;
+		right: 0;
+		background-color: rgba(255, 255, 255, 0.3);
+		border-radius: 1px;
+	}
+
+	.progress-bar {
+		width: 0%; /* 初始宽度由props.progress控制 */
+		position: absolute;
+		top: 3px;
+		height: 2px;
+		background-color: white;
+		border-radius: 1px;
+	}
+
+	.progress-thumb {
+		position: absolute;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: 7px;
+		height: 7px;
+		background-color: white;
+		border-radius: 3px;
+		z-index: 1; /* 确保在进度条之上 */
+	}
+</style>

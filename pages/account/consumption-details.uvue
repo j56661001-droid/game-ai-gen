@@ -1,0 +1,123 @@
+<template>
+  <fr-page style="padding-top: 20px; max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;" :title="title">
+    <fr-scroll-list
+      refresher-enabled
+      :loading="loading"
+      :data-source="result.records"
+      :pagination="result.pagination"
+      @refresh="onRefresh"
+      @loadmore="onLoadMore"
+    >
+      <template #record="{ record }">
+        <view class="card">
+          <view style="flex: 1; min-width: 0; margin-right: 8px">
+            <fr-typography-title
+              >{{ record.amount < 0 && record.toolName != null ? `${fmtBackendLang(record.toolName)} - ` : "" }}{{ record.type }}</fr-typography-title
+            >
+            <text style="color: rgba(255, 255, 255, 0.5); font-size: 12px; line-height: 17px; margin-top: 2px">
+              {{ fmtTimeDisplay(record.timestamp, "YYYY/MM/DD HH:mm:ss") }}</text
+            >
+          </view>
+          <text v-if="record.amount > 0" style="color: #ff23b8" class="card-amount">+{{ record.amount }}</text>
+          <text v-else class="card-amount" style="color: rgba(255, 255, 255, 0.5)">{{ record.amount }}</text>
+          <text style="color: #ddd; margin-left: 100px; font-size: 14px; font-weight: 400">{{ $i18n_t("account.balance")+ ": " }}</text>
+          <text style="color: #ff23b8; margin-left: 6px" class="card-amount">{{ record.balanceAfter }}</text>
+        </view>
+      </template>
+    </fr-scroll-list>
+    <view style="padding: 12px 24px">
+      <fr-button class="topup-btn" @click="clickTopupBtnHandle">
+        <template #content>
+          <fr-spin v-show="false" style="margin-right: 8px" />
+          <credits-balance-icon class="balance-info"></credits-balance-icon>
+          <text style="font-size: 16px; line-height: 22px; color: #fff">{{ $i18n_t("account.topUp") }}</text>
+        </template>
+      </fr-button>
+    </view>
+  </fr-page>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t, fmtBackendLang, getLocale } from "@/locale/index.uts";
+import { FrPage, FrScrollList, FrTypographyTitle, FrButton, FrSpin } from "@/components/widgets/index.uts";
+import { useLoadListRequest, LoadListRequestOptions } from "@/hooks";
+import { fmtTimeDisplay, openExternalTopupPage } from "@/utils/index.uts";
+import { user } from "@/store/user";
+import CreditsBalanceIcon from "../publish/panel/credits-balance-icon.uvue";
+
+const title = computed((): string => $i18n_t("pages.account&consumption-details"));
+
+const clickTopupBtnHandle = () => {
+  if (user.value == null ) { //|| user.value.accountType === 'guest'
+    uni.$emit("login:show", { page: "register" });
+  } else if (user.value != null) {
+    openExternalTopupPage("consumption_details");
+  }
+};
+
+const typeDisplay = (type: string) => {
+  switch (type) {
+    case "topup":
+      return $i18n_t("account.topUp");
+    case "spend":
+      return $i18n_t("account.spend");
+    case "bonus":
+      return $i18n_t("account.bonus");
+    case "refund":
+      return $i18n_t("account.refund");
+  }
+};
+
+const { loadListRequest, result, loading } = useLoadListRequest({
+  url: (p) => `users/${p.userId}/credits/history`,
+} as LoadListRequestOptions);
+
+watch(
+  () => user.value?.id,
+  (id: string) => {
+    if (id != null) {
+      loadListRequest({ page: 1, userId: id });
+    }
+  },
+  { immediate: true },
+);
+
+const onRefresh = () => {
+  loadListRequest({ page: 1, userId: user.value?.id });
+};
+
+const onLoadMore = ({ page }) => {
+  loadListRequest({ page, userId: user.value?.id });
+};
+</script>
+
+<style scoped>
+.card {
+  margin: 0 24px;
+  padding: 12px 0;
+  border-radius: 4px;
+
+  flex-direction: row;
+  align-items: center;
+}
+
+.card-amount {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.balance-info {
+  background-color: transparent !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin-right: 10px;
+}
+
+.topup-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+</style>

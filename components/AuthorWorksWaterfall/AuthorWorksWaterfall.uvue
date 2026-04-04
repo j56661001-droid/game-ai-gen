@@ -1,0 +1,230 @@
+<template>
+  <view class="popup-overlay">
+    <view class="close-button-container" @click="closePopup">
+      <text>{{ props.authorName }}</text>
+      <IconFont name="close" :size="12"></IconFont>
+    </view>
+    <view v-if="isLoading && !authorWorks.length" style="align-items: center; justify-content: center; padding: 24px 0;">
+      <FrSpin type="primary" />
+    </view>
+    <FrEmpty v-if="(authorWorks as PostItem[]).length == 0 && !isLoading" />
+    <fr-waterflow-list
+      class="waterfall"
+      :data-source="authorWorks"
+      @loadmore="onLoadMore"
+      @refresh="onRefresh"
+      :pagination="pagination"
+      :loading="isLoading"
+      :refresher-enabled="true"
+    >
+      <template v-slot:record="{ record }">
+        <view class="waterfall-item">
+          <bp-media-display
+            class="item-image"
+            :type="(record as PostItem).contentType"
+            :src="(record as PostItem).mediaMetadata[0].fileURL"
+            :cover="(record as PostItem).mediaMetadata[0].cover?.fileURL"
+            :encryptionKey="(record as PostItem).mediaMetadata[0]?.encryptionKey"
+            @click="handleItemClick(record as PostItem)"
+          ></bp-media-display>
+          <view class="item-icon-top" @click="navigateToAIGenerator((record as PostItem).generationID)">
+            <IconFont name="create" />
+          </view>
+          <text v-if="(record as PostItem).contentType != 'video'" class="item-title">{{ (record as PostItem).content }}</text>
+        </view>
+      </template>
+    </fr-waterflow-list>
+    
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted, watch } from "vue";
+import IconFont from "../IconFont/IconFont.uvue";
+import FrEmpty from "@/components/widgets/fr-empty.uvue";
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+import FrWaterflowList from "@/components/widgets/fr-waterflow-list.uvue";
+import { setVideoResourceList, setVideoInitialIndex } from "../../store/index.uts";
+import { PostItem, PopResourceList, Pagination } from "@/types/index.uts";
+import { getCoverUrl } from "../../utils/coverUtils.uts";
+import { getTimeline } from "@/api/social.uts";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+
+type Props = {
+  authorId: string;
+  authorName: string;
+};
+
+const props = withDefaults(defineProps<Props>(), { authorId: "" });
+
+const authorId = toRef<string>(props, "authorId");
+
+const emit = defineEmits(["close"]);
+
+const authorWorks = ref<PostItem[]>([]);
+const pagination = ref<Pagination>({
+  has_next: true,
+  has_prev: false,
+  page: 0,
+  pages: 1,
+  size: 10,
+  total: 0,
+} as Pagination);
+
+const isLoading = ref(false); 
+
+const closePopup = () => {
+  emit("close");
+};
+
+const loadAuthorWorks = async (refresh: boolean) => {
+  if (isLoading.value) {
+    return; // If loading, do not repeat the request
+  }
+  isLoading.value = true; // Set loading state to true
+
+  if (props.authorId == null || props.authorId == "") {
+    return;
+  }
+
+  if (refresh) {
+    pagination.value.page = 1;
+    authorWorks.value = [];
+  }
+
+  if (!pagination.value.has_next && !refresh) {
+    isLoading.value = false; // Unlock
+    return;
+  }
+  const res = await getTimeline(props.authorId, pagination.value.page + 1);
+  if (res != null && res.success && res.data != null) {
+    authorWorks.value.push(...res.data);
+    pagination.value = res.meta.pagination;
+  }
+  isLoading.value = false; // Unlock after request completes
+};
+
+const onLoadMore = () => {
+  loadAuthorWorks(false);
+}
+
+const onRefresh = () => {
+    loadAuthorWorks(true)
+}
+
+type Fun = () => string;
+
+watch(() => props.authorId,
+  () => {
+    loadAuthorWorks(true);
+  },
+  {
+    immediate: true,
+  },
+);
+
+const handleItemClick = (item: PostItem) => {
+  setVideoResourceList([item]);
+  setVideoInitialIndex(0);
+  uni.navigateTo({ url: `/pages/video?source=timeline&userId=${props.authorId}` });
+};
+
+const navigateToAIGenerator = (generationID: string) => {
+  uni.navigateTo({ url: `/pages/publish/ai-generator?generationID=${generationID}` });
+};
+
+const formatDuration = (duration: number): string => {
+  if (isNaN(duration)) duration = 15;
+  const minutes = Math.floor(duration / 60);
+  const seconds = duration % 60;
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+};
+</script>
+
+<style scoped lang="scss">
+.popup-overlay {
+  background-color: #1f1f1f;
+  z-index: 50;
+  flex: 1;
+  display: flex;
+  padding-top: 40px;
+  flex-direction: column;
+  position: relative;
+}
+
+.close-button-container {
+  position: absolute;
+  top: 0px;
+  z-index: 101;
+  width: 100%;
+  height: 40px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.waterfall {
+  flex: 1;
+}
+
+.close-button-container text {
+  color: #ffffff;
+  font-size: 16px;
+}
+
+.waterfall-item {
+  border-radius: 10px;
+  background-color: #1e1e1e;
+  position: relative;
+  overflow: hidden;
+}
+
+.item-image {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.item-title {
+  color: #ffffff;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.item-icon-top {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 17px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.video-duration-overlay {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.video-duration {
+  color: #ffffff;
+  font-size: 12px;
+}
+</style>

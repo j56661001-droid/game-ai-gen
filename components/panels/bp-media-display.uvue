@@ -1,0 +1,225 @@
+<template>
+  <view style="height: 100%">
+    <template v-if="state.isFailed">
+      <slot name="failed">
+        <view class="bp-media-failed" :class="props.mediaClassName">
+          <view class="bp-media-failed-content">
+            <icon-font name="media_failed_outlined" :size="24" color="#707070"></icon-font>
+            <text class="bp-media-failed-text">
+              {{ $i18n_t("common.loadingFailed") }}
+            </text>
+          </view>
+        </view>
+      </slot>
+    </template>
+    <template v-else>
+      <bp-video-display
+        v-if="props.type == 'video'"
+        :class="props.mediaClassName"
+        :controls="false"
+        :show-progress="false"
+        :enable-progress-gesture="false"
+        :loop="true"
+        :muted="true"
+        :show-center-play-btn="props.showCenterPlayBtn"
+        :autoplay="props.autoplay"
+        :id="props.id"
+        :src="props.src"
+        :cover="props.cover"
+        :encryptionKey="props.encryptionKey"
+        :autoresize="props.autoresize"
+        :imageMode="props.imageMode"
+        :object-fit="props.objectFit"
+        :background="props.background"
+        @load="onMediaLoad"
+        @click="onMediaClick"
+        @error="onMediaError"
+        @timeupdate="onVideoTimeupdate"
+        @ended="onVideoEnded"
+      ></bp-video-display>
+      <bp-image-display
+        class="fullwidth"
+        :class="props.mediaClassName"
+        v-else-if="props.type == 'image'"
+        :src="props.cover || props.src"
+        :mode="props.imageMode"
+        :autoresize="props.autoresize"
+        :encryptionKey="props.encryptionKey"
+        @load="onMediaLoad"
+        @click="onMediaClick"
+        @error="onMediaError"
+      ></bp-image-display>
+      <bp-audio-display
+        v-else-if="props.type == 'audio'"
+        class="fullwidth"
+        :src="props.src"
+        :mode="props.audioDisplayMode"
+        @load="onMediaLoad"
+        @error="onMediaError"
+        @click="onMediaClick"
+      ></bp-audio-display>
+      <view v-else class="bp-media-empty" :class="props.mediaClassName"></view>
+    </template>
+  </view>
+</template>
+
+<script setup lang="uts">
+import BpVideoDisplay from "./bp-video-display.uvue";
+import BpImageDisplay from "./bp-image-display.uvue";
+import BpAudioDisplay from "./bp-audio-display.uvue";
+import IconFont from "../IconFont/IconFont.uvue";
+import FrSpin from "../widgets/fr-spin.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+
+type Props = {
+  type: "image" | "video";
+  src: string.VideoURIString | string.ImageURIString;
+  cover?: string.ImageURIString;
+  encryptionKey?: string;
+  autoresize?: boolean;
+  showCenterPlayBtn?: boolean;
+  autoplay?: boolean;
+  id?: string;
+  audioDisplayMode?: "readonly" | "play";
+  imageMode?: string;
+  mediaClassName?: any;
+  objectFit?: string;
+  background?: string;
+};
+
+const props = withDefaults(defineProps<Props>(), {
+  autoresize: true,
+  audioDisplayMode: "readonly",
+  showCenterPlayBtn: true,
+  autoplay: false,
+  imageMode: "widthFix",
+  objectFit: "contain",
+});
+const emit = defineEmits<{
+  (e: "load", v: Uni.UniVideoLoadedMetadataEvent | Uni.UniImageLoadEvent): void;
+  (e: "video:timeupdate", v: UniVideoTimeUpdateEvent): void;
+  (e: "video:ended", v: UniEvent): void;
+  (e: "error"): void;
+  (e: "click", v: UniPointerEvent): void;
+}>();
+
+const state = reactive<{ isFailed: boolean; isAudioPlaying: boolean }>({ isFailed: false, isAudioPlaying: false });
+
+watch(
+  () => ({ cover: props.cover, src: props.src }),
+  () => {
+    state.isFailed = false;
+    if ((props.cover == null || props.cover == "") && (props.src == null || props.src == "")) {
+      state.isFailed = true;
+    }
+  },
+);
+
+const onAudioPlay = () => {
+  state.isAudioPlaying = true;
+};
+
+const onAudioPause = () => {
+  state.isAudioPlaying = false;
+};
+
+const onVideoTimeupdate = (e: UniVideoTimeUpdateEvent) => {
+  emit("video:timeupdate", e);
+};
+
+const onVideoEnded = (e: UniEvent) => {
+  emit("video:ended", e);
+};
+
+const onMediaError = () => {
+  state.isFailed = true;
+
+  emit("error");
+};
+
+const onMediaLoad = (e: Uni.UniVideoLoadedMetadataEvent | Uni.UniImageLoadEvent) => {
+  emit("load", e);
+};
+
+const onMediaClick = (e: UniPointerEvent) => {
+  emit("click", e);
+};
+</script>
+
+<style scoped>
+.bp-media-empty {
+  width: 100%;
+  padding-bottom: 100%;
+}
+
+.bp-media-failed {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%;
+  background-color: #333333;
+  border-radius: 4px;
+}
+
+.bp-media-failed-text {
+  font-family: "Baloo Thambi 2, Baloo Thambi 2";
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: #ff23b8;
+  margin-top: 10px;
+}
+
+.fullwidth {
+  width: 100%;
+}
+
+.bp-audio-play {
+  flex: 1;
+}
+
+.bp-audio-playing-mark {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(134deg, #ff4e6d 0%, #ff41d3 100%);
+  border-radius: 15px;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.bp-audio-readonly {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  background: linear-gradient(134deg, #ff4e6d 0%, #ff41d3 100%);
+}
+
+.bp-audio-readonly-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bp-audio-readonly-mark {
+  background: linear-gradient(134deg, #ff4e6d 0%, #ff41d3 100%);
+  border-radius: 20%;
+}
+
+.bp-media-failed-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>

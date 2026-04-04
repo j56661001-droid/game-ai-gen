@@ -1,0 +1,34 @@
+<template>
+  <text class="fr-typography-paragraph" :style="lineStyle">
+    <slot></slot>
+  </text>
+</template>
+
+<script setup lang="uts">
+const props = defineProps<{
+  lines?: number;
+}>();
+
+const lineStyle = computed(() => (props.lines ? `lines: ${props.lines}; -webkit-line-clamp: ${props.lines};` : ""));
+</script>
+
+<style scoped>
+.fr-typography-paragraph {
+  font-size: 12px;
+  line-height: 17px;
+  color: #707070;
+
+  /* #ifdef APP */
+  lines: 2;
+  /* #endif */
+
+  /* #ifdef WEB */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  word-wrap: break-word;
+  /* #endif */
+}
+</style>

@@ -1,0 +1,231 @@
+<template>
+  <bp-navigation-bar-title>
+    <div class="pwa-install-container">
+      <div class="header">
+        <IconFont name="arrowleft" :size="16" color="#000000" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+        <span class="title">{{ $i18n_t('pwa_install.title') }}</span>
+      </div>
+
+      <div v-if="loading" class="loading-state">
+        <span>{{ $i18n_t('pwa_install.loading') }}</span>
+      </div>
+
+    <div v-else class="content">
+      <!-- Manual Selection for dev/testing -->
+      <div class="manual-selection">
+        <div ref="tabsWrapperRef" class="custom-tabs-wrapper">
+          <div class="custom-tabs">
+            <div 
+              v-for="(tab, index) in tabsData" 
+              :key="tab.value" 
+              :ref="(el) => { tabRefs[index] = el as HTMLElement }"
+              :class="['custom-tab-item', { 'active': selectedPlatform === tab.value }]"
+              @click="onPlatformChange(tab.value, index)"
+            >
+              {{ tab.label }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <WindowsChromeInstall v-if="selectedPlatform === 'windows_chrome'" :currentDomain="currentDomain" />
+
+      <WindowsEdgeInstall v-if="selectedPlatform === 'windows_edge'" :currentDomain="currentDomain" />
+
+      <MacSafariInstall v-if="selectedPlatform === 'mac_safari'" :currentDomain="currentDomain" />
+
+      <IosInstall v-if="selectedPlatform === 'ios'" :currentDomain="currentDomain" />
+
+      <AndroidChromeInstall v-if="selectedPlatform === 'android_chrome'" :currentDomain="currentDomain" />
+
+      <!-- Fallback for unknown platforms -->
+      <div v-if="!selectedPlatform" class="tutorial-card">
+        <h2 class="tutorial-title">{{ $i18n_t('pwa_install.platform_not_detected.title') }}</h2>
+        <p class="tutorial-step">{{ $i18n_t('pwa_install.platform_not_detected.description') }}</p>
+      </div>
+    </div>
+      </div>
+    </bp-navigation-bar-title>
+  </template>
+  
+  <script setup lang="ts">
+  import { ref, onMounted, computed } from "vue";
+  import { $i18n_t } from "@/locale";
+  import WindowsChromeInstall from "./panels/WindowsChromeInstall.uvue";
+  import WindowsEdgeInstall from "./panels/WindowsEdgeInstall.uvue";
+  import MacSafariInstall from "./panels/MacSafariInstall.uvue";
+  import IosInstall from "./panels/IosInstall.uvue";
+  import AndroidChromeInstall from "./panels/AndroidChromeInstall.uvue";
+  import IconFont from "@/components/IconFont/IconFont.uvue";
+  import { goBack } from "@/utils/page";
+  import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+type DetectedPlatform = "windows_chrome" | "windows_edge" | "mac_safari" | "ios" | "android_chrome" | "mac_chrome" | null;
+type DisplayablePlatform = "windows_chrome" | "windows_edge" | "mac_safari" | "ios" | "android_chrome";
+
+const detectedPlatform = ref<DetectedPlatform>(null);
+const selectedPlatform = ref<DisplayablePlatform>("windows_chrome");
+const loading = ref(true);
+const currentDomain = ref(location.hostname);
+
+const tabsWrapperRef = ref<HTMLElement | null>(null);
+const tabRefs = ref<HTMLElement[]>([]);
+
+const tabsData = computed(() => {
+  return [
+    { value: "windows_chrome", label: $i18n_t('pwa_install.platform.windows_chrome') },
+    { value: "windows_edge", label: $i18n_t('pwa_install.platform.windows_edge') },
+    { value: "mac_safari", label: $i18n_t('pwa_install.platform.mac_safari') },
+    { value: "ios", label: $i18n_t('pwa_install.platform.ios') },
+    { value: "android_chrome", label: $i18n_t('pwa_install.platform.android_chrome') },
+  ];
+});
+
+
+
+const onPlatformChange = (value: DisplayablePlatform, index: number) => {
+  selectedPlatform.value = value;
+  // 滚动逻辑
+  const selectedTabElement = tabRefs.value[index];
+  const wrapperElement = tabsWrapperRef.value;
+
+  if (selectedTabElement && wrapperElement) {
+    const wrapperWidth = wrapperElement.offsetWidth;
+    const tabOffsetLeft = selectedTabElement.offsetLeft;
+    const tabWidth = selectedTabElement.offsetWidth;
+
+    // 计算滚动位置，使选中tab居中
+    const scrollTo = tabOffsetLeft - (wrapperWidth / 2) + (tabWidth / 2);
+    wrapperElement.scrollTo({
+      left: scrollTo,
+      behavior: 'smooth'
+    });
+  }
+};
+
+onMounted(() => {
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform.toLowerCase();
+
+  const isWindows = platform.startsWith("win");
+  const isMac = platform.startsWith("mac");
+  const isAndroid = ua.includes("android");
+  // Check for iPhone, iPad, or iPod
+  const isIos = /iphone|ipad|ipod/.test(ua) || (isMac && navigator.maxTouchPoints > 1);
+
+  const isChrome = ua.includes("chrome") && !ua.includes("edg");
+  const isEdge = ua.includes("edg");
+  const isSafari = ua.includes("safari") && !ua.includes("chrome") && !ua.includes("crios") && !ua.includes("edg");
+
+      let initialDetected: DetectedPlatform = null;
+
+      if (isWindows) {
+        if (isChrome) initialDetected = "windows_chrome";
+        else if (isEdge) initialDetected = "windows_edge";
+      } else if (isMac && !isIos) {
+        if (isSafari) initialDetected = "mac_safari";
+        else if (isChrome) initialDetected = "mac_chrome";
+      } else if (isAndroid) {
+        if (isChrome) initialDetected = "android_chrome";
+      } else if (isIos) {
+        initialDetected = "ios";
+      }
+
+      detectedPlatform.value = initialDetected; // 存储检测到的原始平台
+
+      // 根据 detectedPlatform 初始化 selectedPlatform
+      if (detectedPlatform.value) {
+        // 如果检测到平台是 mac_chrome，将其视为 windows_chrome，因为指南是通用的
+        selectedPlatform.value = detectedPlatform.value === "mac_chrome" ? "windows_chrome" : detectedPlatform.value as DisplayablePlatform;
+      }
+      // 如果 detectedPlatform.value 为 null，selectedPlatform 保持其初始默认值 "windows_chrome"
+
+      loading.value = false;
+});
+</script>
+
+<style scoped>
+.pwa-install-container {
+  padding: 16px;
+  background-color: #f4f4f5;
+  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 0 16px; /* Added padding to match Setting.uvue's layout */
+}
+.header .title {
+  flex: 1; /* Allows title to take available space */
+  font-size: 18px; /* Adjusted font size */
+  font-weight: bold;
+  color: #1a1a1a;
+  text-align: center;
+  margin-right: 16px; /* Space for the back button */
+}
+
+.loading-state {
+  text-align: center;
+  color: #666;
+  padding-top: 50px;
+  font-size: 16px;
+}
+
+.content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.manual-selection {
+  margin-bottom: 20px;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.custom-tabs-wrapper {
+  overflow-x: auto; /* 允许水平滚动 */
+  -webkit-overflow-scrolling: touch; /* 移动端平滑滚动 */
+  scrollbar-width: none; /* 隐藏Firefox滚动条 */
+  &::-webkit-scrollbar {
+    display: none; /* 隐藏Webkit滚动条 */
+  }
+}
+
+.custom-tabs {
+  display: inline-flex; /* 使tabs在一行显示 */
+  gap: 8px; /* 间距 */
+  padding-bottom: 5px; /* 防止滚动条遮挡内容 */
+}
+
+.custom-tab-item {
+  flex-shrink: 0; /* 防止tab项被压缩 */
+  padding: 8px 16px;
+  border-radius: 20px;
+  background-color: #f0f0f0; /* 白底黑字 */
+  color: #333;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  white-space: nowrap; /* 防止文本换行 */
+}
+
+.custom-tab-item:hover {
+  background-color: #e0e0e0;
+}
+
+.custom-tab-item.active {
+  background-color: #007aff; /* 蓝色 */
+  color: #fff;
+  font-weight: bold;
+}
+
+
+
+</style>

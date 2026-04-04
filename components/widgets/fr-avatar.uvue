@@ -1,0 +1,51 @@
+<template>
+  <view class="avatar-wrapper" :style="{ borderRadius: size / 2 + 'px', width: size + 'px', height: size + 'px' }" @click="handleClick">
+    <image class="avatar-image" :src="avatarSrc" mode="aspectFill"></image>
+    <!-- <IconFont v-else name="profile_filled" :size="size * 0.4" color="#999" /> -->
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+type Props = {
+  url: string | null;
+  src?: string;
+  size?: number;
+};
+
+const emits = defineEmits(["click"]);
+
+const props = defineProps({
+  url: {
+    type: String,
+    default: null,
+  },
+  size: {
+    type: Number,
+    default: 48,
+  },
+});
+
+const avatarSrc = computed((): string => { const src = props.url || props.src; return src != null ? getAbsoluteMediaUrl(src) : "/static/defaultAvatar.png"; });
+
+const handleClick = () => {
+  emits("click");
+};
+</script>
+
+<style scoped>
+.avatar-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.2); /* Default background for icon */
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+}
+</style>

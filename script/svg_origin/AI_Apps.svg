@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="矩形_56454" data-name="矩形 56454" width="24" height="24" transform="translate(42 225)" fill="#fff"/>
+    </clipPath>
+  </defs>
+  <g id="aichuangzuo" transform="translate(-42 -225)" clip-path="url(#clip-path)">
+    <g id="AI应用" transform="translate(38.227 221.229)">
+      <path id="路径_224367" data-name="路径 224367" d="M15.09,3.9a1.444,1.444,0,0,1,1.194,0l9.55,5.457a1.03,1.03,0,0,1,.511,1.022V21.292a1.214,1.214,0,0,1-.511,1.022L16.284,27.6a.86.86,0,0,1-1.024,0l-9.38-5.457a.871.871,0,0,1-.681-.853V10.378a1.472,1.472,0,0,1,.511-1.022L15.09,3.9Zm-7.675,6.99V20.44l8.356,4.774,8.357-4.605v-9.72L15.772,6.115Z" fill="#fff"/>
+      <path id="路径_224369" data-name="路径 224369" d="M5.667,0,5.28-1.472H2.729L2.331,0H0L2.562-7.885H5.393L7.987,0ZM4.839-3.212,4.5-4.5q-.054-.209-.156-.6t-.2-.806q-.1-.416-.153-.685-.048.269-.137.663t-.183.781q-.094.387-.164.645L3.169-3.212ZM8.835,0V-7.853h2.132V0Z" transform="translate(9.773 19.771)" fill="#fff"/>
+    </g>
+  </g>
+</svg>

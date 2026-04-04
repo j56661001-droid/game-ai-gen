@@ -1,0 +1,79 @@
+import { request } from "./request";
+import { ApiResponse, Meta } from "../types/index.uts";
+
+// 反馈项类型
+export type FeedbackItem = {
+  createdAt: string;
+  feedbackDetail: string;
+  feedbackID: string;
+  feedbackType: string;
+  id: number;
+  status: string;
+  updatedAt: string;
+  urls: string;
+  userID: number;
+};
+
+// 反馈列表响应类型
+export type FeedbackListResponse = {
+  data: FeedbackItem[];
+  meta: Meta;
+  success: boolean;
+};
+
+// 提交反馈请求参数
+export type SubmitFeedbackParams = {
+  feedbackDetail: string;
+  feedbackType: "suggestion" | "complaint";
+  status: "pending";
+  urls: string; // JSON字符串数组
+  userID: number;
+};
+
+// 获取反馈列表请求参数
+export type GetFeedbackListParams = {
+  page?: number;
+  size?: number;
+  [key: string]: any; // 允许其他参数
+};
+
+/**
+ * 提交反馈
+ * @param params 反馈数据
+ */
+export function submitFeedback(params: SubmitFeedbackParams): Promise<ApiResponse<any>> {
+  return request<ApiResponse<any>>({
+    url: "/feedback",
+    method: "POST",
+    data: params,
+  });
+}
+
+/**
+ * 获取反馈列表
+ * @param params 查询参数
+ */
+export function getFeedbackList(params: GetFeedbackListParams = {}): Promise<FeedbackListResponse> {
+  // 构建查询字符串
+  const queryParams: string[] = [];
+  if (params.page != null) {
+    queryParams.push(`page=${params.page}`);
+  }
+  if (params.size != null) {
+    queryParams.push(`size=${params.size}`);
+  }
+  
+  // 添加其他参数
+  Object.keys(params).forEach((key) => {
+    if (key !== "page" && key !== "size" && params[key] != null) {
+      queryParams.push(`${key}=${encodeURIComponent(params[key])}`);
+    }
+  });
+
+  const queryString = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
+
+  return request<FeedbackListResponse>({
+    url: `/feedback${queryString}`,
+    method: "GET",
+  });
+}

@@ -1,0 +1,10 @@
+const message = {
+  showToast: uni.showToast,
+  hideToast: uni.hideToast,
+  showLoading: uni.showLoading,
+  hideLoading: uni.hideLoading,
+  showModal: uni.showModal,
+  hideModal: uni.hideModal,
+};
+
+export default message;

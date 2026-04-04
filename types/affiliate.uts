@@ -1,0 +1,28 @@
+export type Rule = {
+  title: any;
+  description: any;
+  rewardPoints: number;
+};
+
+export type ReferralStats = {
+  pendingInvites: number;
+  successfulInvites: number;
+  totalReferralPoints: number;
+};
+
+export type ReferralCenterData = {
+  referralCode: string;
+  rules: Rule[];
+  stats: ReferralStats;
+};
+
+export type InvitationHistoryItem = {
+  createdAt: string;
+  inviteeUserID: number;
+  inviteeUsername: string;
+  inviteeUsernameMasked: string;
+  rewardPoints: number;
+  status: "pending_verification" | "rewarded";
+  emailAddress: string;
+  avatar: string;
+};

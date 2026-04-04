@@ -1,0 +1,1326 @@
+<template>
+  <view
+    class="resource-container"
+    :style="{
+      height: videoContainerHeight + 'px',
+    }"
+  >
+    <swiper
+      v-if="item.mediaMetadata.length > 1"
+      class="media-swiper"
+      :autoplay="false"
+      :vertical="false"
+      :circular="true"
+      :current="currentMediaSwiperIndex"
+      :indicator-dots="false"
+      @change="handleMediaSwiperChange($event, item)"
+    >
+      <swiper-item v-for="(media, index) in item.mediaMetadata" :key="index">
+        <bp-media-failed v-if="mediaFailedState[media.id]" :hide-button="true"></bp-media-failed>
+        <template v-else>
+          <bp-media-display
+            :type="item.contentType"
+            class="background-video"
+            :src="getMediaSrc(media.fileURL, index)"
+            :show-center-play-btn="false"
+            :autoplay="false"
+            :autoresize="false"
+            :style="{ height: videoContainerHeight + 'px' }"
+            audio-display-mode="play"
+            :id="'video-' + item.id + '-' + index"
+            :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+            imageMode="aspectFit"
+            background="static"
+            @timeupdate="handleTimeUpdate"
+            @ended="handleVideoEnded"
+            @load="onLoadedMetaData"
+            @error="onMediaError(media.id)"
+          ></bp-media-display>
+        </template>
+        <template v-if="item.contentType != 'audio'">
+          <!-- #ifdef H5 -->
+          <view class="tap-overlay" @mousedown="onMouseDown" @mouseup="onMouseUp" @mousemove="onMouseMove"></view>
+          <!-- #endif -->
+          <!-- #ifndef H5 -->
+          <view class="tap-overlay" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @touchmove="handleTouchMove"></view>
+          <!-- #endif -->
+        </template>
+      </swiper-item>
+    </swiper>
+    <view v-else class="media-swiper">
+      <bp-media-failed v-if="mediaFailedState[item.mediaMetadata[0].id]" :hide-button="true"></bp-media-failed>
+      <template v-else>
+        <bp-media-display
+          :type="item.contentType"
+          class="background-video"
+          :src="getMediaSrc(item.mediaMetadata[0].fileURL, 0)"
+          :show-center-play-btn="false"
+          :autoplay="false"
+          :autoresize="false"
+          :style="{ height: videoContainerHeight + 'px' }"
+          :id="'video-' + item.id + '-0'"
+          audio-display-mode="play"
+          :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+          imageMode="aspectFit"
+          background="static"
+          @video:timeupdate="handleTimeUpdate"
+          @video:ended="handleVideoEnded"
+          @load="onLoadedMetaData"
+          @error="onMediaError(item.mediaMetadata[0].id)"
+          @click="onMediaClick(item)"
+        ></bp-media-display>
+      </template>
+      <template v-if="item.contentType != 'audio'">
+        <!-- #ifdef H5 -->
+        <view class="tap-overlay" @mousedown="onMouseDown" @mouseup="onMouseUp" @mousemove="onMouseMove"></view>
+        <!-- #endif -->
+        <!-- #ifndef H5 -->
+        <view class="tap-overlay" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @touchmove="handleTouchMove"></view>
+        <!-- #endif -->
+      </template>
+    </view>
+
+    <view v-if="item.contentType == 'video' && ((currentState as VideoState)?.isPaused || false) && !is2xSpeedMode" class="play-button-container">
+      <IconFont name="play" color="rgba(255, 255, 255, 1.0)" :size="30" />
+    </view>
+
+    <!-- 关闭对比模式按钮 -->
+    <view v-if="showCompareOverlay" class="close-compare-button" @click="toggleCompareMode">
+      <IconFont name="close" color="#fff" :size="14" />
+    </view>
+
+    <view class="side-bar" v-show="!showComments && !is2xSpeedMode && !showCompareOverlay" @click="handleSideBarTap">
+      <view class="side-item">
+        <FrAvatar
+          class="profile-pic"
+          :url="item.author.avatar"
+          @click="uni.navigateTo({ url: '/pages/profile/personal?userId=' + item.author.id.toString() })"
+        />
+        <view class="follow-icon-container" @click="toggleFollow(item)" v-if="!isMyId(item.author.id)">
+          <IconFont :name="item.author.isFollowing ? 'ok' : 'follow'" :size="item.author.isFollowing ? 8 : 12" color="#ef0099" />
+        </view>
+      </view>
+      <view class="side-item" @click="toggleLike(item)">
+        <IconFont name="like" class="side-icon" :color="item.isLiked ? '#FF23B8' : '#ffffff'" />
+        <text class="side-text">{{ item.likesCount }}</text>
+      </view>
+      <view class="side-item" @click="toggleFavorite(item)">
+        <IconFont name="fav" class="side-icon" :color="item.isFavorited ? '#FF23B8' : '#ffffff'" />
+        <text class="side-text">{{ item.favoritesCount }}</text>
+      </view>
+      <view class="side-item" @click="emit('openComments')">
+        <IconFont name="comment" class="side-icon" />
+        <text class="side-text">{{ item.commentsCount }}</text>
+      </view>
+      <view class="side-item" @click="emit('openShareSheet')">
+        <IconFont :name="isMyId(item.author.id) ? 'more' : 'share'" :size="isMyId(item.author.id) ? 5 : 20" class="side-icon" />
+        <!-- <text class="side-text">{{ item.sharesCount }}</text> -->
+      </view>
+      <view v-if="item.generation?.generationParameters?.source_path" class="side-item compare-item" @click="toggleCompareMode">
+        <view class="compare-icon-container">
+          <IconFont name="compare" class="compare-icon" />
+        </view>
+        <text class="side-text">{{ $i18n_t("common.compare") }}</text>
+      </view>
+    </view>
+
+    <!-- 对比模式叠加层 -->
+    <view
+      v-if="showCompareOverlay && item.generation?.generationParameters?.source_path"
+      class="compare-overlay frosted-glass-effect"
+      :style="{ width: compareOverlayWidth + 'px' }"
+    >
+      <view v-if="isCompareMediaLoading" class="loading-spinner-container">
+        <FrSpin :size="40" type="primary"></FrSpin>
+      </view>
+      <image
+        class="compare-media"
+        :src="item.generation?.generationParameters?.source_path"
+        mode="aspectFit"
+        :style="compareMediaWidthStyle"
+        @load="onCompareMediaLoad"
+        @error="onCompareMediaError"
+      />
+    </view>
+    <view
+      v-if="showCompareOverlay && item.generation?.generationParameters?.source_path"
+      class="compare-handle"
+      :style="{ left: compareHandleLeft }"
+      @touchstart.stop="handleCompareHandleTouchStart"
+      @touchend="handleCompareOverlayTouchEnd"
+      @touchmove="handleCompareOverlayTouchMove"
+      @mousedown.stop="handleCompareHandleMouseDown"
+      <!-- #ifndef H5 -->
+      @mouseup="handleCompareOverlayMouseUp"
+      @mousemove="handleCompareOverlayMouseMove"
+      @mouseleave="handleCompareOverlayMouseLeave"
+      <!-- #endif -->
+    >
+      <view class="compare-handle-icon-wrapper">
+        <IconFont name="move_h" color="#000" :size="30" />
+      </view>
+    </view>
+
+    <view class="gradient-overlay" v-show="!showComments && !is2xSpeedMode"></view>
+    <view class="bottom-container" v-show="!showComments && !is2xSpeedMode && !showCompareOverlay" :style="{ '--cb-bottom': isPopupMode ? '30px' : '64px' }">
+      <view class="bottom-info">
+        <text class="username">@{{ item.author?.username }}</text>
+        <view class="description-wrapper" v-if="item.content != '' || item.tags?.length">
+          <text ref="descriptionTextRef" class="description" :class="{ expanded: expandedDesc }" :number-of-lines="expandedDesc ? 0 : 3">
+            {{ formattedTags }} {{ item.content }}
+          </text>
+          <view v-if="showExpandButton" class="expand-button" @click="toggleDescriptionExpansion">
+            <text class="expand-button-text">{{ expandedDesc ? $i18n_t("common.show_less") : $i18n_t("common.show_more") }}</text>
+            <IconFont :name="expandedDesc ? 'arrowdown' : 'arrowup'" :size="6" />
+          </view>
+        </view>
+      </view>
+      <view v-if="item.generationID != null" class="one-click-remix-container" @click="navigateToAIGenerator(item.generationID)">
+        <view class="ai-tool-info-container">
+          <view class="ai-tool-name-container" ref="aiToolNameContainerRef">
+            <text class="ai-tool-name" ref="aiToolNameTextRef">{{ fmtBackendLang(item.generation?.aiTool?.displayName) }}</text>
+          </view>
+          <text class="one-click-remix-text">{{ $i18n_t("common.remix") }}</text>
+        </view>
+        <template v-if="!aiToolCoverErrorState">
+          <bp-media-display
+            :type="item.generation?.aiTool?.cover?.endsWith('.mp4') || item.generation?.aiTool?.cover?.endsWith('.mov') ? 'video' : 'image'"
+            class="ai-tool-cover"
+            :src="aiToolCoverSrc"
+            :show-center-play-btn="false"
+            :autoplay="true"
+            :autoresize="false"
+            imageMode="aspectFill"
+            objectFit="cover"
+            @error="onAiToolCoverError"
+          ></bp-media-display>
+        </template>
+        <template v-else>
+          <image class="ai-tool-cover" src="/static/icons/tool@2x.png" mode="aspectFill"></image>
+        </template>
+      </view>
+      <ProgressBar
+        v-show="item.contentType == 'video' && !showComments && !is2xSpeedMode"
+        :value="((currentState as VideoState)?.progress) || 0"
+        :min="0"
+        :max="((currentState as VideoState)?.duration || 0)"
+        :step="0.1"
+        @valueChange="handleProgressChange"
+        @dragstart="handleDragStart"
+        @dragend="handleDragEnd"
+      />
+      <view v-if="item.mediaMetadata.length > 1" class="custom-dots">
+        <view v-for="(meta, index) in (item.mediaMetadata as MediaMetadata[])" :key="index" class="dot-wrapper" @click="onDotClick(index)">
+          <view class="dot" :class="{ active: index == currentMediaSwiperIndex }"></view>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="item.contentType == 'video' && is2xSpeedMode" class="speed-2x-overlay">
+      <text class="speed-2x-text">2x speed</text>
+      <IconFont name="speed" color="rgba(255, 255, 255, 1.0)" :size="12" />
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { Ref, ref, onMounted, onUnmounted, watch, computed, nextTick } from "vue";
+import IconFont from "../IconFont/IconFont.uvue";
+import ProgressBar from "../ProgressBar/ProgressBar.uvue";
+import FrAvatar from "../widgets/fr-avatar.uvue";
+import { isMyId } from "../../store/user.uts";
+import { PostItem, MediaMetadata } from "../../types/index.uts";
+import { likeResource, unlikeResource, favoriteResource, unfavoriteResource, followUser, unfollowUser } from "../../api/social.uts";
+import i18n, { $i18n_t, fmtBackendLang } from "../../locale/index.uts";
+import { setTabBarVisibility } from "../../store/index.uts";
+import BpVideoDisplay from "./bp-video-display.uvue";
+import BpImageDisplay from "./bp-image-display.uvue";
+import BpAudioDisplay from "./bp-audio-display.uvue";
+import BpMediaDisplay from "./bp-media-display.uvue";
+import BpMediaFailed from "./bp-media-failed.uvue";
+import FrSpin from "../widgets/fr-spin.uvue"; // Import FrSpin component
+import { checkLock, setLock } from "@/utils/debounce.uts";
+
+const props = defineProps<{
+  item: PostItem;
+  videoContainerHeight: number;
+  isPopupMode: boolean;
+  showComments: boolean;
+  active: boolean;
+  preview: boolean; // Added new prop
+  pageWidth: number; // Add pageWidth prop
+  pageHeight: number; // Add pageHeight prop
+}>();
+
+const aiToolNameContainerRef = ref<HTMLElement | null>(null);
+const aiToolNameTextRef = ref<HTMLElement | null>(null);
+const formattedTags = computed(() => {
+  const arr = props.item.tags || [];
+  return (showExpandButton.value && !expandedDesc.value ? arr.slice(0, 4) : arr).map((tag) => `#${tag.displayName[i18n.global.locale.value]}`).join(" ");
+});
+
+const checkAiToolNameOverflow = () => {
+  nextTick(() => {
+    const container = aiToolNameContainerRef.value;
+    const text = aiToolNameTextRef.value;
+
+    if (container && text) {
+      const containerWidth = container.clientWidth;
+      const textWidth = text.scrollWidth;
+
+      if (textWidth > containerWidth) {
+        const scrollOffset = containerWidth - textWidth - 5; // 5px margin
+        text.style.setProperty("--scroll-offset", `${scrollOffset}px`);
+        text.style.animationPlayState = "running";
+        const animationDuration = textWidth / 60; // 与之前一致的速度
+        text.style.animationDuration = `${animationDuration}s`;
+      } else {
+        text.style.animationPlayState = "paused";
+        text.style.transform = "translateX(0)";
+      }
+    }
+  });
+};
+
+watch(
+  () => props.item.generation?.aiTool?.displayName,
+  () => {
+    checkAiToolNameOverflow();
+  },
+);
+
+const aiToolCoverSrc = ref(props.item.generation?.aiTool?.cover);
+const aiToolCoverErrorState = ref(false); // New ref to track error state
+
+watch(
+  () => props.item.generation?.aiTool?.cover,
+  (newCover) => {
+    aiToolCoverSrc.value = newCover;
+    aiToolCoverErrorState.value = false; // Reset error state when cover changes
+  },
+);
+
+const onAiToolCoverError = () => {
+  aiToolCoverErrorState.value = true; // Set error state to true
+};
+
+const emit = defineEmits<{
+  (e: "openShareSheet"): void;
+  (e: "openComments"): void;
+  (e: "closeComments"): void;
+}>();
+
+const showCompareOverlay = ref(false);
+const compareOverlayWidth = ref(0);
+const isDraggingCompareHandle = ref(false); // Renamed to avoid conflict with existing startX
+const compareStartX = ref(0); // Renamed to avoid conflict with existing startX
+const compareInitialWidth = ref(0);
+const isCompareMediaLoading = ref(false); // New ref for loading state
+
+const compareMediaWidthStyle = computed(() => {
+  return `width: ${props.pageWidth}px;`;
+});
+
+const compareHandleLeft = computed(() => {
+  return `${compareOverlayWidth.value}px`;
+});
+
+const toggleCompareMode = () => {
+  showCompareOverlay.value = !showCompareOverlay.value;
+  if (showCompareOverlay.value) {
+    compareOverlayWidth.value = props.pageWidth / 2; // Initial width to 50%
+    // Set loading state when compare overlay is shown and source path exists
+    if (props.item.generation?.generationParameters?.source_path != null) {
+      isCompareMediaLoading.value = true;
+    }
+  } else {
+    isCompareMediaLoading.value = false;
+  }
+};
+
+const handleCompareHandleTouchStart = (e: UniTouchEvent) => {
+  isDraggingCompareHandle.value = true;
+  compareStartX.value = e.touches[0].clientX;
+  compareInitialWidth.value = compareOverlayWidth.value;
+};
+
+const handleCompareOverlayTouchMove = (e: UniTouchEvent) => {
+  if (!isDraggingCompareHandle.value) return;
+  const currentX = e.touches[0].clientX;
+  const deltaX = currentX - compareStartX.value;
+  let newWidth = compareInitialWidth.value + deltaX;
+
+  // 限制宽度在0到pageWidth.value之间
+  if (newWidth < 0) {
+    newWidth = 0;
+  } else if (newWidth > props.pageWidth) {
+    newWidth = props.pageWidth;
+  }
+  compareOverlayWidth.value = newWidth;
+};
+
+const handleCompareOverlayTouchEnd = () => {
+  isDraggingCompareHandle.value = false;
+};
+
+// H5 鼠标事件
+const handleCompareHandleMouseDown = (e: UniMouseEvent) => {
+  isDraggingCompareHandle.value = true;
+  compareStartX.value = e.clientX;
+  compareInitialWidth.value = compareOverlayWidth.value;
+  e.preventDefault(); // 阻止默认行为，例如文本选择
+
+  // #ifdef H5
+  window.addEventListener("mousemove", handleCompareOverlayMouseMove);
+  window.addEventListener("mouseup", handleCompareOverlayMouseUp);
+  // #endif
+};
+
+const handleCompareOverlayMouseMove = (e: UniMouseEvent) => {
+  if (!isDraggingCompareHandle.value) return;
+  const currentX = e.clientX;
+  const deltaX = currentX - compareStartX.value;
+  let newWidth = compareInitialWidth.value + deltaX;
+
+  // 限制宽度在0到pageWidth.value之间
+  if (newWidth < 0) {
+    newWidth = 0;
+  } else if (newWidth > props.pageWidth) {
+    newWidth = props.pageWidth;
+  }
+  compareOverlayWidth.value = newWidth;
+};
+
+const handleCompareOverlayMouseUp = () => {
+  isDraggingCompareHandle.value = false;
+  // #ifdef H5
+  window.removeEventListener("mousemove", handleCompareOverlayMouseMove);
+  window.removeEventListener("mouseup", handleCompareOverlayMouseUp);
+  // #endif
+};
+
+const onCompareMediaLoad = () => {
+  isCompareMediaLoading.value = false;
+};
+
+const onCompareMediaError = () => {};
+
+type VideoState = {
+  id: string;
+  context: VideoContext | null;
+  progress: number;
+  duration: number;
+  isPaused: boolean;
+};
+
+const mediaFailedState = reactive<UTSJSONObject>({});
+const currentMediaSwiperIndex = ref(0);
+const videoStateMap: Ref<Map<string, VideoState>> = ref(new Map<string, VideoState>());
+const getVideoDomId = (index: number) => {
+  return `video-${props.item.id}-${index}`;
+};
+
+const onMediaError = (mediaID: string) => {
+  if (props.preview) {
+    mediaFailedState[mediaID] = true;
+  }
+};
+
+const getOrCreateState = (id: string) => {
+  let state = videoStateMap.value.get(id);
+  if (state == null) {
+    state = {
+      id,
+      context: null,
+      progress: 0,
+      duration: 1,
+      isPaused: true,
+    } as VideoState;
+    videoStateMap.value.set(id, state);
+  }
+  return state;
+};
+
+const currentState = computed<VideoState>(() => {
+  if (props.item.contentType != "video") {
+    return null;
+  }
+  const id = getVideoDomId(currentMediaSwiperIndex.value);
+  const state = getOrCreateState(id);
+  if (state.context == null) {
+    state.context = uni.createVideoContext(id);
+  }
+  return state;
+});
+
+let wasPlayingBeforeDrag: boolean = false;
+const is2xSpeedMode = ref(false);
+
+watch(is2xSpeedMode, (newValue: boolean, preValue) => {
+  if (newValue != preValue) {
+    if (newValue) {
+      setTabBarVisibility(false);
+    } else {
+      setTabBarVisibility(true);
+    }
+  }
+});
+
+const expandedDesc: Ref<boolean> = ref(false);
+const showExpandButton = ref(false);
+const descriptionTextRef: Ref<HTMLElement | null> = ref(null);
+
+const touchTimer: Ref<number | null> = ref(null);
+let isLongPressTriggered = ref<boolean>(false);
+let startX: number = 0;
+let lastX: number = 0;
+let startY: number = 0;
+let isMoving: boolean;
+
+const loadedMediaSrcs: Ref<Set<string>> = ref(new Set());
+
+const getMediaSrc = (fileURL: string, index: number) => {
+  // If active or preview is true, and src is not yet loaded, load it.
+  // Once loaded, keep it.
+  if (props.active || props.preview) {
+    if (!loadedMediaSrcs.value.has(fileURL)) {
+      loadedMediaSrcs.value.add(fileURL);
+    }
+  }
+  return loadedMediaSrcs.value.has(fileURL) ? fileURL : "";
+};
+
+watch(
+  () => props.active,
+  (newValue: boolean) => {
+    if (!newValue) {
+      showCompareOverlay.value = false;
+      videoStateMap.value.forEach((state) => {
+        if (state.context) {
+          state.context.stop();
+          state.isPaused = true;
+        }
+      });
+    } else {
+      const state = currentState.value;
+      if (state != null && state.context != null) {
+        state.context.play();
+        state.isPaused = false;
+      }
+    }
+  },
+  { immediate: true }, // Run immediately to handle initial active state
+);
+
+// Watch for preview changes to trigger src loading
+watch(
+  () => props.preview,
+  (newValue: boolean) => {
+    if (newValue) {
+      // This will trigger getMediaSrc to set the src for relevant items
+      // The actual setting happens reactively in the template via getMediaSrc
+    }
+  },
+);
+
+const toggleDescriptionExpansion = (id: string) => {
+  expandedDesc.value = !expandedDesc.value;
+};
+
+const exit2xSpeedMode = () => {
+  if (is2xSpeedMode.value) {
+    is2xSpeedMode.value = false;
+  }
+  if (currentState.value?.context != null) {
+    currentState.value.context.playbackRate(1.0);
+  }
+};
+
+const toggleLike = async (item: PostItem) => {
+  if (!checkLock("post_like")) {
+    return;
+  }
+  setLock("post_like");
+  const resourceId = item.id;
+  try {
+    if (item.isLiked) {
+      const res = await unlikeResource(resourceId);
+      if (res != null && res.success) {
+        item.isLiked = false;
+        item.likesCount--;
+        uni.showToast({
+          title: $i18n_t("common.unliked"),
+          icon: "none",
+        });
+      }
+    } else {
+      const res = await likeResource(resourceId);
+      if (res != null && res.success) {
+        item.isLiked = true;
+        item.likesCount++;
+        uni.showToast({
+          title: $i18n_t("common.liked"),
+          icon: "none",
+        });
+      }
+    }
+  } catch (error) {
+  } finally {
+    setLock("post_like", -1);
+  }
+};
+
+const toggleFavorite = async (item: PostItem) => {
+  if (!checkLock("post_favorite")) {
+    return;
+  }
+  setLock("post_favorite");
+  const resourceId = item.id;
+  try {
+    if (item.isFavorited) {
+      const res = await unfavoriteResource(resourceId);
+      if (res != null && res.success) {
+        item.isFavorited = false;
+        if (item.favoritesCount > 0) item.favoritesCount -= 1;
+        uni.showToast({
+          title: $i18n_t("common.unfavorited"),
+          icon: "none",
+        });
+      }
+    } else {
+      const res = await favoriteResource(resourceId);
+      if (res != null && res.success) {
+        item.isFavorited = true;
+        item.favoritesCount += 1;
+        uni.showToast({
+          title: $i18n_t("common.favorited"),
+          icon: "none",
+        });
+      }
+    }
+  } catch (error) {
+  } finally {
+    setLock("post_favorite", -1);
+  }
+};
+
+const toggleFollow = async (item: PostItem) => {
+  if (!checkLock("user_follow")) {
+    return;
+  }
+  setLock("user_follow");
+  const userId = item.author.id;
+  try {
+    if (item.author.isFollowing) {
+      // 当前已关注，执行取消关注操作
+      const res = await unfollowUser(userId);
+      if (res != null && res.success) {
+        item.author.isFollowing = false;
+        uni.showToast({
+          title: $i18n_t("common.unfollowed"),
+          icon: "none",
+        });
+      }
+    } else {
+      // 当前未关注，执行关注操作
+      const res = await followUser(userId);
+      if (res != null && res.success) {
+        item.author.isFollowing = true;
+        uni.showToast({
+          title: $i18n_t("common.followed"),
+          icon: "none",
+        });
+      }
+    }
+  } catch (error) {
+  } finally {
+    setLock("user_follow", -1);
+  }
+};
+
+let lastFrameTime: number = 0;
+
+const togglePlayPause = () => {
+  const currentResource = props.item;
+  const state = currentState.value;
+  if (state == null) return;
+  const currentVideoContext = state.context!;
+  if (currentResource.contentType == "video" && currentVideoContext != null && !is2xSpeedMode.value) {
+    if (state.isPaused) {
+      currentVideoContext.play();
+    } else {
+      currentVideoContext.pause();
+    }
+    state.isPaused = !state.isPaused;
+  }
+};
+
+const _touchStart = (currentX: number) => {
+  isMoving = false;
+  isLongPressTriggered.value = false;
+  startX = currentX;
+  lastX = currentX;
+
+  const timerId = touchTimer.value;
+  if (timerId != null) {
+    clearTimeout(timerId);
+  }
+
+  const currentResource = props.item; // 获取当前资源
+  if (currentResource == null) return;
+  const videoContext = currentState.value?.context;
+  if (videoContext != null && currentResource.contentType == "video") {
+    touchTimer.value = setTimeout(() => {
+      isLongPressTriggered.value = true;
+      if (!isMoving) {
+        is2xSpeedMode.value = true;
+        videoContext.playbackRate(2.0);
+        if (currentState.value.isPaused) {
+          videoContext.play();
+          currentState.value.isPaused = false;
+        }
+      }
+    }, 300);
+  }
+};
+
+const _touchMove = (currentX: number, currentY: number) => {
+  const deltaY = Math.abs(currentY - startY);
+  const deltaX = Math.abs(currentX - startX);
+  if (deltaX > 3 || deltaY > 3) {
+    isMoving = true;
+    const timerId = touchTimer.value;
+    if (timerId != null) {
+      clearTimeout(timerId);
+      touchTimer.value = null;
+    }
+    isLongPressTriggered.value = true;
+    if (is2xSpeedMode.value) {
+      exit2xSpeedMode();
+    }
+  }
+};
+
+const _touchEnd = () => {
+  const timerId = touchTimer.value;
+  if (timerId != null) {
+    clearTimeout(timerId);
+    touchTimer.value = null;
+  }
+
+  exit2xSpeedMode();
+
+  if (!isLongPressTriggered.value) {
+    if (props.showComments) {
+      emit("closeComments");
+    } else {
+      togglePlayPause();
+    }
+  } else {
+  }
+};
+
+const onMediaClick = (item) => {
+  if (item?.contentType != "audio") {
+    return;
+  }
+
+  _touchEnd();
+};
+
+// #ifdef WEB
+const onMouseDown = (event: UniMouseEvent) => {
+  const currentResource = props.item;
+  if (currentResource == null) {
+    return;
+  }
+  startY = event.clientY;
+  _touchStart(startX);
+};
+
+const onMouseMove = (event: UniMouseEvent) => {
+  _touchMove(event.clientX, event.clientY);
+};
+
+const onMouseUp = (event: UniMouseEvent) => {
+  _touchEnd();
+};
+// #endif
+
+const handleTouchStart = (event: UniTouchEvent) => {
+  startY = event.touches[0].clientY;
+  startX = event.touches[0].clientX;
+  _touchStart(startX);
+};
+
+const handleTouchMove = (event: UniTouchEvent) => {
+  _touchMove(event.touches[0].clientX, event.touches[0].clientY);
+};
+
+const handleTouchEnd = () => {
+  _touchEnd();
+};
+
+const onDotClick = (index: number) => {
+  currentMediaSwiperIndex.value = index;
+};
+
+const handleMediaSwiperChange = (event: UniSwiperChangeEvent, item: PostItem) => {
+  currentMediaSwiperIndex.value = event.detail.current;
+  if (item.contentType == "video") {
+    // The src will be handled by the computed property based on active/preview
+    let curState = currentState.value;
+    videoStateMap.value.forEach((state, id) => {
+      if (id != curState.id) {
+        if (state.context != null) {
+          state.context.pause();
+        }
+      } else {
+        const context = state.context;
+        if (context) {
+          context.seek(0);
+          context.play();
+          state.isPaused = false;
+          exit2xSpeedMode();
+        }
+      }
+    });
+  }
+};
+
+const handleProgressChange = (newValue: number) => {
+  const currentResource = props.item;
+
+  if (currentResource.contentType == "video") {
+    // 检查 contentType
+    const state = currentState.value;
+    if (state.context != null) {
+      state.context.seek(newValue);
+      state.progress = newValue;
+    }
+  }
+};
+//拖动播放进度条事件
+const handleDragStart = () => {
+  const currentResource = props.item;
+  if (currentResource?.contentType == "video") {
+    const state = currentState.value;
+    if (state.context != null) {
+      wasPlayingBeforeDrag = !state.isPaused;
+      state.context.pause();
+      state.isPaused = true;
+    }
+  }
+};
+
+const handleDragEnd = () => {
+  const currentResource = props.item;
+  exit2xSpeedMode();
+  if (currentResource.contentType == "video") {
+    const state = currentState.value;
+    if (state.context != null) {
+      if (wasPlayingBeforeDrag) {
+        state.context.play();
+        state.isPaused = false;
+      }
+    } else {
+      state.isPaused = true;
+    }
+  }
+};
+
+const handleSideBarTap = (event: UniPointerEvent) => {
+  event.stopPropagation();
+};
+
+//来自video播放器的事件
+const handleTimeUpdate = (e: UniVideoTimeUpdateEvent) => {
+  const currentResource = props.item;
+  if (currentResource.contentType == "video") {
+    // 检查 contentType
+    const id = (e.currentTarget! as any).id;
+    const state = getOrCreateState(id);
+    state.progress = e.detail.currentTime;
+    state.duration = e.detail.duration;
+  }
+};
+
+const handleVideoEnded = (e: UniEvent) => {
+  const currentResource = props.item;
+  if (currentResource.contentType == "video") {
+    const id = (e.currentTarget! as any).id;
+    const state = getOrCreateState(id);
+    if (state.context != null) {
+      state.context.seek(0);
+      state.context.play();
+      state.isPaused = false;
+    }
+  }
+};
+
+const onLoadedMetaData = (e: Uni.UniVideoLoadedMetadataEvent) => {
+  if (!e) {
+    return;
+  }
+
+  const id = e.currentTarget.id;
+  const state = getOrCreateState(id);
+  state.progress = 0;
+  state.duration = e.detail.duration;
+};
+
+const navigateToAIGenerator = (generationID: string) => {
+  uni.navigateTo({ url: `/pages/publish/ai-generator?generationID=${generationID}` });
+};
+
+onMounted(() => {
+  nextTick(() => {
+    if (props.item.contentType == "video") {
+      const state = currentState.value;
+      if (state.context != null) {
+        if (props.active) {
+          state.context.play();
+          state.isPaused = false;
+        }
+      }
+    }
+    if (descriptionTextRef.value) {
+      const { scrollHeight, clientHeight } = descriptionTextRef.value;
+      showExpandButton.value = scrollHeight > clientHeight && !expandedDesc.value;
+    }
+    checkAiToolNameOverflow();
+  });
+});
+
+onUnmounted(() => {
+  if (props.item.contentType == "video") {
+    videoStateMap.value.forEach((state) => {
+      if (state.context != null) {
+        state.context.stop();
+      }
+    });
+  }
+});
+</script>
+
+<style scoped lang="scss">
+.resource-container {
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+
+.media-swiper,
+.media-swiper .swiper-item {
+  width: 100%;
+  height: 100%;
+}
+
+.background-video,
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 7;
+  // pointer-events: none;
+}
+
+.play-button-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9; /* Changed from 7 to 9 */
+  pointer-events: none;
+}
+
+.tap-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 8;
+  /* 确保在视频上方但在播放按钮下方 */
+  background-color: transparent;
+}
+
+/* --- Side Bar --- */
+.side-bar {
+  position: absolute;
+  bottom: 146px;
+  right: 0;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 13; /* Changed from 11 to 13 */
+}
+
+.side-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 24px;
+}
+
+.profile-pic {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+}
+
+.follow-icon-container {
+  position: relative;
+  margin-top: -9px;
+  width: 18px;
+  height: 18px;
+  background-color: #fff;
+  border-radius: 9px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.side-icon {
+  font-size: 22px;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.side-icon.liked,
+.side-icon.favorited {
+  color: $uni-text-color-light;
+}
+
+.side-text {
+  color: white;
+  font-size: 13px;
+  font-weight: 400;
+  margin-top: 5px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.one-click-remix-container {
+  display: inline-flex;
+  flex-direction: row;
+  /* Removed align-items: center to allow child to dictate its own vertical position */
+  width: 100%;
+  height: 64px; /* Increased height for better visibility */
+  background-color: transparent;
+  overflow: visible;
+  margin: 0 auto 12px;
+  // padding: 0 20px;
+  z-index: 12;
+  position: relative;
+  max-width: 800px;
+}
+
+.ai-tool-cover {
+  width: 64px;
+  height: 64px;
+  border-radius: 32px; /* Make it circular */
+  margin-right: 12px;
+  overflow: hidden; /* Ensure content respects border-radius */
+  margin-top: 0px; /* Re-added to position it 7px above the container's top edge */
+  display: block; /* Ensure block-level behavior */
+  flex-shrink: 0; /* Prevent shrinking in flex container */
+}
+
+.ai-tool-info-container {
+  height: 50px;
+  border-radius: 25px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #ff23b8; /* Updated background color as per feedback */
+  top: 7px;
+  left: 20px;
+  right: 20px;
+  padding: 0 20px 0 70px;
+  position: absolute;
+  justify-content: space-between;
+}
+
+.ai-tool-name-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.ai-tool-name {
+  color: white;
+  font-size: 12px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  display: inline-block;
+  animation: bp-post-view-marquee-scroll linear infinite alternate;
+  animation-play-state: paused;
+  will-change: transform;
+}
+
+@keyframes bp-post-view-marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--scroll-offset));
+  }
+}
+
+.one-click-remix-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+  margin-left: 12px;
+}
+
+/* --- Bottom Info --- */
+.bottom-container {
+  position: absolute;
+  bottom: var(--cb-bottom, 64px);
+  left: 0;
+  right: 0;
+  z-index: 11; /* Changed from 10 to 11 */
+  padding: 0 12px 12px 12px; /* Adjusted padding to include left/right */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 130px;
+}
+@media (min-width: 900px) {
+  .bottom-container {
+    bottom: 0;
+  }
+}
+
+.bottom-info {
+  padding-right: 85px; /* Adjusted padding to account for side-bar */
+  z-index: 10;
+  margin: 0 auto 12px; /* Reduced margin for tighter layout */
+  width: 100%;
+  max-width: 800px;
+  // padding: 0 20px;
+}
+
+.username {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 8px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+  display: block;
+}
+
+.description-wrapper {
+  position: relative;
+  padding: 4px;
+  // background: linear-gradient(to top, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+}
+
+.description {
+  font-size: 14px;
+  line-height: 20px;
+  color: #ffffff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: max-height 0.3s ease-in-out;
+  cursor: pointer;
+  max-height: 60px;
+}
+
+.description.expanded {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  max-height: none;
+  margin-bottom: 18px;
+}
+
+.expand-button {
+  position: absolute;
+  flex-direction: row;
+  display: flex;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 4px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 12px;
+}
+
+.expand-button-text {
+  color: white;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* 进度条容器样式 */
+.bottom-container > .progress-bar-container {
+  margin: 0 0 12px 0; /* Added margin for spacing */
+  z-index: 11;
+}
+
+.custom-dots {
+  flex-direction: row;
+  margin-bottom: 12px; /* Added margin for spacing */
+  display: flex;
+  z-index: 245;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.dot-wrapper {
+  flex-grow: 1; /* Added to make each wrapper take equal space */
+  display: flex; /* Added to enable centering of the dot */
+  justify-content: center; /* Added to center the dot horizontally */
+  align-items: center; /* Added to center the dot vertically */
+  padding: 0 5px;
+  /* Removed padding and margin to allow flex-grow to handle spacing */
+}
+
+.dot {
+  width: 100%;
+  height: 3px;
+  background-color: #fff;
+  border-radius: 5px;
+  opacity: 0.5;
+  flex-shrink: 0; /* Added to prevent the dot from shrinking */
+}
+
+.dot.active {
+  background-color: #ff23b8;
+  opacity: 1;
+}
+
+.gradient-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+  z-index: 10; /* Changed from 9 to 10 */
+}
+
+.speed-2x-overlay {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  border-radius: 20px;
+  z-index: 200;
+}
+
+.speed-2x-text {
+  color: white;
+  font-size: 14px;
+  margin-right: 14px;
+}
+
+.compare-item {
+  margin-top: 20px;
+  overflow: visible;
+}
+
+.compare-icon-container {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+
+.compare-icon {
+  font-size: 20px;
+  color: white;
+}
+
+.compare-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+  z-index: 12; /* Should be above the main media but below side-bar/bottom-container */
+}
+
+.compare-media {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.compare-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px; /* Draggable area width, increased for better touch target */
+  background-color: rgba(255, 255, 255, 0.5); /* Make it transparent so the icon is visible */
+  cursor: ew-resize; /* East-west resize cursor */
+  z-index: 13; /* Ensure handle is above the media and overlay */
+  display: flex;
+  overflow: visible;
+  justify-content: center;
+  align-items: center;
+}
+
+.compare-handle-icon-wrapper {
+  width: 50px; /* Adjust size as needed */
+  height: 50px; /* Adjust size as needed */
+  border-radius: 50%;
+  background-color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.close-compare-button {
+  position: absolute;
+  top: 82px; /* Moved down by 50px (32px + 50px) */
+  left: 20px;
+  z-index: 14; /* Ensure it's above other elements */
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.frosted-glass-effect {
+  backdrop-filter: blur(10px);
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.loading-spinner-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15; /* Ensure spinner is above frosted glass */
+}
+</style>

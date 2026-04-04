@@ -1,0 +1,177 @@
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+
+// 触发事件
+const emit = defineEmits<{
+  (e: 'close'): void;
+}>();
+
+const isShow = ref(false);
+const timer = ref<number | null>(null);
+
+// 当前显示的内容（通过 show() 方法设置）
+const currentPoints = ref<number | null>(null);
+const currentIsRetroactiveCheckin = ref<boolean | null>(null);
+const currentIsTotal = ref<boolean | null>(null);
+const currentContent = ref<string | null>(null);
+const currentExplain = ref<string | null>(null);
+
+
+// 清除定时器
+const clearTimer = () => {
+  if (timer.value != null) {
+    clearTimeout(timer.value);
+    timer.value = null;
+  }
+};
+
+// 关闭toast
+const handleClose = () => {
+  clearTimer();
+  emit('close');
+  isShow.value = false;
+};
+
+// 显示toast（固定3秒）
+const showToast = (options: {
+  points?: number;
+  isRetroactiveCheckin?: boolean;  // 是否补签
+  isTotal?: boolean;  // 是否共计
+  content?: string;
+  explain?: string;
+}) => {
+  clearTimer();
+  
+  // 更新显示内容
+  if (options.points != null) {
+    currentPoints.value = options.points;
+  } else {
+    currentPoints.value = null;
+  }
+  
+  if (options.isRetroactiveCheckin != null) {
+    currentIsRetroactiveCheckin.value = options.isRetroactiveCheckin;
+  } else {
+    currentIsRetroactiveCheckin.value = null;
+  }
+
+  if (options.isTotal != null) {
+    currentIsTotal.value = options.isTotal;
+  } else {
+    currentIsTotal.value = null;
+  }
+  
+  if (options.content != null) {
+    currentContent.value = options.content;
+  } else {
+    currentContent.value = null;
+  }
+  
+  if (options.explain != null) {
+    currentExplain.value = options.explain;
+  } else {
+    currentExplain.value = null;
+  }
+  
+  isShow.value = true;
+  
+  // 固定显示3秒
+  timer.value = setTimeout(() => {
+    handleClose();
+  }, 3000);
+};
+
+onUnmounted(() => {
+  clearTimer();
+});
+
+// 导出方法供父组件调用
+defineExpose({
+  show: showToast,
+  close: handleClose
+});
+
+</script>
+
+<template>
+  <view class="checkin-toast-container" v-if="isShow">
+    <view class="content">
+      <view class="background"></view>
+      <view class="content-wrapper">
+        <!-- content -->
+        <view class="content-text" v-if="currentContent == null">
+          <span>{{ currentIsRetroactiveCheckin ? $i18n_t("dailyCheckin.retroactiveSuccess") : $i18n_t("dailyCheckin.signInSuccess") }}</span>
+          <span v-if="currentIsTotal == true">{{ $i18n_t("dailyCheckin.total") }}</span>
+          <span style="color: #ffe016; padding: 0 5px">{{ currentPoints != null ? currentPoints : 0 }}</span>
+          <span>{{ $i18n_t("dailyCheckin.pointsUnit") }}</span>
+        </view>
+        <!-- 自定义内容 -->
+        <view class="content-text" v-else v-html="currentContent"></view>
+
+        <!-- 说明 -->
+        <text v-if="currentIsTotal || currentExplain != null" class="explain-text">{{ currentExplain != null ? currentExplain : $i18n_t("dailyCheckin.continuous7DaysReward") }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<style scoped>
+.checkin-toast-container {
+  position: absolute;
+  bottom: 200px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+
+.content {
+  min-width: 250px;
+  height: 64px;
+  position: relative;
+  border-radius: 17px 17px 17px 17px;
+  overflow: visible;
+}
+
+.background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ff23b8;
+  border-radius: 17px 17px 17px 17px;
+  opacity: 0.56;
+  filter: blur(18.66px);
+}
+
+.content-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.content-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+}
+
+.explain-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 5px;
+}
+</style>

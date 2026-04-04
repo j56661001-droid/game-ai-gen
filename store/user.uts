@@ -1,0 +1,43 @@
+import { Ref } from "vue";
+import { UserItem } from "../types/index";
+import { FRStorage } from "@/utils/storage.uts";
+
+export const tokenStorage = new FRStorage();
+
+export const user: Ref<UserItem | null> = ref<UserItem | null>(null);
+
+export const userInited = ref<boolean>(false);
+
+export const bindEmailModalClosedManually = ref<boolean>(false);
+
+export const creditsBalance = ref<number>(-999); // Global credit balance
+
+export const fingerprintFromUrl = ref<string | null>(null);
+
+export const isAigfLogoutLocked = ref<boolean>(false);
+
+export function login(userData: UserItem) {
+  user.value = userData;
+}
+
+export function logout() {
+  user.value = null;
+  bindEmailModalClosedManually.value = false;
+  tokenStorage.set("token", "");
+  uni.reLaunch({
+    url: "/pages/index/index?tabbar=home",
+    success: () => {
+      uni.$emit("login:show", {page: "login"});
+    },
+  });
+}
+
+export function isMyId(userId: string): boolean {
+  return user.value != null && user.value.id == userId;
+}
+
+export function setMyId(userId: string) {
+  if (user.value != null) {
+    user.value.id = userId;
+  }
+}

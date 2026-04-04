@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "baseUrl": "./",
+        "allowSyntheticDefaultImports": true,
+        "paths": {
+            "@/api/*": ["./api/*"],
+            "@/common/*": ["./common/*"],
+            "@/pages/*": ["./pages/*"],
+            "@/components/*": ["./components/*"],
+            "@/hooks/*": ["./hooks/*"],
+            "@/utils/*": ["./utils/*"],
+            "@/types/*": ["./types/*"],
+        }
+    }
+}

@@ -1,0 +1,41 @@
+<template>
+  <view class="fr-empty">
+    <image class="fr-empty-img" :src="emptyImg" />
+    <text class="fr-empty-text">{{ emptyText }}</text>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+const props = defineProps<{
+  title?: string;
+  image?: string.ImageURIString;
+}>();
+
+const emptyText = computed((): string => (props.title != null ? props.title : $i18n_t("common.noData")));
+const emptyImg = computed((): string.ImageURIString => (props.image != null ? getAbsoluteMediaUrl(props.image) : "/static/no_data.png"));
+</script>
+
+<style scoped>
+.fr-empty {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.fr-empty-img {
+  height: 60px;
+  width: 60px;
+}
+
+.fr-empty-text {
+  font-size: 12px;
+  line-height: 19px;
+  color: #fff;
+  font-weight: 700;
+
+  margin-top: 10px;
+}
+</style>

@@ -1,0 +1,961 @@
+<template>
+  <scroll-view class="page" direction="vertical" :style="{ paddingBottom: showAuthorWorksPopup ? '0px' : '64px' }" @scrolltolower="onScrollToLower">
+    <sticky-section>
+      <fr-page-navbar v-if="!showAuthorWorksPopup" disabled-back style="margin-bottom: 16px; margin-top: 32px">
+        <template #title>
+          <view class="navbar-title-wrapper">
+            <bp-user-avatar></bp-user-avatar>
+          </view>
+        </template>
+        <template #actions>
+          <view class="header-right">
+            <view class="icon-wrapper" @click="goToSearch">
+              <IconFont name="search" />
+            </view>
+            <view class="icon-wrapper">
+              <BpNotificationIcon />
+              <!-- <IconFont name="message" /> -->
+            </view>
+          </view>
+        </template>
+      </fr-page-navbar>
+
+      <view v-if="mostViewedUsers.length" :class="['most-viewed-section', showAuthorWorksPopup ? 'most-viewed-section-popup-active' : '']">
+        <view v-if="!showAuthorWorksPopup" class="most-viewed-header">
+          <text class="most-viewed-title">{{ mostViewedText }}</text>
+          <text class="view-more" @click="goToFollow">{{ viewMoreText }} &gt;</text>
+        </view>
+
+        <scroll-view
+          class="most-viewed-scroll"
+          direction="horizontal"
+          :show-scrollbar="false"
+          <!-- #ifdef WEB -->
+          @mousedown="handleMouseDown"
+          @mouseup="handleMouseUp"
+          @mousemove="handleMouseMove"
+          @mouseleave="handleMouseUp"
+          <!-- #endif -->
+        >
+          <view v-for="user in mostViewedUsers" :key="user.id" class="most-viewed-item" @click="showAuthorWorks(user.id)">
+            <view class="avatar-container">
+              <view :class="{ 'selected-avatar-wrapper': user.id == selectedAuthorId }">
+                <fr-avatar :size="60" :url="user.avatar" />
+              </view>
+              <image v-if="user.isVerified" class="verified-badge" src="/static/icons/v_small@2x.png" />
+            </view>
+            <text v-if="!showAuthorWorksPopup" class="most-viewed-name">{{ user.nickname }}</text>
+          </view>
+        </scroll-view>
+        <fr-empty v-if="mostViewedUsers.length == 0" :title="$i18n_t('compass.noFollowing')" />
+      </view>
+
+      <!-- 明星 -->
+      <view class="stars-wrapper" v-else>
+        <view v-if="starsData.length" class="section-header">
+          <text class="section-title">{{ starsTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('Stars')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <Stars v-if="starsData.length" :data="starsData" />
+      </view>
+
+      <fr-sticky-header v-if="!showAuthorWorksPopup">
+        <template #default="{ isTop }">
+          <view style="flex-direction: row; align-items: center; justify-content: space-between; padding: 16px 0; background-color: #000">
+            <fr-tabs style="margin-bottom: 0; width: auto" :tabs="tabs" :active-tab-key="activeTab" @switch="switchTab" />
+            <view v-show="isTop" class="header-right" style="padding-right: 16px">
+              <view class="icon-wrapper" @click="goToSearch">
+                <IconFont name="search" />
+              </view>
+              <view class="icon-wrapper">
+                <BpNotificationIcon />
+              </view>
+            </view>
+          </view>
+        </template>
+      </fr-sticky-header>
+
+      <view v-if="!showAuthorWorksPopup">
+        <!-- #ifdef WEB -->
+        <AdaptiveWebWaterfallN class="waterfall" v-show="listData.length > 0" :items="listData">
+          <template v-slot:default="{ item, onItemReady }">
+            <view class="waterfall-item">
+              <view class="image-container">
+                <bp-media-display
+                  class="item-image"
+                  :type="item.contentType"
+                  :src="item.mediaMetadata[0]?.fileURL"
+                  :cover="item.mediaMetadata[0]?.cover?.fileURL"
+                  :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                  @click="handleItemClick(item)"
+                  @load="() => onItemReady((item as PostItem).id)"
+                ></bp-media-display>
+
+                <view v-if="item.generationID != null" class="item-icon-top" @click="navigateToAIGenerator(item.generationID)">
+                  <IconFont name="create" :size="18" />
+                </view>
+                <!-- <view v-if="activeTab == 'video'" class="play-icon-wrapper">
+                  <IconFont name="play" :size="18" />
+                </view> -->
+              </view>
+              <view class="item-footer">
+                <view class="user-info" @click="uni.navigateTo({ url: '/pages/profile/personal?userId=' + (item as PostItem).author.id.toString() })">
+                  <fr-avatar class="avatar" :size="30" :url="(item as PostItem).author.avatar"></fr-avatar>
+                  <text class="username">{{ (item as PostItem).author.nickname }}</text>
+                </view>
+                <view class="comments" @click="handleItemClick(item as PostItem, true)">
+                  <IconFont name="comment_outline" :size="12" />
+                  <text class="comment-count">{{ (item as PostItem).commentsCount }}</text>
+                </view>
+              </view>
+              <text class="item-title" @click="handleItemClick(item as PostItem)">{{ (item as PostItem).content }}</text>
+              <view class="item-tags" v-if="item.tags && item.tags.length">
+                <text class="item-tags-item" v-for="(tag, index) in getVisibleTags(item, containerWidth)" :key="tag.id">
+                  {{ tag.displayName[i18n.global.locale.value] }}
+                </text>
+                <text class="item-tags-item" v-if="shouldShowEllipsis(item, containerWidth)"> ... </text>
+              </view>
+            </view>
+          </template>
+        </AdaptiveWebWaterfallN>
+        <!-- #endif -->
+        <!-- #ifndef WEB -->
+        <waterflow
+          class="waterfall"
+          :refresher-enabled="true"
+          :refresher-triggered="refresherTriggered"
+          @refresherpulling="onRefresherpulling"
+          @refresherrefresh="onRefresherrefresh"
+          @refresherrestore="onRefresherrestore"
+          @scrolltolower="onScrollToLower"
+          refresher-default-style="none"
+        >
+          <flow-item v-for="item in (listData as PostItem[])" :key="item.id" class="waterfall-item">
+            <view class="image-container">
+              <bp-media-display
+                class="item-image"
+                :type="item.contentType"
+                :src="item.mediaMetadata[0].fileURL"
+                :cover="item.mediaMetadata[0].cover?.fileURL"
+                :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                @click="handleItemClick(item)"
+              ></bp-media-display>
+              <view class="item-icon-top" @click="navigateToAIGenerator(item.generationID)">
+                <IconFont name="create" :size="18" />
+              </view>
+            </view>
+            <view class="item-footer">
+              <view class="user-info" @click="onGoToPersonal(item)">
+                <fr-avatar class="avatar" :size="23" :url="item.author?.avatar"></fr-avatar>
+                <text class="username">{{ item.author?.nickname }}</text>
+              </view>
+              <view class="comments" @click="handleItemClick(item, true)">
+                <IconFont name="comment_outline" :size="12" />
+                <text class="comment-count">{{ item.commentsCount }}</text>
+              </view>
+            </view>
+            <text class="item-title" @click="handleItemClick(item as PostItem)">{{ item.content }}</text>
+          </flow-item>
+        </waterflow>
+        <!-- #endif -->
+        <fr-empty v-if="(listData as PostItem[]).length == 0 && !isLoading" />
+        <view v-if="isLoading && !listData.length" style="align-items: center; justify-content: center; padding: 24px 0">
+          <fr-spin type="primary" />
+        </view>
+        <fr-more-status v-show="listData.length > 0" :loading="isLoading" :has-more="activeTab == 'video' ? videoHasMore : pictureHasMore"></fr-more-status>
+      </view>
+    </sticky-section>
+    <AuthorWorksWaterfall v-if="showAuthorWorksPopup" :authorId="selectedAuthorId" :authorName="selectedAuthorName" @close="closeAuthorWorksPopup" />
+    <fr-back-top></fr-back-top>
+  </scroll-view>
+</template>
+
+<script setup lang="uts">
+import { provide } from "vue";
+// sticky-section / sticky-header 设计用于 list-view，在 scroll-view 内使用时需手动 provide 其依赖的注入
+provide("__listViewIsVertical", true);
+provide("__listViewDefaultHeaderSize", 0);
+
+import { UserItem, PostItem } from "@/types"
+import { getFollowing, getPlazaList } from '@/api/social.uts';
+import { user, userInited } from '@/store/user.uts';
+import { setVideoResourceList, setVideoInitialIndex, setTabBarVisibility } from '@/store';
+import { getCoverUrl } from "@/utils/coverUtils.uts";
+import i18n, { $i18n_t } from "@/locale";
+import { type Tab } from "@/components/widgets/type.uts"
+
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import AdaptiveWebWaterfallN from "@/components/WebWaterfall/AdaptiveWebWaterfallN.uvue"
+import { BpNotificationIcon } from "@/components/panels";
+import FrAvatar from '@/components/widgets/fr-avatar.uvue';
+import FrEmpty from '@/components/widgets/fr-empty.uvue';
+import FrTabs from '@/components/widgets/fr-tabs.uvue';
+import FrPageNavbar from '@/components/widgets/fr-page-navbar.uvue';
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import FrBackTop from "@/components/widgets/fr-back-top.uvue";
+import FrStickyHeader from "@/components/widgets/fr-sticky-header.uvue";
+import FrSpin from '@/components/widgets/fr-spin.uvue';
+import BpUserAvatar from "@/components/panels/bp-user-avatar.uvue";
+import { getStars } from "@/api/home.uts";
+import Stars from "@/components/home/Stars.uvue";
+
+const mostViewedText = computed(() => $i18n_t("common.MostViewed"))
+const viewMoreText = computed(() => $i18n_t("common.ViewMore"))
+const starsTitleText = computed(() => $i18n_t("home.starsTitle"));
+
+const activeTab = ref("video");
+const refresherTriggered = ref(false);
+const state = ref(0);
+const isLoading = ref(false); // 添加loading状态
+
+const starsData = ref<CategoryListWithChildren[]>([]);
+
+const mostViewedUsers = ref<UserItem[]>([]);
+
+const picturePostItems = ref<PostItem[]>([]);
+const videoPostItems = ref<PostItem[]>([]);
+const audioPostItems = ref<PostItem[]>([]);
+
+const picturePage = ref(1);
+const videoPage = ref(1);
+const audioPage = ref(1);
+const pictureHasMore = ref(true);
+const videoHasMore = ref(true);
+const audioHasMore = ref(true);
+
+const onGoToPersonal = (item: PostItem) => {
+	uni.navigateTo({ url: '/pages/profile/personal?userId=' + item.id.toString() })
+}
+
+const listData = computed<PostItem[]>(() => {
+  switch(activeTab.value){
+    case "video":
+      return videoPostItems.value;
+    case "audio":
+      return audioPostItems.value;
+    case "image":
+      return picturePostItems.value;
+  }
+
+  return  [];
+});
+
+const loadPlazaData = async (refresh: boolean) => {
+  if (isLoading.value) {
+    return; // 如果正在加载，则不重复请求
+  }
+
+  isLoading.value = true; // 设置加载状态为true
+
+  let page = 1;
+  let hasMore = false;
+  switch(activeTab.value){
+    case "video":
+      page = videoPage.value;
+      hasMore = videoHasMore.value;
+      break;
+    case "audio":
+      page = audioPage.value;
+      hasMore = audioHasMore.value;
+      break;
+    case "image":
+      page = picturePage.value;
+      hasMore = pictureHasMore.value;
+      break;
+  }
+
+  if (refresh) {
+    page = 1;
+  } else if (!hasMore) {
+    isLoading.value = false; // 解锁
+    return;
+  }
+  let type: "video" | "image" | "audio" = activeTab.value.toLowerCase() || "video";
+  const res = await getPlazaList(type, page);
+  if (res != null && res.success) {
+    const posts = res.data;
+    if(posts == null){
+      isLoading.value = false; // 解锁
+      return;
+    }
+    if (activeTab.value == "image") {
+      picturePostItems.value = refresh ? posts : [...picturePostItems.value, ...posts];
+      pictureHasMore.value = res.meta.pagination.has_next;
+      if (res.meta.pagination.has_next) picturePage.value++;
+    } else if(activeTab.value == "video") {
+      videoPostItems.value = refresh ? posts : [...videoPostItems.value, ...posts];
+      videoHasMore.value = res.meta.pagination.has_next;
+      if (res.meta.pagination.has_next) videoPage.value++;
+    }else if(activeTab.value == "audio"){
+      audioPostItems.value = refresh ? posts : [...audioPostItems.value, ...posts];
+      audioHasMore.value = res.meta.pagination.has_next;
+      if (res.meta.pagination.has_next) audioPage.value++;
+    }
+  }
+
+  if (refresh) {
+    refresherTriggered.value = false;
+    state.value = 3;
+    setTimeout(() => {
+      state.value = 0;
+    }, 500);
+  }
+  isLoading.value = false; // 请求完成后解锁
+};
+
+const tabs = computed<Tab[]>(() => {
+  i18n.global.locale.value
+  return [
+    {
+      title: $i18n_t("common.videoTab"),
+      key: "video",
+      icon: null,
+    } as Tab,
+    {
+      title: $i18n_t("common.pictureTab"),
+      key: "image",
+      icon: null,
+    } as Tab,
+    {
+      title: $i18n_t("common.audio"),
+      key: "audio",
+      icon: null,
+    } as Tab,
+  ];
+});
+
+const switchTab = (tab: string | number) => {
+  const key = tab as string;
+  if (activeTab.value == key) return;
+  activeTab.value = key;
+  if ((key == 'image' && picturePostItems.value.length == 0) || (key == 'video' && videoPostItems.value.length == 0)  || (key == 'audio' && audioPostItems.value.length == 0)) {
+    loadPlazaData(true);
+  }
+};
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+const onRefresherpulling = (e: UniRefresherEvent) => {
+  if (e.detail.dy < 0) return;
+  state.value = e.detail.dy > 80 ? 1 : 0;
+};
+
+const loadFollowing = async () => {
+  if (user.value != null) {
+    const res = await getFollowing(user.value.id);
+    if (res != null && res.success && res.data) {
+      mostViewedUsers.value = res.data;
+    }
+  }
+};
+
+watch(() => user.value, ()=> {
+  loadFollowing()
+})
+
+const onRefresherrefresh = () => {
+  refresherTriggered.value = true;
+  state.value = 2;
+  loadPlazaData(true);
+};
+
+const onRefresherrestore = () => {
+  state.value = 0;
+};
+
+const showAuthorWorksPopup = ref(false);
+const selectedAuthorId = ref<string>("");
+
+const onScrollToLower = () => {
+  if(!showAuthorWorksPopup.value){
+    loadPlazaData(false);
+  }
+};
+
+const goToFollow = () => {
+  uni.navigateTo({ url: "/pages/follow?type=following" });
+};
+
+const handleItemClick = (item: PostItem, openComments: boolean = false) => {
+  setVideoResourceList([item]);
+  setVideoInitialIndex(0);
+  uni.navigateTo({
+    url: `/pages/video?source=plaza&tab=${activeTab.value}`,
+    complete: () => {
+      if (openComments) {
+        uni.$emit('openVideoComments');
+      }
+    }
+  });
+};
+
+const navigateToAIGenerator = (generationID: string) => {
+  uni.navigateTo({ url: `/pages/publish/ai-generator?generationID=${generationID}` });
+};
+
+const selectedAuthorName = computed<string>(() =>{
+  const selectedUser = mostViewedUsers.value.find(user => user.id == selectedAuthorId.value);
+  if(selectedUser != null){
+    return selectedUser.nickname;
+  }
+  return "";
+  }
+);
+
+const showAuthorWorks = (authorId: string) => {
+  selectedAuthorId.value = authorId;
+  if(!showAuthorWorksPopup.value){
+    showAuthorWorksPopup.value = true;
+    setTabBarVisibility(false);
+  }
+};
+
+const closeAuthorWorksPopup = () => {
+  if(showAuthorWorksPopup.value){
+    showAuthorWorksPopup.value = false;
+    selectedAuthorId.value = '';
+    setTabBarVisibility(true);
+  }
+};
+
+// 添加响应式变量存储容器宽度
+const containerWidth = ref(0);
+
+// 获取可见标签的方法
+const getVisibleTags = (item: PostItem, containerWidth: number) => {
+  if (!item.tags || item.tags.length === 0) return [];
+  // 如果容器宽度未知，默认显示前3个标签
+  if (containerWidth <= 0) {
+    return item.tags.slice(0, 3);
+  }
+  // 估算每个标签的宽度（可根据实际样式调整）
+  const estimateTagWidth = (tagName: string): number => {
+    // 使用更精确的宽度估算，考虑实际字体和样式
+    const canvas = uni.createCanvasContext('tempCanvas');
+    // 设置字体大小和样式
+    canvas.font = '12px Open Sans';
+    // 获取文本宽度
+    const textWidth = canvas.measureText(tagName).width;
+    // 加上padding和边距
+    return textWidth + 12 + 6; // padding: 6px * 2 + 边距
+  };
+  let totalWidth = 0;
+  const visibleTags = [];
+  for (let i = 0; i < item.tags.length; i++) {
+    const tag = item.tags[i];
+    const tagWidth = estimateTagWidth(tag.displayName[i18n.global.locale.value]);
+    // 考虑标签之间的间距
+    const estimatedTotalWidth = totalWidth + tagWidth + (i > 0 ? 6 : 0); // 6是gap值
+    // 预留一部分空间给省略号
+    const ellipsisSpace = 30; // 估计省略号宽度
+    if (estimatedTotalWidth + ellipsisSpace <= containerWidth) {
+      visibleTags.push(tag);
+      totalWidth = estimatedTotalWidth;
+    } else {
+      break;
+    }
+  }
+  return visibleTags;
+};
+
+// 判断是否需要显示省略号
+const shouldShowEllipsis = (item: PostItem, containerWidth: number) => {
+  if (!item.tags || item.tags.length === 0) return false;
+  // 如果容器宽度未知，默认显示省略号
+  if (containerWidth <= 0) {
+    return item.tags.length > 3;
+  }
+  const visibleTags = getVisibleTags(item, containerWidth);
+  return visibleTags.length < item.tags.length;
+};
+
+// 测量容器宽度的方法
+const measureContainerWidth = (callback?: () => void) => {
+  // 使用 uni.createSelectorQuery 来获取 DOM 元素的实际宽度
+  nextTick(() => {
+    uni.createSelectorQuery()
+      .select('.item-tags')
+      .boundingClientRect((rect) => {
+        if (rect) {
+          containerWidth.value = rect.width;
+          // 宽度更新后触发重新渲染
+          if (callback) callback();
+        } else {
+          // 如果无法获取宽度，使用默认值
+          containerWidth.value = 200; // 默认200px宽度
+        }
+      })
+      .exec();
+  });
+};
+
+// 在组件挂载后测量容器宽度
+onMounted(() => {
+  // 延迟执行以确保DOM渲染完成
+  setTimeout(() => {
+    measureContainerWidth();
+  }, 100);
+});
+
+// 监听窗口大小变化重新测量
+onResize(() => {
+  setTimeout(() => {
+    measureContainerWidth();
+  }, 100);
+});
+
+onPageShow(() => {
+  loadFollowing();
+})
+
+onMounted(() => {
+  loadPlazaData(true);
+  uni.$on('followStateChanged', () => {
+    loadFollowing();
+  });
+});
+
+onUnmounted(() => {
+  uni.$off('followStateChanged');
+});
+
+<!-- #ifdef WEB -->
+// WEB平台鼠标拖动滚动处理
+const isDragging = ref<boolean>(false)
+const startX = ref<number>(0)
+const scrollLeft = ref<number>(0)
+let scrollElement: HTMLElement | null = null
+
+function handleMouseDown(e: MouseEvent) {
+	isDragging.value = true
+	startX.value = e.pageX
+	scrollElement = e.currentTarget as HTMLElement
+	if (scrollElement != null) {
+		scrollElement.style.cursor = 'grabbing'
+		scrollElement.style.userSelect = 'none'
+	}
+}
+
+function handleMouseUp() {
+	isDragging.value = false
+	if (scrollElement) {
+		scrollElement.style.cursor = 'grab'
+		scrollElement.style.removeProperty('user-select')
+	}
+}
+
+function handleMouseMove(e: MouseEvent) {
+	if (!isDragging.value || scrollElement == null) return
+	e.preventDefault()
+	const x = e.pageX
+	const walk = (x - startX.value) * 2 // 拖动速度系数
+	scrollElement.scrollLeft = scrollLeft.value - walk
+}
+<!-- #endif -->
+
+const goToSection = (componentName: string) => {
+  if (componentName == "Zone") {
+    uni.navigateTo({ url: "/pages/zones" });
+  } else if (componentName == "Stars") {
+    uni.navigateTo({ url: "/pages/stars" });
+  } else if (componentName == "Topics") {
+    uni.navigateTo({ url: "/pages/topics" });
+  } else if (componentName == "AITools") {
+    uni.redirectTo({ url: "/pages/index/index?tabbar=publish" });
+  } else if (componentName == "ShortVideos") {
+    setVideoResourceList(shortVideosData.value);
+    setVideoInitialIndex(0);
+    // uni.redirectTo({ url: "/pages/index/index?tabbar=video&source=shortVideos" });
+    uni.navigateTo({ url: "/pages/video?source=shortVideos" });
+  }
+};
+
+const loadStars = async () => {
+  const starsRes = await getStars();
+  if (starsRes != null && starsRes.success && starsRes.data != null) {
+    starsData.value = starsRes.data;
+  }
+};
+
+
+onMounted(() => {
+  watch(
+    userInited,
+    async (newValue) => {
+      try {
+        await loadStars();
+      } catch (e) {
+        console.error("initializeHomeData failed", e);
+      }
+    },
+    { immediate: true },
+  );
+  uni.$on("onFollowStatusChange", (data: { userId: string; isFollowing: boolean }) => {
+    const { userId, isFollowing } = data;
+    starsData.value.forEach((categoryItem) => {
+      const userIndex = categoryItem.users.findIndex((user) => user.id == userId);
+      if (userIndex != -1) {
+        if (isFollowing) {
+          categoryItem.users[userIndex].followersCount += 1;
+        } else {
+          categoryItem.users[userIndex].followersCount -= 1;
+        }
+        categoryItem.users[userIndex].isFollowing = isFollowing;
+      }
+    });
+  });
+});
+</script>
+
+<style scoped>
+.page {
+  flex: 1;
+  flex-direction: column;
+  padding-bottom: 64px;
+}
+
+.header-left {
+  align-items: flex-start;
+}
+
+.navbar-title-wrapper {
+  flex-direction: row;
+  align-items: center;
+}
+
+.header-right {
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+}
+
+.icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #272727;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: 12px;
+}
+
+.icon-wrapper uni-view {
+  overflow: unset;
+}
+
+.most-viewed-section {
+  padding: 0 16px 16px;
+}
+
+.most-viewed-section-popup-active {
+  margin: 32px 0 0;
+  padding: 0 16px;
+}
+
+.most-viewed-header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.most-viewed-title {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.view-more {
+  color: #ff23b8;
+  font-size: 12px;
+}
+
+.avatar-container {
+  height: 69px;
+  padding: 2px;
+}
+
+.avatar {
+  margin-right: 8px;
+}
+
+.selected-avatar-wrapper {
+  border-radius: 50%; /* Assuming avatar is circular */
+  outline: 2px solid #ff23b8;
+}
+
+.most-viewed-scroll {
+  flex-direction: row;
+}
+
+.most-viewed-item {
+  flex-direction: column;
+  align-items: center;
+  margin-right: 20px;
+}
+
+.verified-badge {
+  position: absolute;
+  bottom: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 18px;
+}
+
+.most-viewed-name {
+  color: #ffffff;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.tabs {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px; /* 左右内边距 */
+}
+
+.tab-list {
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+.tab-item-wrapper {
+  flex-direction: column;
+  align-items: center;
+  margin-right: 20px;
+  position: relative;
+  height: 26px;
+  justify-content: flex-end;
+}
+
+.tab-item-text {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.tab-item-text.active {
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.active-tab-indicator {
+  width: 36px;
+  height: 8px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.filter {
+  flex-direction: row;
+  align-items: center;
+}
+
+.filter-text {
+  color: #ffffff;
+  font-size: 14px;
+  margin-right: 5px;
+}
+
+.waterfall {
+  flex: 1;
+  padding: 0 16px;
+}
+
+.waterfall-item {
+  margin-bottom: 10px; /* 增加item间距 */
+  position: relative;
+  overflow: hidden; /* 防止内容溢出圆角 */
+}
+
+.image-container {
+  position: relative;
+  border-radius: 10px;
+}
+
+.item-image {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.hot-badge {
+  position: absolute;
+  top: 20px;
+  left: 5px;
+  background-color: #ffdd00;
+  border-radius: 0px 12px 12px 0;
+  padding: 6px 16px;
+}
+
+.hot-text {
+  color: #000000;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.item-icon-top {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 17px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.play-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.item-footer {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.user-info {
+  flex-direction: row;
+  align-items: center;
+}
+
+.username {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.comments {
+  flex-direction: row;
+  align-items: center;
+}
+
+.comment-count {
+  color: #aaaaaa;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.item-title {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  margin-top: 5px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.item-tags {
+  display: flex;
+  flex-direction: row;
+  color: white;
+  gap: 6px;
+  margin-top: 12px;
+  .item-tags-item {
+    padding: 3px 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px 5px 5px 5px;
+    font-family:
+      Open Sans,
+      Open Sans;
+    font-weight: 400;
+    font-size: 12px;
+    color: #ffffff;
+    line-height: 17px;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+
+    flex: 0 0 auto; /* 不伸缩，根据内容自适应 */
+    max-width: 72px; /* 可根据需要调整 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+}
+
+.tags {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+
+.tag {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+.refresh-box {
+  height: 80px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tip-text {
+  color: #aaaaaa;
+  font-size: 14px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  margin-top: 24px;
+  flex-direction: row;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  font-family: "Baloo Thambi 2-ExtraBold";
+}
+
+.view-more-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.view-more {
+  font-size: 14px;
+  color: #ff23b8;
+  margin-right: 6px;
+}
+
+.stars-wrapper {
+  padding: 0 16px 16px;
+}
+</style>

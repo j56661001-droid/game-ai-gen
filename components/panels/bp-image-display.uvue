@@ -1,0 +1,151 @@
+<template>
+  <view class="bp-image-display" :style="imageStyle" @click="onClick">
+    <image class="bp-image" :src="displaySrc" :mode="props.mode" @load="onLoad" @error="onError" />
+    <view v-if="isLoading" class="bp-image-loading-bg">
+      <view class="bp-image-loading">
+        <fr-spin />
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import FrSpin from "../widgets/fr-spin.uvue";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+import { decryptBncToBlobUrl } from "@/utils/decrypt.uts";
+import { onBeforeUnmount } from "vue";
+
+type Props = {
+  src: string.ImageURIString;
+  mode?: string;
+  autoresize?: boolean;
+  encryptionKey?: string;
+};
+
+const props = withDefaults(defineProps<Props>(), { autoresize: true, mode: "aspectFill" });
+const emit = defineEmits<{
+  (e: "load", event: UniImageLoadEvent): void;
+  (e: "error", event: UniImageErrorEvent): void;
+  (e: "click", v: UniPointerEvent): void;
+}>();
+
+const imageStyle = ref<string>("padding-bottom: 100%");
+const isLoading = ref<boolean>(false);
+const displaySrc = ref<string>("");
+const objectUrl = ref<string | null>(null);
+
+const cleanupObjectUrl = () => {
+  if (objectUrl.value != null) {
+    URL.revokeObjectURL(objectUrl.value);
+    objectUrl.value = null;
+  }
+};
+
+watch(
+  () => [props.src, props.encryptionKey],
+  ([src, encryptionKey]) => {
+    cleanupObjectUrl();
+
+    if (src == null || src == "") {
+      displaySrc.value = "";
+      return;
+    }
+
+    isLoading.value = true;
+    if (!props.autoresize) {
+      imageStyle.value = `height: 100%`;
+    }
+
+    if (src.endsWith(".bnc") && encryptionKey != null && encryptionKey != "") {
+      decryptBncToBlobUrl(src, encryptionKey)
+        .then((blobUrl) => {
+          displaySrc.value = blobUrl;
+          objectUrl.value = blobUrl;
+        })
+        .catch((err) => {
+          console.error("Failed to decrypt image", err);
+          displaySrc.value = ""; // or a placeholder for error
+          isLoading.value = false;
+          const errorEvent: UniImageErrorEvent = {
+            type: "error",
+            timeStamp: Date.now(),
+            detail: {
+              errMsg: (err as Error).message,
+            },
+          };
+          emit("error", errorEvent);
+        });
+    } else {
+      displaySrc.value = getAbsoluteMediaUrl(src);
+    }
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  cleanupObjectUrl();
+});
+
+const onLoad = (e: UniImageLoadEvent) => {
+  if (props.autoresize) {
+    const rate = (e.detail.height / e.detail.width) * 100;
+    imageStyle.value = `padding-bottom: ${rate}%`;
+  } else {
+    imageStyle.value = `height: 100%`;
+  }
+
+  isLoading.value = false;
+
+  emit("load", e);
+};
+
+const onError = (e: UniImageErrorEvent) => {
+  isLoading.value = false;
+
+  emit("error", e);
+};
+
+const onClick = (e: UniPointerEvent) => {
+  emit("click", e);
+};
+</script>
+
+<style scoped>
+.bp-image-display {
+  position: relative;
+  width: 100%;
+}
+
+.bp-image {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bp-image-loading-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-color: #1a1a1a;
+  z-index: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bp-image-loading {
+  background-color: rgba(0, 0, 0, 0.5);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+</style>

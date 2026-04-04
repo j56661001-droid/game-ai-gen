@@ -1,0 +1,313 @@
+<template>
+  <view class="container">
+    <!-- 顶部导航栏 -->
+    <view class="header">
+      <view class="left-section">
+        <text class="header-title">{{ webviewTitle }}</text>
+      </view>
+      <view class="right-section">
+        <view v-if="isAigf" class="btn-item topup-btn-item" @click="_goTopUp">
+          <image src="/static/icons/flash@2x.png" class="mark-icon" />
+          <text class="topup-text">{{ $i18n_t("account.topUp") }}</text>
+        </view>
+        <view class="btn-item close-btn-item">
+          <IconFont name="close" :size="14" color="#ffffff" @click="_goBack()" :btnSize="30"></IconFont>
+        </view>
+      </view>
+    </view>
+    <view class="webview-content">
+      <web-view :src="webviewUrl" @message="handleWebviewMessage"></web-view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, computed, onUnmounted } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+import message from "@/utils/message";
+import { logoutAigf, loginAigf } from "@/api/index.uts";
+import { appStore, setWebviewConfig } from "@/store/index.uts";
+import { isAigfLogoutLocked } from "@/store/user.uts";
+import { openExternalTopupPage } from "@/utils/navigator.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+
+const webviewTitle = ref<string>("");
+
+const isAigf = computed((): boolean => {
+  return appStore.value.webviewConfig?.isAigf;
+});
+
+const _goTopUp = async () => {
+  if (appStore.value.webviewConfig.isAigf) {
+    if (isAigfLogoutLocked.value) {
+      uni.showToast({
+        title: $i18n_t("home.aigfLogoutInProgress"),
+        icon: "none",
+      });
+      return;
+    }
+    isAigfLogoutLocked.value = true;
+    uni.setStorageSync("aigf_topup_redirect", JSON.stringify({ type: "aigf_topup", timestamp: Date.now() }));
+    uni.setStorageSync("aigf_last_webview_url", appStore.value.webviewConfig.url); // Save the current AIGF webview URL
+    try {
+      const res = await logoutAigf();
+      if (res.success) {
+        execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "TopUp" } as AnyObject);
+      }
+    } finally {
+      isAigfLogoutLocked.value = false;
+    }
+  }
+  openExternalTopupPage('aigf_topup');
+};
+
+const _goBack = () => {
+  uni.showModal({
+    title: $i18n_t("webview.confirm"),
+    content: $i18n_t("webview.confirmLeavePage"),
+    success: (res) => {
+      if (res.confirm) {
+        uni.reLaunch({ url: "/pages/index/index" });
+      }
+    },
+  });
+};
+
+const webviewUrl = ref<string>("");
+
+onLoad(async () => {
+  const config = appStore.value.webviewConfig;
+  if (config != null && config.url) {
+    // Check if config and config.url exist
+    webviewTitle.value = config.title || ""; // Set the webviewTitle
+    const url = config.url;
+    // 直接使用 config.isAigf
+    if (config.isAigf === true) {
+      try {
+        const res = await loginAigf();
+        if (res != null && res.success) {
+          execGTagEvent("aigf_enter", { pts: res.data.balance.toString() } as AnyObject);
+          webviewUrl.value = url;
+        } else {
+          uni.showToast({
+            title: $i18n_t("webview.loginAigfFailed"),
+            icon: "none",
+          });
+          uni.reLaunch({ url: "/pages/index/index" });
+        }
+      } catch (error) {
+        uni.showToast({
+          title: $i18n_t("webview.loginAigfFailed"),
+          icon: "none",
+        });
+        uni.reLaunch({ url: "/pages/index/index" }); // Re-launch to home on login failure
+      }
+    } else {
+      webviewUrl.value = url;
+    }
+  } else {
+    uni.showToast({
+      title: $i18n_t("webview.invalidLinkGoHome"),
+      icon: "none",
+    });
+    uni.reLaunch({ url: "/pages/index/index" });
+  }
+});
+
+onUnmounted(async () => {
+  // 直接使用 appStore.value.webviewConfig.isAigf
+  if (appStore.value.webviewConfig.isAigf) {
+    isAigfLogoutLocked.value = true;
+    try {
+      const res = await logoutAigf();
+      if (res.success) {
+        execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "close" } as AnyObject);
+      }
+    } finally {
+      isAigfLogoutLocked.value = false;
+    }
+  }
+  setWebviewConfig({ url: "", isAigf: false, title: "" });
+});
+
+function handleWebviewMessage(event: any) {
+  const data = event.detail.data[0]; // Uni-app wraps data in an array
+  if (data && data.type === "copy" && data.text) {
+    // #ifdef H5
+    // For H5, try navigator.clipboard first, then fallback to uni.setClipboardData
+    if (navigator.clipboard) {
+      navigator.clipboard
+        .writeText(data.text)
+        .then(() => {
+          message.showToast &&
+            message.showToast({
+              title: $i18n_t("common.copySuccess"),
+              icon: "none",
+            });
+        })
+        .catch((e) => {
+          console.error("Clipboard API copy failed:", e);
+          uni.setClipboardData({
+            data: data.text,
+            success: () => {
+              message.showToast &&
+                message.showToast({
+                  title: $i18n_t("common.copySuccess"),
+                  icon: "none",
+                });
+            },
+            fail: (err) => {
+              console.error("uni.setClipboardData failed:", err);
+              message.showToast &&
+                message.showToast({
+                  title: $i18n_t("common.copyFailed"),
+                  icon: "none",
+                });
+            },
+          });
+        });
+    } else {
+      // Fallback if navigator.clipboard is not available at all in H5
+      uni.setClipboardData({
+        data: data.text,
+        success: () => {
+          message.showToast &&
+            message.showToast({
+              title: $i18n_t("common.copySuccess"),
+              icon: "none",
+            });
+        },
+        fail: (err) => {
+          console.error("uni.setClipboardData failed:", err);
+          message.showToast &&
+            message.showToast({
+              title: $i18n_t("common.copyFailed"),
+              icon: "none",
+            });
+        },
+      });
+    }
+    // #endif
+
+    // #ifndef H5
+    // For non-H5 platforms, directly use uni.setClipboardData
+    uni.setClipboardData({
+      data: data.text,
+      success: () => {
+        message.showToast({
+          title: $i18n_t("common.copySuccess"),
+          icon: "none",
+        });
+      },
+      fail: (err) => {
+        console.error("uni.setClipboardData failed:", err);
+        message.showToast({
+          title: $i18n_t("common.copyFailed"),
+          icon: "none",
+        });
+      },
+    });
+    // #endif
+  }
+}
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  position: reactive;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between; /* Distribute items with space between */
+  align-items: center; /* Vertically align items */
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50px;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.left-section {
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.right-section {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  flex-direction: row;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  /* Ensure text doesn't overflow */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 10px; /* Space between title and close button if needed */
+}
+
+.btn-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topup-btn-item {
+  flex-direction: row;
+  background-color: rgba(255, 255, 255, 0.1); /* White semi-transparent */
+  border: 1px solid #ff23b8;
+  border-radius: 15px; /* Rounded corners */
+  padding: 0px 16px; /* Adjust padding to fit text */
+  height: 30px; /* Fixed height */
+  margin-right: 10px; /* Space between topup and close buttons */
+}
+
+.mark-icon {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}
+
+.topup-text {
+  font-size: 14px;
+  color: #ff23b8;
+  white-space: nowrap;
+}
+
+.close-btn-item {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+.webview-content {
+  flex: 1;
+  overflow: auto;
+}
+</style>

@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title id="page-title">您的付款地址</title>
+    <!-- QR Code Generation Library -->
+    <script src="/static/qrcode.min.js"></script>
+    <!-- Google tag (gtag.js) -->
+    <script>
+      const DEFAULT_GID = "G-938FRNGZ27";
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+
+      async function initGoogleAnalytics() {
+        let gid = DEFAULT_GID;
+        try {
+          // Fetch G-ID from backend API
+          // Extract subdomain as code
+          const hostname = window.location.hostname;
+          const domainParts = hostname.split(".");
+          const code = domainParts.length > 2 ? domainParts[0] : "";
+          const payment = JSON.parse(window.localStorage.getItem("fr.baseUrl")) || window.location.origin + "/api/";
+          const response = await fetch(payment + `settings/public/gaid${code ? "." + code : ""}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              gid = data.data.value;
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to fetch Google Analytics ID, using default:", error);
+          // 使用默认 GID，不抛出错误
+        }
+
+        // Load Google Analytics script with the determined GID
+        const script = document.createElement("script");
+        script.async = true;
+        script.src = `https://www.googletagmanager.com/gtag/js?id=${gid}`;
+        document.head.appendChild(script);
+
+        // Execute Google Analytics initialization after script loads successfully
+        script.onload = function () {
+          window.dataLayer = window.dataLayer || [];
+          gtag("js", new Date());
+          gtag("config", gid);
+        };
+      }
+      // Initialize Google Analytics
+      initGoogleAnalytics();
+    </script>
+    <style>
+      :root {
+        --text-primary: #ffffff;
+        --text-secondary: #a89fcd; /* Muted purple/grey for instructions */
+        --text-amount: #ff00c7; /* Vibrant pink */
+        --text-points: #ffc700; /* Yellow/Gold */
+        --bg-main: #0a031a;
+        --bg-gradient-start: #1c113a;
+        --status-badge-bg: #f97316; /* Orange */
+        --address-bar-bg: rgba(255, 255, 255, 0.2);
+        --warning-bar-bg: rgba(0, 0, 0, 0.25);
+        --divider-color: rgba(255, 255, 255, 0.1);
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        background-color: var(--bg-main);
+        background-image: url("icons/pay/transfer_bg.webp");
+        background-size: cover;
+        background-position: center;
+        margin: 0;
+        /* padding: 50px 0; */ /* Removed to allow full height usage */
+        display: flex;
+        flex-direction: column; /* Vertical distribution */
+        justify-content: center; /* Center container vertically */
+        align-items: center; /* Center container horizontally */
+        min-height: 100vh;
+        overflow: auto; /* Hide scrollbar */
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        position: relative;
+      }
+
+      .container {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 750px; /* Max width 750px */
+        height: 100%; /* Max height 100% */
+        text-align: center;
+        position: relative;
+        padding: 0 24px;
+        display: flex; /* Added for vertical distribution of children */
+        flex-direction: column; /* Added for vertical distribution of children */
+        flex-grow: 1; /* Allow container to grow and fill available space */
+        justify-content: space-between; /* Distribute header and payment-state */
+      }
+
+      /* --- Back Button --- */
+      .back-button {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+        transition: opacity 0.2s ease;
+        z-index: 10;
+        margin-right: 16px;
+      }
+
+      .back-button:hover {
+        opacity: 1;
+      }
+
+      .back-button svg {
+        width: 20px;
+        height: 20px;
+        fill: var(--text-primary);
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        margin: 14px;
+      }
+
+      .main-title {
+        font-size: 18px;
+        font-weight: 500;
+      }
+
+      .warning-box {
+        /* background-color: var(--warning-bar-bg); */
+        /* border-radius: 999px; */
+        /* padding: 8px 16px; */
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        margin-bottom: 8px; /* Add some space between warning lines */
+      }
+
+      .warning-box .icon {
+        width: 16px;
+        height: 16px;
+        color: var(--text-amount);
+        flex-shrink: 0;
+      }
+
+      #loading-state {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(10, 3, 26, 0.1); /* Semi-transparent background to cover content */
+        z-index: 1000; /* Ensure it's on top */
+      }
+
+      #loading-state p {
+        font-size: 16px;
+        color: var(--text-secondary);
+        /* padding: 50px 0; */ /* Removed as flexbox handles centering */
+      }
+
+      /* Payment Info Section */
+      .info-section {
+        margin-bottom: 0;
+        width: 100%;
+      }
+
+      .info-section .label {
+        font-size: 16px;
+        color: var(--text-primary);
+        margin: 0 0 15px 0;
+        text-align: left;
+      }
+
+      .amount-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .amount-left,
+      .amount-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .amount-line .currency {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+        writing-mode: vertical-rl;
+        margin-right: -5px;
+        color: var(--text-amount);
+      }
+
+      .info-section .amount {
+        font-size: 40px;
+        font-weight: 700;
+        color: var(--text-amount);
+        letter-spacing: -1px;
+        margin: 0;
+      }
+
+      .amount-line .equals {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--text-primary);
+        align-self: center;
+      }
+
+      .points-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.1;
+      }
+
+      .amount-line .points-value {
+        font-size: 40px;
+        font-weight: 700;
+        color: var(--text-points);
+      }
+
+      .amount-line .points-label {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .info-section .token-network {
+        font-size: 14px;
+        font-weight: 500;
+        color: #aaa;
+        margin: 10px 0 10px;
+        text-transform: uppercase;
+        text-align: left; /* Align to the left as per user feedback */
+      }
+
+      .network-tags {
+        display: flex;
+        justify-content: flex-start;
+        gap: 10px;
+        margin-top: 15px;
+      }
+
+      .network-tag {
+        display: flex;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 20px;
+        gap: 8px;
+        height: 60px;
+      }
+
+      .network-logo {
+        width: 44px;
+        height: auto;
+      }
+
+      /* Order Status Section */
+      .status-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px 0 0;
+        border-top: 1px solid var(--divider-color);
+      }
+
+      .status-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0px;
+        width: 100%;
+      }
+
+      .valid-time-line {
+        margin: 0 24px;
+        background-color: rgba(255, 204, 35, 0.2);
+        padding: 9px 20px;
+        border-radius: 20px;
+        width: 80%;
+      }
+
+      .status-line .label {
+        font-size: 16px;
+        color: var(--text-primary);
+      }
+
+      .valid-time-line .label {
+        color: #ffcc23;
+        font-weight: normal;
+        font-size: 12px;
+      }
+
+      .status-badge {
+        background-color: rgba(255, 255, 255, 0.1);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-points);
+      }
+
+      .countdown-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .countdown-icon {
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--text-points);
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .countdown {
+        font-size: 18px;
+        font-weight: bold;
+        color: #ffcc23;
+      }
+
+      .order-id {
+        font-size: 14px;
+        display: flex;
+        justify-content: center;
+        color: var(--text-secondary);
+        text-align: center;
+        word-break: break-all;
+        margin: 14px 0 18px;
+        text-align: left;
+      }
+
+      #qrcode-wrapper {
+        background-color: #ffffff;
+        border-radius: 20px;
+        padding: 12px;
+        display: inline-block;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+
+      #qrcode {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      #qrcode img {
+        border-radius: 12px;
+      }
+
+      .instructions {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin: 24px 0 16px 0;
+        padding: 0 20px;
+        line-height: 1.5;
+      }
+
+      /* Address Section */
+      .address-section {
+        display: flex;
+        align-items: center;
+        background-color: var(--address-bar-bg);
+        border-radius: 5px;
+        padding: 8px 16px;
+      }
+
+      .address {
+        flex-grow: 1;
+        font-size: 14px;
+        font-weight: bold;
+        text-align: left;
+        word-break: break-all;
+        margin-right: 12px;
+        line-height: 1.4;
+        color: #fff;
+      }
+
+      #copy-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        flex-shrink: 0;
+        color: #fff;
+      }
+      #copy-button:hover {
+        opacity: 1;
+      }
+      #copy-button:active {
+        transform: scale(0.9);
+      }
+      #copy-button.copied {
+        opacity: 1;
+      }
+
+      #payment-state {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        justify-content: space-evenly; /* Distribute internal sections */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <button class="back-button" id="back-button" aria-label="返回">
+          <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="11" height="15" viewBox="0 0 11 15">
+            <g class="b" transform="translate(10.563 15.455) rotate(180)">
+              <path d="M5.449,7.31,0,1.861,1.861,0l7.31,7.31-7.31,7.31L0,12.759Z" transform="translate(0.477 0.971)" />
+            </g>
+          </svg>
+        </button>
+        <h1 class="main-title" id="main-title">Payment Address</h1>
+      </header>
+
+      <!-- Loading State -->
+      <div id="loading-state">
+        <p id="loading-message">正在创建订单，请稍候...</p>
+      </div>
+
+      <!-- Payment Details State (Initially hidden) -->
+      <div id="payment-state" style="display: none">
+        <div style="display: flex; flex-direction: column; align-items: flex-start">
+          <div class="warning-box">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            <span id="warning-message">Order will fail if the payment amount does not match.</span>
+          </div>
+          <div class="warning-box">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            <span id="time-limit-message">Please complete payment within 5 minutes.</span>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <p class="label" id="order-amount-label">Order Amount</p>
+          <div class="amount-line">
+            <div class="amount-left">
+              <span class="currency" id="order-token">USDT</span>
+              <span class="amount" id="order-amount">80.00</span>
+            </div>
+            <div class="amount-right">
+              <span class="equals">=</span>
+              <div class="points-group">
+                <span class="points-value" id="points-value">0</span>
+                <span class="points-label" id="points-label-text">points</span>
+              </div>
+            </div>
+          </div>
+          <p class="token-network">Network · <span id="order-network">TRC20</span></p>
+          <div class="network-tags">
+            <div class="network-tag">
+              <img src="/static/icons/pay/usdt@2x.png" class="network-logo" alt="network logo" />
+            </div>
+            <div class="network-tag">
+              <span id="order-network-tag">TRC20</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-section">
+          <div class="status-line">
+            <span class="label" id="order-status-label">Order Status</span>
+            <span class="status-badge" id="order-status">Pending Recharge</span>
+          </div>
+          <div class="status-line valid-time-line" style="margin-top: 10px">
+            <span class="label" id="valid-time-label"></span>
+            <div class="countdown-wrapper">
+              <span class="countdown-icon"></span>
+              <span class="countdown" id="countdown-timer">05:00</span>
+            </div>
+          </div>
+          <p class="order-id" id="order-id-text">Order Id: <span id="order-uuid">...</span></p>
+          <div id="qrcode-wrapper">
+            <div id="qrcode"></div>
+          </div>
+          <p class="instructions" id="instructions-message">Please scan the QR code or copy the address below to complete the payment in your wallet</p>
+          <div class="address-section">
+            <span class="address" id="payment-address">...</span>
+            <button id="copy-button">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M16 12.9V17.1C16 20.6 14.6 22 11.1 22H6.9C3.4 22 2 20.6 2 17.1V12.9C2 9.4 3.4 8 6.9 8H11.1C14.6 8 16 9.4 16 12.9Z"
+                  stroke="#FFFFFF"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M22 6.9V11.1C22 14.6 20.6 16 17.1 16H16V12.9C16 9.4 14.6 8 11.1 8H8V6.9C8 3.4 9.4 2 12.9 2H17.1C20.6 2 22 3.4 22 6.9Z"
+                  stroke="#FFFFFF"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Capacitor 底部高度检测相关变量
+      let isCapacitor = false;
+      let bottomHeight = 0;
+      let serverTimeOffset = 0; // Global variable to store server time offset
+      let isCountdownExpired = false; // New global variable to track countdown status
+
+      // 检测 Capacitor 环境并初始化底部高度检测
+      function detectAndInitCapacitor() {
+        // 检查是否存在 Capacitor 对象
+        if (typeof window !== "undefined" && window.Capacitor) {
+          isCapacitor = true;
+          // 为body添加Capacitor环境标识类
+          document.body.classList.add("capacitor-env");
+          initBottomHeightDetection();
+        }
+        initBackButton();
+      }
+
+      // 初始化返回按钮功能
+      function initBackButton() {
+        const backButton = document.getElementById("back-button");
+        if (backButton) {
+          backButton.addEventListener("click", () => {
+            // 优先使用浏览器历史记录
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              // 如果没有历史记录，尝试关闭当前窗口或返回根目录
+              try {
+                window.location.href = "/";
+              } catch (e) {
+                // 如果无法关闭窗口，重定向到主页
+              }
+            }
+          });
+        }
+      }
+
+      // 初始化底部高度检测
+      async function initBottomHeightDetection() {
+        if (!isCapacitor) return;
+
+        try {
+          console.log("Starting bottom height detection for transfer page...");
+
+          // 获取 BottomHeightPlugin
+          let BottomHeight = null;
+          if (window.Capacitor && window.Capacitor.Plugins) {
+            BottomHeight = window.Capacitor.Plugins.BottomHeightPlugin;
+          }
+
+          if (BottomHeight) {
+            console.log("BottomHeightPlugin available, initializing...");
+
+            try {
+              // 获取初始底部高度
+              const result = await BottomHeight.getCurrentBottomHeight();
+              console.log("Initial bottom height:", result);
+
+              bottomHeight = result.height || 0;
+              updatePageStyle(bottomHeight);
+
+              // 监听高度变化事件
+              const listener = await BottomHeight.addListener("bottomHeightChanged", (data) => {
+                console.log("Bottom height changed:", data);
+                bottomHeight = data.height || 0;
+                updatePageStyle(bottomHeight);
+              });
+
+              // 开始监听
+              await BottomHeight.startListening();
+              console.log("Bottom height detection initialized successfully for transfer page");
+            } catch (initError) {
+              console.error("Error during bottom height plugin initialization:", initError);
+            }
+          } else {
+            console.log("BottomHeightPlugin not available");
+          }
+        } catch (error) {
+          console.error("Failed to initialize bottom height detection:", error);
+        }
+      }
+
+      // 更新页面样式
+      function updatePageStyle(height) {
+        try {
+          const body = document.body;
+          if (body) {
+            if (height > 0) {
+              body.style.paddingBottom = `${height}px`;
+              console.log("Updated body padding-bottom:", `${height}px`);
+            } else {
+              body.style.paddingBottom = "0px"; // 恢复默认值
+              console.log("Reset body padding-bottom to default");
+            }
+          }
+        } catch (error) {
+          console.error("Failed to update page style:", error);
+        }
+      }
+
+      const translations = {
+        en: {
+          pageTitle: "Your Payment Address",
+          mainTitle: "Payment Address",
+          loadingMessage: "Creating order, please wait...",
+          warningMessage: "Order will fail if the payment amount does not match.",
+          timeLimitMessage: "Please complete payment within 10 minutes.",
+          orderAmountLabel: "Order Amount",
+          pointsMessage: "{points} points",
+          orderStatusLabel: "Order Status",
+          orderStatusPending: "Pending Recharge",
+          orderStatusPaid: "Payment Successful",
+          orderStatusExpired: "Order Expired",
+          instructionsMessage: "Please scan the QR code or copy the address below to complete the payment in your wallet",
+          copyFailedAlert: "Copy failed, please copy the address manually.",
+          orderCreateFailed: "Order creation failed: ",
+          orderCreateFailedRefresh: "Order creation failed, please refresh the page and try again.",
+          paymentSuccessAlert: "Payment successful!",
+          orderStatusCompleted: "Order Completed",
+          paymentCompletedAlert: "Order completed!",
+          validTimeLabel: "Valid Time", // New translation
+        },
+        "zh-hans": {
+          pageTitle: "您的付款地址",
+          mainTitle: "付款地址",
+          loadingMessage: "正在创建订单，请稍候...",
+          warningMessage: "如果支付金额不匹配，订单将失败。",
+          timeLimitMessage: "请在10分钟内完成支付。",
+          orderAmountLabel: "订单金额",
+          pointsMessage: "{points} 积分",
+          orderStatusLabel: "订单状态",
+          orderStatusPending: "待充值",
+          orderStatusPaid: "支付成功",
+          orderStatusExpired: "订单已过期",
+          instructionsMessage: "请扫描二维码或复制以下地址在您的钱包中完成支付",
+          copyFailedAlert: "复制失败，请手动复制地址。",
+          orderCreateFailed: "订单创建失败: ",
+          orderCreateFailedRefresh: "订单创建失败，请刷新页面重试。",
+          paymentSuccessAlert: "支付成功！",
+          orderStatusCompleted: "订单已完成",
+          paymentCompletedAlert: "订单已完成！",
+          validTimeLabel: "有效时间", // New translation
+        },
+        "zh-hant": {
+          pageTitle: "您的付款地址",
+          mainTitle: "付款地址",
+          loadingMessage: "正在創建訂單，請稍候...",
+          warningMessage: "如果支付金額不匹配，訂單將失敗。",
+          timeLimitMessage: "請在10分鐘內完成支付。",
+          orderAmountLabel: "訂單金額",
+          pointsMessage: "{points} 積分",
+          orderStatusLabel: "訂單狀態",
+          orderStatusPending: "待充值",
+          orderStatusPaid: "支付成功",
+          orderStatusExpired: "訂單已過期",
+          instructionsMessage: "請掃描二維碼或複製以下地址在您的錢包中完成支付",
+          copyFailedAlert: "複製失敗，請手動複製地址。",
+          orderCreateFailed: "訂單創建失敗: ",
+          orderCreateFailedRefresh: "訂單創建失敗，請刷新頁面重試。",
+          paymentSuccessAlert: "支付成功！",
+          orderStatusCompleted: "訂單已完成",
+          paymentCompletedAlert: "訂單已完成！",
+          validTimeLabel: "有效時間", // New translation
+        },
+        jp: {
+          pageTitle: "お支払いアドレス",
+          mainTitle: "支払いアドレス",
+          loadingMessage: "注文を作成中です。少々お待ちください...",
+          warningMessage: "支払い金額が一致しない場合、注文は失敗します。",
+          timeLimitMessage: "10分以内に支払いを完了してください。",
+          orderAmountLabel: "注文金額",
+          pointsMessage: "{points} ポイント",
+          orderStatusLabel: "注文ステータス",
+          orderStatusPending: "入金待ち",
+          orderStatusPaid: "支払い成功",
+          orderStatusExpired: "注文期限切れ",
+          instructionsMessage: "QRコードをスキャンするか、以下のアドレスをコピーしてウォレットで支払いを完了してください",
+          copyFailedAlert: "コピーに失敗しました。手動でアドレスをコピーしてください。",
+          orderCreateFailed: "注文作成失敗: ",
+          orderCreateFailedRefresh: "注文作成に失敗しました。ページを更新して再試行してください。",
+          paymentSuccessAlert: "支払い成功！",
+          orderStatusCompleted: "注文完了",
+          paymentCompletedAlert: "注文が完了しました！",
+          validTimeLabel: "有効時間", // New translation
+        },
+        hi: {
+          pageTitle: "आपका भुगतान पता",
+          mainTitle: "भुगतान पता",
+          loadingMessage: "ऑर्डर बनाया जा रहा है, कृपया प्रतीक्षा करें...",
+          warningMessage: "यदि भुगतान राशि मेल नहीं खाती है, तो ऑर्डर विफल हो जाएगा।",
+          timeLimitMessage: "कृपया 10 मिनट के भीतर भुगतान पूरा करें।",
+          orderAmountLabel: "ऑर्डर राशि",
+          pointsMessage: "{points} पॉइंट्स",
+          orderStatusLabel: "ऑर्डर स्थिति",
+          orderStatusPending: "रिचार्ज का इंतजार",
+          orderStatusPaid: "भुगतान सफल",
+          orderStatusExpired: "ऑर्डर समाप्त हो गया",
+          instructionsMessage: "कृपया क्यूआर कोड स्कैन करें या नीचे दिए गए पते को कॉपी करें और अपने वॉलेट में भुगतान पूरा करें",
+          copyFailedAlert: "कॉपी विफल हुआ, कृपया पते को मैन्युअल रूप से कॉपी करें।",
+          orderCreateFailed: "ऑर्डर बनाने में विफलता: ",
+          orderCreateFailedRefresh: "ऑर्डर बनाने में विफलता हुई, कृपया पेज रिफ्रेश करें और पुनः प्रयास करें。",
+          paymentSuccessAlert: "भुगतान सफल हुआ！",
+          orderStatusCompleted: "ऑर्डर पूरा हुआ",
+          paymentCompletedAlert: "ऑर्डर पूरा हुआ！",
+          validTimeLabel: "वैध समय", // New translation
+        },
+        'pt-br': {
+          pageTitle: "Seu Endereço de Pagamento",
+          mainTitle: "Endereço de Pagamento",
+          loadingMessage: "Criando pedido, por favor aguarde...",
+          warningMessage: "O pedido falhará se o valor do pagamento não corresponder.",
+          timeLimitMessage: "Por favor, complete o pagamento em 10 minutos.",
+          orderAmountLabel: "Valor do Pedido",
+          pointsMessage: "{points} pontos",
+          orderStatusLabel: "Status do Pedido",
+          orderStatusPending: "Recarga Pendente",
+          orderStatusPaid: "Pagamento Concluído",
+          orderStatusExpired: "Pedido Expirado",
+          instructionsMessage: "Por favor, escaneie o código QR ou copie o endereço abaixo para completar o pagamento em sua carteira",
+          copyFailedAlert: "Falha ao copiar, por favor copie o endereço manualmente.",
+          orderCreateFailed: "Falha ao criar o pedido: ",
+          orderCreateFailedRefresh: "Falha ao criar o pedido, por favor atualize a página e tente novamente.",
+          paymentSuccessAlert: "Pagamento concluído com sucesso!",
+          orderStatusCompleted: "Pedido Concluído",
+          paymentCompletedAlert: "Pedido concluído!",
+          validTimeLabel: "Tempo Válido",
+        },
+        'pt-pt': {
+          pageTitle: "O Seu Endereço de Pagamento",
+          mainTitle: "Endereço de Pagamento",
+          loadingMessage: "A criar pedido, por favor aguarde...",
+          warningMessage: "O pedido falhará se o valor do pagamento não corresponder.",
+          timeLimitMessage: "Por favor, complete o pagamento em 10 minutos.",
+          orderAmountLabel: "Valor do Pedido",
+          pointsMessage: "{points} pontos",
+          orderStatusLabel: "Estado do Pedido",
+          orderStatusPending: "Recarregar Pendente",
+          orderStatusPaid: "Pagamento Concluído",
+          orderStatusExpired: "Pedido Expirado",
+          instructionsMessage: "Por favor, digitalize o código QR ou copie o endereço abaixo para completar o pagamento na sua carteira",
+          copyFailedAlert: "Falha ao copiar, por favor copie o endereço manualmente.",
+          orderCreateFailed: "Falha ao criar o pedido: ",
+          orderCreateFailedRefresh: "Falha ao criar o pedido, por favor atualize a página e tente novamente.",
+          paymentSuccessAlert: "Pagamento concluído com sucesso!",
+          orderStatusCompleted: "Pedido Concluído",
+          paymentCompletedAlert: "Pedido concluído!",
+          validTimeLabel: "Tempo Válido",
+        },
+      };
+      const payment = JSON.parse(window.localStorage.getItem("fr.baseUrl")) || window.location.origin + "/api/"; //"https://stg-fr-payment.inaiai.com/"
+      const frtoken = JSON.parse(window.localStorage.getItem("fr.token"));
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // 初始化 Capacitor 底部高度检测
+        detectAndInitCapacitor();
+
+        const htmlElement = document.documentElement;
+        const pageTitleEl = document.getElementById("page-title");
+        const mainTitleEl = document.getElementById("main-title");
+        const loadingMessageEl = document.getElementById("loading-message");
+        const warningMessageEl = document.getElementById("warning-message");
+        const timeLimitMessageEl = document.getElementById("time-limit-message");
+        const orderAmountLabelEl = document.getElementById("order-amount-label");
+        const pointsValueEl = document.getElementById("points-value");
+        const pointsLabelEl = document.getElementById("points-label-text");
+        const orderStatusLabelEl = document.getElementById("order-status-label");
+        const instructionsMessageEl = document.getElementById("instructions-message");
+        const validTimeLabelEl = document.getElementById("valid-time-label"); // Get valid-time-label element
+
+        // --- UI Elements ---
+        const loadingState = document.getElementById("loading-state");
+        const paymentState = document.getElementById("payment-state");
+        const orderAmountEl = document.getElementById("order-amount");
+        const orderTokenEl = document.getElementById("order-token");
+        const orderNetworkEl = document.getElementById("order-network");
+        const orderNetworkTagEl = document.getElementById("order-network-tag");
+        const orderStatusEl = document.getElementById("order-status");
+        const orderUuidEl = document.getElementById("order-uuid");
+        const qrcodeContainer = document.getElementById("qrcode");
+        const paymentAddressEl = document.getElementById("payment-address");
+        const copyButton = document.getElementById("copy-button");
+        const originalCopyIcon = copyButton.innerHTML;
+        const copiedIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.25 6.75L9.75 17.25L4.5 12" stroke="#4CAF50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+        let qrcode = null;
+        let countdownInterval = null;
+        let sseController = null;
+        let pollingIntervalId = null; // New variable for polling
+        const useSseForPaymentStatus = false; // Set to true to enable SSE, false to enable GET polling
+
+        // Function to get URL parameters
+        const getUrlParameter = (name) => {
+          name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+          const regex = new RegExp("[\\?&]" + name + "=([^&#]*)");
+          const results = regex.exec(location.search);
+          return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+        };
+
+        const lang = getUrlParameter("lang") || "zh-CN"; // Default to Chinese
+        const cid = getUrlParameter("cid"); // Channel ID
+        const created_at = getUrlParameter("created_at");
+        const from_url = getUrlParameter("from_url");
+
+        // Set HTML lang attribute
+        htmlElement.lang = lang;
+
+        // Apply translations
+        const applyTranslations = (currentLang, points = "9999") => {
+          const t = translations[currentLang];
+          if (t) {
+            pageTitleEl.textContent = t.pageTitle;
+            mainTitleEl.textContent = t.mainTitle;
+            loadingMessageEl.textContent = t.loadingMessage;
+            warningMessageEl.textContent = t.warningMessage;
+            timeLimitMessageEl.textContent = t.timeLimitMessage;
+            orderAmountLabelEl.textContent = t.orderAmountLabel;
+            pointsValueEl.textContent = points;
+            pointsLabelEl.textContent = t.pointsMessage.replace("{points}", "").trim();
+            orderStatusLabelEl.textContent = t.orderStatusLabel;
+            orderStatusEl.textContent = t.orderStatusPending; // Initial status
+            instructionsMessageEl.textContent = t.instructionsMessage;
+            validTimeLabelEl.textContent = t.validTimeLabel; // Set valid time label
+          }
+        };
+
+        applyTranslations(lang);
+
+        // --- Function to generate QR code ---
+        function generateQRCode(address) {
+          qrcodeContainer.innerHTML = ""; // Clear previous QR code
+          new QRCode(qrcodeContainer, {
+            text: address,
+            width: 200,
+            height: 200,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H,
+          });
+        }
+
+        // --- Copy to Clipboard button logic ---
+        // Hide copy button if navigator.clipboard is not available
+        if (!navigator.clipboard) {
+          copyButton.style.display = "none";
+        } else {
+          copyButton.addEventListener("click", () => {
+            if (typeof gtag === "function") {
+              gtag("event", "payment_copy");
+            }
+            const address = paymentAddressEl.textContent;
+            navigator.clipboard
+              .writeText(address)
+              .then(() => {
+                copyButton.innerHTML = copiedIcon;
+                copyButton.classList.add("copied");
+                setTimeout(() => {
+                  copyButton.innerHTML = originalCopyIcon;
+                  copyButton.classList.remove("copied");
+                }, 2000);
+              })
+              .catch((err) => {
+                console.error("Failed to copy text using Clipboard API: ", err);
+                // Fallback to postMessage if Clipboard API fails
+                if (window.parent && window.parent.postMessage) {
+                  window.parent.postMessage({ type: "copy", text: address }, "*");
+                  copyButton.innerHTML = copiedIcon;
+                  copyButton.classList.add("copied");
+                  setTimeout(() => {
+                    copyButton.innerHTML = originalCopyIcon;
+                    copyButton.classList.remove("copied");
+                  }, 2000);
+                } else {
+                  alert(translations[lang].copyFailedAlert);
+                }
+              });
+          });
+        }
+
+        // --- Main application logic ---
+
+        // 1. Get parameters from URL
+        const uid = getUrlParameter("uid");
+        const totalPrice = getUrlParameter("price");
+        const orderUuid = getUrlParameter("order_uuid");
+        const address = getUrlParameter("address");
+        const token = getUrlParameter("token");
+        const network = getUrlParameter("network");
+        const points = getUrlParameter("points"); // Get points from URL parameter
+
+        function startCountdown(createdAtSecondsStr) {
+          const countdownTimerEl = document.getElementById("countdown-timer");
+          if (!createdAtSecondsStr || !countdownTimerEl) {
+            if (countdownTimerEl) countdownTimerEl.textContent = "...";
+            return;
+          }
+
+          // Assuming createdAtSecondsStr is a string representation of Unix timestamp in seconds
+          const createdAtTimestampMs = parseFloat(createdAtSecondsStr) * 1000;
+          const createdAt = new Date(createdAtTimestampMs);
+
+          if (isNaN(createdAt.getTime())) {
+            console.error("Invalid created_at timestamp:", createdAtSecondsStr);
+            countdownTimerEl.textContent = "--:--";
+            return;
+          }
+          const expirationTime = createdAt.getTime() + 10 * 60 * 1000;
+
+          if (countdownInterval) {
+            clearInterval(countdownInterval);
+          }
+
+          function updateCountdown() {
+            const now = new Date().getTime() + serverTimeOffset; // Use server-calibrated time
+            const distance = expirationTime - now;
+
+            if (distance < 0) {
+              clearInterval(countdownInterval);
+              countdownTimerEl.textContent = "00:00";
+              isCountdownExpired = true; // Set to true when countdown officially ends
+              const orderStatusEl = document.getElementById("order-status");
+              const lang = document.documentElement.lang || "zh-hans";
+              // Only update to expired if not already paid or completed
+              if (
+                orderStatusEl &&
+                orderStatusEl.textContent !== translations[lang].orderStatusPaid &&
+                orderStatusEl.textContent !== translations[lang].orderStatusCompleted
+              ) {
+                orderStatusEl.textContent = translations[lang].orderStatusExpired;
+                orderStatusEl.style.color = "#EF4444"; // Error Red
+              }
+              // Stop SSE connection if it's running
+              if (sseController) {
+                sseController.abort();
+              }
+              return;
+            }
+
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            countdownTimerEl.textContent = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+          }
+
+          updateCountdown();
+          countdownInterval = setInterval(updateCountdown, 1000);
+        }
+
+        // Function to initialize UI with order data
+        function initializeOrderUI() {
+          // Update UI with data from URL parameters
+          orderAmountEl.textContent = parseFloat(totalPrice).toFixed(2);
+          orderTokenEl.textContent = (token || "USDT").toUpperCase();
+          orderNetworkEl.textContent = network || "TRC20";
+          orderNetworkTagEl.textContent = network == "TRON" ? "TRC20" : network;
+          orderUuidEl.textContent = orderUuid || "...";
+          paymentAddressEl.textContent = address || "...";
+
+          try {
+            if (address) {
+              generateQRCode(address);
+            }
+          } catch (error) {
+            console.error("QR code generation error:", error);
+          }
+
+          // Use the points passed from topup.html instead of calculating
+          if (points) {
+            pointsValueEl.textContent = points;
+          }
+          const t = translations[lang] || translations["zh-hans"];
+          pointsLabelEl.textContent = t.pointsMessage.replace("{points}", "").trim();
+
+          loadingState.style.display = "none";
+          paymentState.style.display = "flex";
+
+          // Start listening for payment status if we have order_uuid
+          if (orderUuid) {
+            listenForPaymentStatus(orderUuid);
+          }
+          startCountdown(created_at);
+        }
+
+        // 2. Check if we have order data from URL parameters
+        if (orderUuid && address) {
+          // We have order data from URL, initialize UI directly
+          initializeOrderUI();
+        } else {
+          // No order data in URL, show error
+          loadingState.innerHTML = `<p>${translations[lang].orderCreateFailedRefresh}</p>`;
+        }
+
+        // GA Event: payment_enter
+        if (typeof gtag === "function") {
+          gtag("event", "payment_enter");
+        }
+
+        // 3. Listener for payment status updates
+        function listenForPaymentStatus(uuid) {
+          if (useSseForPaymentStatus) {
+            console.log("Using SSE for payment status updates.");
+            const sseUrl = `${payment}payment-orders/${uuid}/status`;
+            let reconnectTimeout = null;
+            let reconnectAttempts = 0;
+            const maxReconnectAttempts = 5;
+            const reconnectInterval = 5000; // 5 seconds
+
+            function connectSse() {
+              if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+              }
+              if (!frtoken) return;
+              sseController = new AbortController();
+              const signal = sseController.signal;
+
+              const headers = {
+                Accept: "text/event-stream",
+                Authorization: `Bearer ${frtoken}`,
+              };
+
+              fetch(sseUrl, {
+                method: "GET",
+                headers,
+                signal,
+              })
+                .then((response) => {
+                  if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                  }
+                  reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                  const reader = response.body.getReader();
+                  const decoder = new TextDecoder();
+                  let buffer = "";
+
+                  function processBuffer() {
+                    let eventEnd;
+                    while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+                      const eventString = buffer.substring(0, eventEnd);
+                      buffer = buffer.substring(eventEnd + 2);
+
+                      const lines = eventString.split("\n");
+                      let eventData = "";
+                      let eventName = "message";
+
+                      for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                          eventData += line.substring(6);
+                        } else if (line.startsWith("event: ")) {
+                          eventName = line.substring(7);
+                        }
+                      }
+
+                      if (eventData) {
+                        handleSseMessage({ data: eventData, type: eventName });
+                      }
+                    }
+                  }
+
+                  function readStream() {
+                    reader
+                      .read()
+                      .then(({ done, value }) => {
+                        if (done) {
+                          console.log("Stream complete, attempting to reconnect...");
+                          reconnectSse(); // Attempt to reconnect if stream completes unexpectedly
+                          return;
+                        }
+                        buffer += decoder.decode(value, { stream: true });
+                        processBuffer();
+                        readStream();
+                      })
+                      .catch((err) => {
+                        if (err.name === "AbortError") {
+                          console.log("Fetch aborted");
+                        } else {
+                          console.error("Stream reading error:", err);
+                          handleSseError(err);
+                        }
+                      });
+                  }
+
+                  readStream();
+                })
+                .catch((err) => {
+                  if (err.name === "AbortError") {
+                    console.log("Fetch aborted");
+                  } else {
+                    console.error("Fetch for SSE failed:", err);
+                    handleSseError(err);
+                  }
+                });
+            }
+
+            function reconnectSse() {
+              if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                console.log(`Attempting to reconnect SSE in ${reconnectInterval / 1000} seconds (Attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
+                reconnectTimeout = setTimeout(connectSse, reconnectInterval);
+              } else {
+                console.error("Max SSE reconnection attempts reached. Please refresh the page.");
+                // Optionally update UI to inform user
+              }
+            }
+
+            // This function will handle the parsed SSE messages
+            function handleSseMessage(event) {
+              console.log("SSE Message Received:", event.data);
+              const data = JSON.parse(event.data);
+
+              if (data.status === "pending") {
+                orderStatusEl.textContent = translations[lang].orderStatusPending;
+                orderStatusEl.style.color = "#ffc700";
+              } else if (data.status === "expired") {
+                orderStatusEl.textContent = translations[lang].orderStatusExpired;
+                orderStatusEl.style.color = "#EF4444"; // Error Red
+                if (countdownInterval) clearInterval(countdownInterval);
+                if (sseController) sseController.abort(); // Close the connection
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+              } else if (data.status === "completed") {
+                orderStatusEl.textContent = translations[lang].orderStatusPaid;
+                orderStatusEl.style.color = "#10B981"; // Success Green
+                if (countdownInterval) clearInterval(countdownInterval);
+                if (sseController) sseController.abort(); // Close the connection
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                if (from_url) {
+                  setTimeout(() => {
+                    window.location.href = from_url;
+                  }, 3000)
+                }
+              }
+            }
+
+            function handleSseError(err) {
+              console.error("SSE Error:", err);
+              if (sseController) {
+                sseController.abort(); // Ensure connection is closed on error
+              }
+              reconnectSse(); // Attempt to reconnect on error
+            }
+
+            connectSse(); // Initial connection
+          } else {
+            // GET polling logic
+            console.log("Using GET polling for payment status updates.");
+            const pollingUrl = `${payment}payment-orders/${uuid}/status`;
+            const pollingInterval = 3000; // Poll every 3 seconds
+            let currentStatus = ""; // To track current status and avoid redundant alerts
+
+            function pollStatus() {
+              if (!frtoken) {
+                console.warn("No frtoken available for polling.");
+                // Stop polling if frtoken is not available
+                if (pollingIntervalId) clearInterval(pollingIntervalId);
+                return;
+              }
+
+              fetch(pollingUrl, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${frtoken}`,
+                },
+              })
+                .then((response) => response.json())
+                .then((data) => {
+                  console.log("Polling Response:", data);
+                  if (data.success && data.data && data.data.status) {
+                    const status = data.data.status;
+                    const lang = document.documentElement.lang || "zh-hans";
+                    const t = translations[lang];
+
+                    // Update serverTimeOffset if timestamp is available
+                    if (data.data.timestamp) {
+                      const serverTimestampMs = data.data.timestamp * 1000;
+                      const localNowMs = new Date().getTime();
+                      serverTimeOffset = serverTimestampMs - localNowMs;
+                      console.log("Server time offset updated:", serverTimeOffset);
+                    }
+
+                    if (status === "pending" && !isCountdownExpired) { // Only update to pending if countdown is not expired
+                        orderStatusEl.textContent = t.orderStatusPending;
+                        orderStatusEl.style.color = "#ffc700";
+                        currentStatus = "pending";
+                        console.log("Status updated to Pending.");
+                        if (data.data.timestamp) {
+                          const serverTimestampMs = data.data.timestamp * 1000;
+                          const localNowMs = new Date().getTime();
+                          serverTimeOffset = serverTimestampMs - localNowMs;
+                          console.log("Server time offset updated:", serverTimeOffset);
+                        }
+                    } else if (status === "expired" && currentStatus !== "expired") {
+                      currentStatus = "expired";
+                      orderStatusEl.textContent = t.orderStatusExpired;
+                      orderStatusEl.style.color = "#EF4444"; // Error Red
+                      if (typeof gtag === "function") {
+                        gtag("event", "recharge_result", {result: "fail", uuid: orderUuid});
+                      }
+                      if (countdownInterval) clearInterval(countdownInterval);
+                      if (pollingIntervalId) clearInterval(pollingIntervalId); // Stop polling
+                    } else if (status === "completed" && currentStatus !== "completed") {
+                      currentStatus = "completed";
+                      orderStatusEl.textContent = t.orderStatusPaid; // Use orderStatusPaid for payment successful
+                      orderStatusEl.style.color = "#10B981"; // Success Green
+                      alert(t.paymentSuccessAlert); // Use paymentSuccessAlert
+                      if (typeof gtag === "function") {
+                        gtag("event", "recharge_result", {result: "success", uuid: orderUuid});
+                      }
+                      if (countdownInterval) clearInterval(countdownInterval);
+                      if (pollingIntervalId) clearInterval(pollingIntervalId); // Stop polling
+                      if (from_url) {
+                        window.location.href = from_url;
+                      }
+                    }
+                    // For any other status or if status is not changed, continue polling
+                  } else {
+                    console.warn("Polling: Unexpected response format or no status:", data);
+                  }
+                })
+                .catch((error) => {
+                  console.error("Polling Error:", error);
+                  // Implement retry logic if needed, or stop polling after certain errors
+                  // For now, just log and continue polling unless it's a fatal error
+                });
+            }
+
+            // Start polling only if frtoken is available
+            if (frtoken) {
+              // Clear any existing polling interval to prevent multiple intervals running
+              if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+              }
+              // Initial poll immediately, then every `pollingInterval`
+              pollStatus();
+              pollingIntervalId = setInterval(pollStatus, pollingInterval);
+              console.log("Started payment status polling.");
+            } else {
+              console.error("Cannot start polling: frtoken is not available.");
+            }
+          }
+        }
+      });
+
+      window.addEventListener("beforeunload", function () {
+        if (typeof gtag === "function") {
+          gtag("event", "payment_exit");
+        }
+      });
+    </script>
+  </body>
+</html>

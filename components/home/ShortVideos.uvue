@@ -1,0 +1,166 @@
+<template>
+	<view class="videos-container">
+		<scroll-view class="scroll-view" direction="horizontal" :show-scrollbar="false"
+		<!-- #ifdef WEB -->
+		@mousedown="handleMouseDown"
+		@mouseup="handleMouseUp" 
+		@mousemove="handleMouseMove"
+		@mouseleave="handleMouseUp"
+		<!-- #endif -->
+		>
+			<view class="item" v-for="(item, index) in data" :key="index" @tap="playVideo(item)">
+				<view class="image-container">
+					<VideoDisplay
+						v-if="item.contentType == 'video'"
+						class="item-image"
+						:autoresize="false"
+						:show-center-play-btn="false"
+						:cover="item.mediaMetadata[0].cover?.fileURL"
+						:src="item.mediaMetadata[0].fileURL"
+						                                             :encryptionKey="item.mediaMetadata[0]?.encryptionKey"					/>
+					                                     <bp-image-display v-else :autoresize="false" class="item-image" :src="getCoverUrl(item)" :encryptionKey="item.mediaMetadata[0]?.encryptionKey" mode="aspectFill"></bp-image-display>					<!-- <text class="duration">{{ formatDuration(0) }}</text> -->
+				</view>
+				<text class="item-title">{{ item.caption }}</text>
+				<text class="item-views">{{ $i18n_t('common.views') + " " + item.viewsCount }}</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { PostItem } from '../../types/index';
+	import { getCoverUrl } from "../../utils/coverUtils.uts";
+	import { setVideoResourceList, setVideoInitialIndex } from "../../store/index.uts";
+	import VideoDisplay from "@/components/panels/bp-video-display.uvue";
+	import BpImageDisplay from "@/components/panels/bp-image-display.uvue";
+	import { $i18n_t } from "../../locale/index.uts";
+
+	const props = defineProps<{
+		data: PostItem[];
+	}>();
+
+	const playVideo = (item: PostItem) => {
+		setVideoResourceList([item]);
+		setVideoInitialIndex(0);
+		uni.redirectTo({
+			url: "/pages/video?source=shortVideos"
+		})
+	};
+
+	const formatDuration = (seconds: number): string => {
+		const minutes = Math.floor(seconds / 60);
+		const remainingSeconds = seconds % 60;
+		const formattedSeconds = remainingSeconds < 10 ? `0${remainingSeconds}` : `${remainingSeconds}`;
+		return `${minutes}:${formattedSeconds}`;
+	};
+
+<!-- #ifdef WEB -->
+	// WEB平台鼠标拖动滚动处理
+	const isDragging = ref<boolean>(false)
+	const startX = ref<number>(0)
+	const scrollLeft = ref<number>(0)
+	let scrollElement: HTMLElement | null = null
+
+	function handleMouseDown(e: MouseEvent) {
+		isDragging.value = true
+		startX.value = e.pageX
+		scrollElement = e.currentTarget as HTMLElement
+		if (scrollElement) {
+			scrollLeft.value = scrollElement.scrollLeft
+			scrollElement.style.cursor = 'grabbing'
+			scrollElement.style.userSelect = 'none'
+		}
+	}
+
+	function handleMouseUp() {
+		isDragging.value = false
+		if (scrollElement) {
+			scrollElement.style.cursor = 'grab'
+			scrollElement.style.removeProperty('user-select')
+		}
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!isDragging.value) return
+		e.preventDefault()
+		const x = e.pageX
+		const walk = (x - startX.value) * 2 // 拖动速度系数
+		if (scrollElement) {
+			scrollElement.scrollLeft = scrollLeft.value - walk
+		}
+	}
+		<!-- #endif -->
+</script>
+
+<style>
+	.videos-container {
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.scroll-view {
+		width: 100%;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.item {
+		display: flex;
+		flex-direction: column;
+		margin-right: 15px;
+		width: 166px;
+	}
+
+	.image-container {
+		width: 166px;
+		height: 200px;
+		position: relative; /* For absolute positioning of duration */
+		background-color: #1A1A1A;
+		border-radius: 12px;
+	}
+
+	@media (min-width: 899.98px) {
+		.item {
+			width: 260px;
+		}
+
+		.image-container {
+			width: 260px;
+			height: 313px; /* Adjusted to maintain aspect ratio (200/166 * 260 ≈ 313.25) */
+		}
+	}
+
+	.item-image {
+		width: 100%;
+		height: 100%;
+		border-radius: 12px;
+	}
+
+	.duration {
+		position: absolute;
+		bottom: 8px;
+		right: 8px;
+		background-color: rgba(0, 0, 0, 0.5);
+		color: #ffffff;
+		font-size: 10px;
+		padding: 2px 6px;
+		border-radius: 8px;
+	}
+
+	.item-title {
+		font-size: 14px;
+		color: #dddddd;
+		margin-top: 8px;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2; /* 最多三行 */
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.item-views {
+		font-size: 12px;
+		color: #888888;
+		margin-top: 4px;
+	}
+</style>

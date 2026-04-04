@@ -1,0 +1,146 @@
+import { UserListResponse, ResourceListResponse, ApiResponse } from "@/types/index.uts";
+import { request, canIgnore } from "./request.uts";
+import { isMyId } from "@/store/user.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+
+export async function getFollowing(userId: string, page: number = 1, size: number = 20): Promise<UserListResponse | null> {
+  const res = await request<UserListResponse>({
+    url: `social/${userId}/following?page=${page}&size=${size}`,
+    method: "GET",
+  });
+  if (res.success && res.data != null) {
+    res.data.forEach((user) => (user.isFollowing = true));
+  }
+  return res;
+}
+
+export async function getFollowers(userId: string, page: number = 1, size: number = 20): Promise<UserListResponse | null> {
+  return await request<UserListResponse>({
+    url: `social/${userId}/followers?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getTimeline(userId: string, page: number = 1, size: number = 10, keyword: string = ""): Promise<ResourceListResponse | null> {
+  let url = `feed/timeline/${userId}?page=${page}&size=${size}`;
+  if (keyword.length > 0) {
+    url += `&keyword=${encodeURIComponent(keyword)}`;
+  }
+  return await request<ResourceListResponse>({
+    url: url,
+    method: "GET",
+  });
+}
+
+export async function getPlazaList(contentType: "video" | "image" | "audio", page: number = 1, size: number = 10): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `feed/plaza?contentType=${contentType}&page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+// 关注用户API
+export async function followUser(userId: string): Promise<ApiResponse<any> | null> {
+  if (isMyId(userId)) {
+    return null;
+  }
+  const data = await request<ApiResponse<any>>({
+    url: `social/follow/${userId}`,
+    method: "POST",
+  });
+
+  // GA 埋点 上报数据：关注成功
+  execGTagEvent("follow", { targetID: userId } as AnyObject);
+
+  return data;
+}
+
+// 取消关注用户API
+export async function unfollowUser(userId: string): Promise<ApiResponse<any> | null> {
+  const data = await request<ApiResponse<any>>({
+    url: `social/unfollow/${userId}`,
+    method: "DELETE",
+  });
+
+  // GA 埋点 上报数据：取消关注成功
+  execGTagEvent("unfollow", { targetID: userId } as AnyObject);
+
+  return data;
+}
+
+// 移除粉丝
+export async function delFollower(userId: string): Promise<ApiResponse<any> | null> {
+  return await request<ApiResponse<any>>({
+    url: `social/followers/${userId}`,
+    method: "DELETE",
+  });
+}
+
+// 点赞资源API
+export async function likeResource(resourceId: string): Promise<ApiResponse<any> | null> {
+  const data = await request<ApiResponse<any>>({
+    url: `posts/${resourceId}/like`,
+    method: "POST",
+  });
+
+  // GA 埋点 上报数据：点赞成功
+  execGTagEvent("post_like", { postID: resourceId } as AnyObject);
+
+  return data;
+}
+
+// 取消点赞资源API
+export async function unlikeResource(resourceId: string): Promise<ApiResponse<any> | null> {
+  const data = await request<ApiResponse<any>>({
+    url: `posts/${resourceId}/unlike`,
+    method: "POST",
+  });
+
+  // GA 埋点 上报数据：取消点赞成功
+  // execGTagEvent("post_unlike", { postID: resourceId });
+
+  return data;
+}
+
+// 收藏资源API
+export async function favoriteResource(resourceId: string): Promise<ApiResponse<any> | null> {
+  const data = await request<ApiResponse<any>>({
+    url: `posts/${resourceId}/favorite`,
+    method: "POST",
+  });
+
+  // GA 埋点 上报数据：收藏成功
+  execGTagEvent("post_favorite", { postID: resourceId } as AnyObject);
+
+  return data;
+}
+
+// 取消收藏资源API
+export async function unfavoriteResource(resourceId: string): Promise<ApiResponse<any> | null> {
+  return await request<ApiResponse<any>>({
+    url: `posts/${resourceId}/unfavorite`,
+    method: "POST",
+  });
+}
+
+// 观看资源API
+export const viewResource = canIgnore(async (resourceId: string): Promise<ApiResponse<any>> => {
+  return await request<ApiResponse<any>>({
+    url: `posts/${resourceId}/viewed`,
+    method: "POST",
+    customErrorHanlder: (_: any) => {},
+  });
+});
+
+type NotificationInfo = {
+	unreadCount: number;
+}
+
+// 获取未读通知数量
+export const getUnreadCount = canIgnore(async (): Promise<ApiResponse<NotificationInfo> | null> => {
+  return await request<ApiResponse<NotificationInfo>>({
+    url: `notifications/unread-count`,
+    method: "GET",
+    customErrorHanlder: (_: any) => {}, // Suppress errors silently
+  });
+});

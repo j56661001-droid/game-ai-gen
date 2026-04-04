@@ -1,0 +1,32 @@
+{
+  "scripts": {
+    "build": "node script/updateVersion.js && cli publish --platform h5 --project ai-gen && cp manifest_pwa.json unpackage/dist/build/web/manifest.json && cp sw.js unpackage/dist/build/web/sw.js && node script/modify_index_html.js && node script/replace_app_info.js",
+    "build:app": "node script/build-app.js",
+    "build:app:dev": "cp .env.development .env.development.bak 2>/dev/null || true && cp .env.app .env.development && npm run build && cp .env.development.bak .env.development 2>/dev/null || true && npx cap sync android && npx cap sync ios",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios",
+    "proxy": "node proxy-server.cjs"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/hls.js": "^0.13.3",
+    "dotenv": "^17.2.1",
+    "prettier": "^3.6.2"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/clipboard": "^7.0.2",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/file-transfer": "^1.0.5",
+    "@capacitor/filesystem": "^7.1.4",
+    "@capacitor/ios": "^7.4.3",
+    "@fingerprintjs/fingerprintjs": "^4.6.2",
+    "@thumbmarkjs/thumbmarkjs": "^1.7.1",
+    "crypto-js": "^4.2.0",
+    "hls.js": "^1.6.15",
+    "html2canvas": "^1.4.1",
+    "http-proxy": "^1.18.1",
+    "iso-3166-1": "^2.1.1"
+  }
+}

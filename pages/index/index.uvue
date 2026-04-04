@@ -1,0 +1,151 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <view class="main-container">
+        <Home v-if="currentTab == 'home'" />
+        <Compass v-if="currentTab == 'compass'" />
+        <Video v-if="currentTab == 'video'" />
+        <Publish v-if="currentTab == 'publish'" />
+        <Profile v-if="currentTab == 'profile'" />
+        <TabBar :current="currentTab" @change="handleTabChange"></TabBar>
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import TabBar from "../../components/TabBar/TabBar.uvue";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+import Home from "../../components/pages/home.uvue";
+import Compass from "../../components/pages/compass.uvue";
+import Video from "../video.uvue";
+import Publish from "../../components/pages/publish.uvue";
+import Profile from "../../pages/profile/personal.uvue";
+import { setVideoResourceList, setVideoInitialIndex, storage } from "../../store/index.uts";
+import type { PostItem, PopResourceList } from "../../types/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { postReferral, type ReferralParams } from "@/api/affiliate.uts";
+import { execGTagEvent } from "@/utils/ga.uts";
+import { creditsBalance, userInited } from "@/store/user.uts";
+import { currentTab, handleTabChange } from "@/store/menu.uts";
+
+const profileUserId = ref("self");
+const fromLottery = ref<boolean>(false); // 标记是否从转盘页面离开
+const hasSentWheelLeaveEvent = ref<boolean>(false); // 标记是否已发送wheel_leave事件
+
+onLoad(({ tabbar, utm_id, utm_source, utm_medium, utm_campaign, promotional_code, from, click_id }) => {
+  currentTab.value = tabbar || "home";
+
+  // 检测是否从转盘页面离开
+  if (from == "lottery") {
+    fromLottery.value = true;
+  }
+
+  if (promotional_code) {
+    storage.set("promotional_code", promotional_code);
+  }
+
+  if (click_id) {
+    storage.set("click_id", click_id);
+  }
+
+  // 检测affiliate参数并调用API
+  if (utm_id && utm_source && utm_medium && utm_campaign) {
+    const referralParams: ReferralParams = {
+      utm_id,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      click: 0,
+    };
+
+    // 存储affiliate参数到storage，供注册时使用
+    storage.set("affiliate_params", referralParams);
+
+    // 使用参数拼接唯一key
+    const referralKey = `referral_${utm_id}_${utm_source}_${utm_medium}_${utm_campaign}`;
+
+    // 检查是否已经发送过该key的请求
+    const hasSentReferral = storage.get<boolean>(referralKey);
+    if (hasSentReferral) {
+      referralParams.click = 1;
+    }
+    // 调用affiliate referral API
+    postReferral(referralParams)
+      .then(() => {
+        // 请求成功，标记该key已发送
+        storage.set(referralKey, true);
+      })
+      .catch((error) => {
+        console.error("Affiliate referral API call failed:", error);
+      });
+  } else {
+    const affiliateCode = window.location.hostname;
+    if (affiliateCode.length > 0) {
+      // 使用参数拼接唯一key
+      const referralKey = `referral_${affiliateCode}`;
+      // 检查是否已经发送过该key的请求
+      const hasSentReferral = storage.get<boolean>(referralKey);
+      const data: ReferralParams = { affiliateCode: affiliateCode };
+      if (hasSentReferral) {
+        data.click = 1;
+      }
+      // 调用affiliate referral API
+      postReferral(data)
+        .then(() => {
+          // 请求成功，标记该key已发送
+          storage.set(referralKey, true);
+        })
+        .catch((error) => {
+          console.error("Affiliate referral API call failed:", error);
+        });
+    }
+  }
+});
+
+onMounted(() => {
+  // uni.$on("gotoVideo", () => {
+  //   setVideoResourceList([]);
+  //   setVideoInitialIndex(0);
+  //   currentTab.value = "video";
+  // });
+  uni.$on("playShortVideo", (item: PostItem) => {
+    if (currentTab.value == "video") {
+      setVideoResourceList([item]);
+      setVideoInitialIndex(0);
+    }
+  });
+});
+
+onUnmounted(() => {
+  uni.$off("gotoVideo");
+});
+
+// 监听creditsBalance变化，在userInited之后发送wheel_leave事件
+watch(
+  [() => creditsBalance.value, () => userInited.value, () => fromLottery.value],
+  ([credits, inited, fromLotteryFlag]) => {
+    // 检查条件：从转盘页面离开、用户已初始化、积分不是初始值、尚未发送过事件
+    if (fromLotteryFlag && inited && credits != -999 && !hasSentWheelLeaveEvent.value) {
+      // 发送wheel_leave事件，pts参数为string类型
+      execGTagEvent("wheel_leave", {
+        pts: credits.toString(),
+      });
+      hasSentWheelLeaveEvent.value = true;
+    }
+  },
+  {
+    immediate: true,
+  },
+);
+</script>
+
+<style scoped>
+.main-container {
+  flex: 1;
+  background-color: #000;
+  position: relative;
+}
+
+/* 移除 .video-popup 样式 */
+</style>

@@ -1,0 +1,41 @@
+export function isCapacitor(): boolean {
+  return typeof window !== 'undefined' && window.Capacitor;
+}
+
+export function isDevelopmentEnv(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  if(window.Capacitor){
+    return false;
+  }
+  const hostname = window.location.hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.')
+  );
+}
+
+export function getDomainFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.origin;
+  } catch (e) {
+    console.error("Invalid URL for domain extraction:", url, e);
+    return '';
+  }
+}
+
+export function isTelegramMiniApp(): boolean {
+  return typeof window !== 'undefined' && !!window.Telegram?.WebApp?.initData;
+}
+
+export function isMobileBrowser(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const userAgent = window.navigator.userAgent;
+  // Check for mobile operating systems (Android, HarmonyOS, iOS) in user agent, and not Capacitor, and it's a mobile/tablet browser
+  return !isCapacitor() && /(Android|HarmonyOS|OHOS|iPhone|iPad|iPod)/i.test(userAgent) && /Mobi|Tablet|Android|iOS/i.test(userAgent);
+}

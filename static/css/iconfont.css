@@ -1,0 +1,19 @@
+@font-face {
+  font-family: "font_family";
+  src: url('/static/fonts/iconfont.ttf') format('truetype');
+}
+
+.font_family {
+  font-family: "font_family" !important;
+}
+
+@font-face {
+  font-family: "Baloo Thambi 2-Regular";
+  src: url('/static/fonts/BalooThambi2-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: "Baloo Thambi 2-ExtraBold";
+  src: url('/static/fonts/BalooThambi2-ExtraBold.ttf') format('truetype');
+}
+

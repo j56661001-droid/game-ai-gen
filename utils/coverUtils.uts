@@ -1,0 +1,18 @@
+import { PostItem } from "@/types/index.uts";
+
+export const getCoverUrl = (item: PostItem): string => {
+  if(item.mediaMetadata == null || !item.mediaMetadata.length){
+    console.warn("no mediaMetadata, postid: ", item.id);
+    return '';
+  }
+  if (item.mediaMetadata[0].cover != null) {
+    // if (typeof item.mediaMetadata[0].cover == 'string') {
+    //   return item.mediaMetadata[0].cover as string;
+    // } else {
+    //   return item.mediaMetadata[0].cover.fileURL;
+    // }
+    return item.mediaMetadata[0].cover.fileURL;
+  } else {
+    return item.mediaMetadata[0].fileURL;
+  }
+};

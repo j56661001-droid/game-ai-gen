@@ -1,0 +1,67 @@
+<template>
+  <view :id="resizeBoxId" class="fr-resize-box" :style="boxStyle">
+    <slot></slot>
+  </view>
+</template>
+
+<script setup lang="uts">
+const resizeBoxId = ref<string>(("resize_box_id_" + Math.random()).replace(".", ""));
+
+/** ratio: 宽高比（width/height） */
+const props = withDefaults(defineProps<{ target: string; ratio: number }>(), { target: "width", ratio: 1 });
+
+const boxStyle = ref<string>("");
+
+onMounted(() => {
+  // #ifdef WEB
+  const element = document.getElementById(resizeBoxId.value);
+  if (element != null) {
+    const rect = element.getBoundingClientRect();
+    switch (props.target) {
+      case "width":
+        const h = rect.height;
+        boxStyle.value = `height: 100%; width: ${h * props.ratio}px`;
+        break;
+      case "height":
+        const w = rect.width;
+        boxStyle.value = `width: 100%; height: ${w / props.ratio}px`;
+        break;
+    }
+  }
+  // #endif
+
+  // #ifndef WEB
+  uni
+    .createSelectorQuery()
+    .select("#" + resizeBoxId.value)
+    .fields(
+      {
+        rect: true,
+        size: true,
+      },
+      (result) => {
+        if (result != null) {
+          switch (props.target) {
+            case "width":
+              const h = result.height != null ? result.height : 0;
+              boxStyle.value = `height: 100%; width: ${h * props.ratio}px`;
+              break;
+            case "height":
+              const w = result.width != null ? result.width : 0;
+              boxStyle.value = `width: 100%; height: ${w / props.ratio}px`;
+              break;
+          }
+        }
+      },
+    )
+    .exec();
+  // #endif
+});
+</script>
+
+<style scoped>
+.fr-resize-box {
+  height: 100%;
+  width: 100%;
+}
+</style>

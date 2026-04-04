@@ -1,0 +1,823 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="search-page">
+      <view class="search-header">
+        <view class="back-button">
+          <IconFont name="arrowleft" :size="16" color="#fff" @click="searchGoBack" :btnSize="30" />
+        </view>
+        <icon-font v-if="keyword" class="close-icon" name="close_filled" :size="20" color="rgba(255, 255, 255, 0.5)" @click="clearKeyword"></icon-font>
+        <input class="search-input" type="text" v-model="keyword" :placeholder="placeholderText" @confirm="onSearch" maxlength="100" />
+        <text class="search-button" @click="onSearch">{{ $i18n_t("search.searchButton") }}</text>
+      </view>
+
+      <scroll-view class="content" scroll-y="true" v-if="!searched">
+        <view class="history-section" v-if="appStore.historyList.length > 0">
+          <view class="title-bar">
+            <text class="title">{{ $i18n_t("search.recent") }}</text>
+            <view class="clear-all-wrapper" @click="clearHistory">
+              <IconFont name="del" :size="14" color="#999" class="clear-all-icon" />
+              <text class="clear-all">{{ $i18n_t("search.clearAll") }}</text>
+            </view>
+          </view>
+          <view class="history-list">
+            <view class="history-item" v-for="(item, index) in appStore.historyList" :key="index">
+              <text class="history-text" @click="onSearchHistory(item)">{{ truncateText(item) }}</text>
+              <IconFont name="del" :size="12" @click="handleRemoveHistory(item)" />
+            </view>
+          </view>
+        </view>
+
+        <view class="ideas-section">
+          <text class="idea-title">{{ $i18n_t("search.ideasForYou") }}</text>
+          <view class="idea-list">
+            <view class="idea-item" v-for="(item, index) in ideas" :key="index" @click="handleResourceClick(item, ideas)">
+              <view class="idea-image-wrapper">
+                <VideoDisplay
+                  v-if="item.contentType == 'video'"
+                  class="idea-image"
+                  :autoresize="false"
+                  :cover="item.mediaMetadata[0].cover?.fileURL"
+                  :src="item.mediaMetadata[0].fileURL"
+                />
+                <bp-image-display
+                  v-else
+                  :autoresize="false"
+                  class="idea-image"
+                  :src="getCoverUrl(item)"
+                  :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                  mode="aspectFill"
+                ></bp-image-display>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view id="search-results" class="results-section" v-if="searched">
+        <FrTabs :tabs="tabs" :active-tab-key="tabs[currentTab].key" @switch="changeTab" />
+        <swiper class="swiper" :current="currentTab" @change="onSwiperChange">
+          <swiper-item v-for="(panel, index) in (tabPanelsData as SearchData<PostItem>[] | SearchData<UserItem>[])" :key="index">
+            <!-- Accounts Panel -->
+            <template v-if="panel.type == 'accounts'">
+              <scroll-view v-if="(panel.list as UserItem[]).length > 0" direction="vertical" class="account-list" @scrolltolower="onScrollToLower">
+                <view v-if="loading && !panel.list.length" style="align-items: center; justify-content: center; padding: 24px 0">
+                  <FrSpin type="primary" />
+                </view>
+                <fr-empty v-else-if="!loading && !panel.list.length" />
+
+                <view class="account-item" v-for="(item, itemIndex) in (panel.list as UserItem[])" :key="itemIndex">
+                  <FrAvatar
+                    class="avatar"
+                    :size="50"
+                    :url="item.avatar"
+                    @click="uni.navigateTo({ url: '/pages/profile/personal?userId=' + item.id })"
+                  ></FrAvatar>
+                  <view class="account-info">
+                    <text class="username">{{ item.username }}</text>
+                    <text class="followers">{{ item.followersCount }} {{ $i18n_t("common.followers") }}</text>
+                  </view>
+                  <view :class="['follow-button', item.isFollowing ? 'following' : '']" @click="toggleFollow(item, itemIndex)">
+                    <text class="button-text">{{ item.isFollowing ? $i18n_t("common.following") : $i18n_t("common.follow") }}</text>
+                  </view>
+                </view>
+                <fr-more-status v-if="panel.list.length > 0" :loading="loading" :has-more="panel.pagination.has_next"></fr-more-status>
+              </scroll-view>
+            </template>
+
+            <!-- Posts Panel (Waterfall) -->
+            <template v-else>
+              <view v-if="loading && !panel.list.length" style="align-items: center; justify-content: center; padding: 24px 0">
+                <FrSpin type="primary" />
+              </view>
+              <fr-empty v-else-if="!loading && !panel.list.length" />
+              <fr-waterflow-list
+                v-if="(panel.list as PostItem[]).length > 0"
+                :data-source="(panel.list as PostItem[])"
+                @loadmore="onScrollToLower"
+                :pagination="panel.pagination"
+                :loading="loading"
+              >
+                <template v-slot:record="{ record }">
+                  <view>
+                    <view class="waterfall-item" @click="handleResourceClick(record as PostItem, panel.list as PostItem[])">
+                      <!-- Audio tab (public search) -->
+                      <bp-media-display
+                        class="item-image"
+                        audioDisplayMode="readonly"
+                        :type="(record as PostItem).contentType"
+                        :src="(record as PostItem).mediaMetadata[0].fileURL"
+                        :cover="(record as PostItem).mediaMetadata[0].cover?.fileURL"
+                        :encryptionKey="(record as PostItem).mediaMetadata[0]?.encryptionKey"
+                      ></bp-media-display>
+                    </view>
+                    <text
+                      v-if="!isPersonalSearch && (record as PostItem).contentType == 'audio'"
+                      style="font-size: 12px; color: #fff; line-height: 1.2; padding: 4px 0"
+                      >{{ (record as PostItem).content }}</text
+                    >
+                  </view>
+                </template>
+              </fr-waterflow-list>
+            </template>
+          </swiper-item>
+        </swiper>
+      </view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { FrAvatar, FrTabs, FrEmpty, FrSpin, FrWaterflowList } from "@/components/widgets";
+import IconFont from "../components/IconFont/IconFont.uvue";
+import { PostItem, UserItem, PopResourceList, Pagination } from "../types/index";
+import { Tab } from "../components/widgets/type";
+import { goBack } from "../utils/page.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { appStore, setVideoResourceList, setVideoInitialIndex, initHistory, addHistory, removeHistory, clearHistory } from "../store/index.uts";
+import { getCoverUrl } from "../utils/coverUtils.uts";
+import { searchPosts, searchUser } from "@/api/search.uts";
+import { getForyou } from "@/api/home.uts";
+import i18n from "@/locale/index.uts";
+import { getTimeline, followUser, unfollowUser } from "@/api/social.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { getFavorites } from "@/api/user.uts"; // Import personal page APIs
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import VideoDisplay from "@/components/panels/bp-video-display.uvue";
+import BpImageDisplay from "@/components/panels/bp-image-display.uvue";
+import { execGTagEvent } from "@/utils/index.uts";
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import { checkLock, setLock } from "@/utils/debounce.uts";
+
+const truncateText = (text: string, maxLength: number = 10): string => {
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength) + "...";
+  }
+  return text;
+};
+
+const getDefaultPagination = () => {
+  return {
+    page: 0,
+    pages: 0,
+    size: 10,
+    has_next: true,
+    has_prev: false,
+    total: 0,
+  } as Pagination;
+};
+
+type SearchData<T> = {
+  list: T[];
+  pagination: Pagination;
+  type: "posts" | "accounts";
+};
+
+const keyword = ref("");
+const searched = ref(false);
+const currentTab = ref(0);
+const loading = ref(false);
+
+const ideas = ref<PostItem[]>([]);
+
+const forYouState = ref<SearchData<PostItem>>({ type: "posts", list: [], pagination: getDefaultPagination() });
+const accountsState = ref<SearchData<UserItem>>({ type: "accounts", list: [], pagination: getDefaultPagination() });
+const videoState = ref<SearchData<PostItem>>({ type: "posts", list: [], pagination: getDefaultPagination() });
+const imageState = ref<SearchData<PostItem>>({ type: "posts", list: [], pagination: getDefaultPagination() });
+const audioState = ref<SearchData<PostItem>>({ type: "posts", list: [], pagination: getDefaultPagination() });
+
+// New refs for personal search mode
+const isPersonalSearch = ref(false);
+const personalUserId = ref("");
+const personalUsername = ref("");
+
+const tabPanels = computed(() => {
+  if (isPersonalSearch.value) {
+    return [forYouState, imageState];
+  } else {
+    return [
+      forYouState,
+      accountsState, // Accounts
+      videoState, // Video
+      imageState, // Image
+      audioState, // Audio
+    ];
+  }
+});
+
+const getCurrentTabList = computed(() => {
+  const currentData = tabPanels.value[currentTab.value].value;
+  return currentData.list;
+});
+
+const tabPanelsData = computed(() => {
+  if (isPersonalSearch.value) {
+    return [forYouState.value, imageState.value];
+  } else {
+    return [
+      forYouState.value,
+      accountsState.value, // Accounts
+      videoState.value, // Video
+      imageState.value, // Image
+      audioState.value, // Audio
+    ];
+  }
+});
+
+const placeholderText = computed(() => {
+  if (isPersonalSearch.value) {
+    let tabKey = "";
+    if (currentTab.value == 0) {
+      tabKey = $i18n_t("profile.works");
+    } else if (currentTab.value == 1) {
+      tabKey = $i18n_t("profile.collection");
+    }
+    return $i18n_t("search.personalPlaceholder", { username: personalUsername.value, tab: tabKey });
+  } else {
+    return $i18n_t("search.placeholder");
+  }
+});
+
+const formatDuration = (duration: number): string => {
+  const minutes = Math.floor(duration / 60);
+  const seconds = duration % 60;
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+};
+
+const searchGoBack = () => {
+  goBack();
+  // if (searched.value) {
+  //   searched.value = false;
+  // } else {
+  //   goBack();
+  // }
+};
+
+const clearKeyword = () => {
+  keyword.value = "";
+  searched.value = false;
+};
+
+onLoad(async (options: OnLoadOptions) => {
+  initHistory();
+  const userId = options["userid"];
+  const username = options["username"];
+
+  if (userId && username) {
+    isPersonalSearch.value = true;
+    personalUserId.value = userId;
+    personalUsername.value = username;
+  }
+  const res = await getForyou(1, 6, { contentTypes: ["image", "video"] });
+  if (res != null && res.success && res.data != null) {
+    ideas.value = res.data;
+  }
+});
+
+async function loadPersonalData() {
+  if (loading.value) return;
+
+  loading.value = true;
+
+  try {
+    switch (currentTab.value) {
+      case 0: {
+        // Works tab
+        if (!forYouState.value.pagination.has_next) return;
+        const res = await getTimeline(personalUserId.value, forYouState.value.pagination.page + 1, 20, keyword.value);
+        if (res != null && res.success && res.data != null) {
+          if (forYouState.value.pagination.page == 1) {
+            forYouState.value.list = res.data;
+          } else {
+            forYouState.value.list.push(...res.data);
+          }
+        } else {
+          if (res?.meta.pagination) {
+            forYouState.value.pagination = res.meta.pagination;
+          } else {
+            forYouState.value.pagination.has_next = false;
+          }
+        }
+        break;
+      }
+      case 1: {
+        // Collections tab (reusing imageState for collections)
+        if (!imageState.value.pagination.has_next) return;
+        const res = await getFavorites(personalUserId.value, imageState.value.pagination.page + 1, 20, keyword.value);
+        if (res != null && res.success && res.data != null) {
+          if (imageState.value.pagination.page == 1) {
+            imageState.value.list = res.data;
+          } else {
+            imageState.value.list.push(...res.data);
+          }
+        } else {
+          if (res?.meta.pagination) {
+            imageState.value.pagination = res.meta.pagination;
+          } else {
+            imageState.value.pagination.has_next = false;
+          }
+        }
+        break;
+      }
+    }
+  } catch (err) {
+    console.log(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadData() {
+  if (loading.value) return;
+  loading.value = true;
+  const currentState = tabPanels.value[currentTab.value];
+  try {
+    if (currentState.value.type == "accounts") {
+      const searchData = tabPanels.value[currentTab.value].value as SearchData<UserItem>;
+      if (!searchData.pagination.has_next) return;
+      const res = await searchUser(keyword.value, searchData.pagination.page + 1);
+      if (res != null && res.success && res.data != null) {
+        searchData.pagination = res.meta.pagination;
+        if (searchData.pagination.page == 1) {
+          searchData.list = res.data;
+        } else {
+          searchData.list.push(...res.data);
+        }
+      } else {
+        if (res?.meta.pagination) {
+          searchData.pagination = res.meta.pagination;
+        } else {
+          searchData.pagination.has_next = false;
+        }
+      }
+    } else {
+      if (!currentState.value.pagination.has_next) return;
+      const searchData = tabPanels.value[currentTab.value].value as SearchData<PostItem>;
+      let type = "";
+      switch (currentTab.value) {
+        case 2:
+          type = "video";
+          break;
+        case 3:
+          type = "image";
+          break;
+        case 4:
+          type = "audio";
+          break;
+      }
+      const res = await searchPosts(keyword.value, type as any, searchData.pagination.page + 1);
+      if (res != null && res.success && res.data != null) {
+        searchData.pagination = res.meta.pagination;
+        if (searchData.pagination.page == 1) {
+          searchData.list = res.data;
+        } else {
+          searchData.list.push(...res.data);
+        }
+      } else {
+        if (res?.meta.pagination) {
+          searchData.pagination = res.meta.pagination;
+        } else {
+          searchData.pagination.has_next = false;
+        }
+      }
+    }
+  } catch (err) {
+    console.log(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function onSearch() {
+  if (keyword.value.length == 0 || loading.value) return;
+  // GA 埋点, 上报搜索记录
+  execGTagEvent("search", { keyword: keyword.value } as AnyObject);
+
+  addHistory(keyword.value);
+  searched.value = true;
+  tabPanels.value.forEach((state) => {
+    state.value.list = [];
+    state.value.pagination = getDefaultPagination();
+  });
+  if (isPersonalSearch.value) {
+    loadPersonalData();
+  } else {
+    loadData();
+  }
+}
+
+function handleRemoveHistory(item: string) {
+  removeHistory(item);
+}
+
+function onSearchHistory(item: string) {
+  keyword.value = item;
+  onSearch();
+}
+
+const tabs = computed(() => {
+  if (isPersonalSearch.value) {
+    return [
+      { title: $i18n_t("profile.works"), key: "tab_0" },
+      { title: $i18n_t("profile.collection"), key: "tab_1" },
+    ] as Tab[];
+  } else {
+    return [
+      { title: $i18n_t("search.forYouTab"), key: "tab_0" },
+      { title: $i18n_t("search.accountsTab"), key: "tab_1" },
+      { title: $i18n_t("search.videoTab"), key: "tab_2" },
+      { title: $i18n_t("search.imagesTab"), key: "tab_3" },
+      { title: $i18n_t("common.audio"), key: "tab_4" },
+    ] as Tab[];
+  }
+});
+
+function changeTab(key: string) {
+  currentTab.value = parseInt(key.split("_")[1]);
+  if (getCurrentTabList.value.length == 0) {
+    if (isPersonalSearch.value) {
+      loadPersonalData();
+    } else {
+      loadData();
+    }
+  }
+}
+
+function onSwiperChange(e: UniSwiperChangeEvent) {
+  currentTab.value = e.detail.current;
+  if (getCurrentTabList.value.length == 0) {
+    if (isPersonalSearch.value) {
+      loadPersonalData();
+    } else {
+      loadData();
+    }
+  }
+}
+
+function handleResourceClick(item: PostItem, resourceList: PostItem[]) {
+  const initialIndex = resourceList.findIndex((res) => res.id == item.id);
+  setVideoResourceList([...resourceList]);
+  setVideoInitialIndex(initialIndex);
+  let source = "";
+  if (isPersonalSearch.value) {
+    const tabName = currentTab.value == 0 ? "works" : "collection";
+    uni.navigateTo({ url: `/pages/video?source=profile&userId=${personalUserId.value}&tab=${tabName}&keyword=${keyword.value}` });
+  } else {
+    switch (currentTab.value) {
+      case 0:
+        source = "search_foryou";
+        break;
+      case 2:
+        source = "search_video";
+        break;
+      case 3:
+        source = "search_image";
+        break;
+      case 4:
+        source = "search_audio";
+        break;
+      default:
+        source = "";
+    }
+    uni.navigateTo({ url: `/pages/video?source=${source}&keyword=${keyword.value}&tab=${currentTab.value}` });
+  }
+}
+
+function onScrollToLower() {
+  if (isPersonalSearch.value) {
+    loadPersonalData();
+  } else {
+    loadData();
+  }
+}
+
+function toggleFollow(item: UserItem, index: number) {
+  if (!checkLock("user_follow")) {
+    return;
+  }
+  setLock("user_follow");
+  try {
+    if (item.isFollowing) {
+      unfollowUser(item.id).then((res) => {
+        if (res != null && res.success) {
+          accountsState.value.list[index].isFollowing = false;
+          // console.log(`User ${item.username}'s follow status has been toggled to: ${item.isFollowing}`);
+        } else {
+          console.error("Failed to unfollow");
+        }
+      });
+    } else {
+      followUser(item.id).then((res) => {
+        if (res != null && res.success) {
+          accountsState.value.list[index].isFollowing = true;
+          // console.log(`User ${item.username}'s follow status has been toggled to: ${item.isFollowing}`);
+        } else {
+          console.error("Failed to follow");
+        }
+      });
+    }
+  } catch (error) {
+  } finally {
+    setLock("user_follow", -1);
+  }
+}
+</script>
+
+<style>
+.search-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  background-color: #000;
+}
+
+.search-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px;
+}
+
+.back-button {
+  background-color: #1f1f1f;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
+}
+
+.close-icon {
+  position: absolute;
+  right: 70px;
+  z-index: 9;
+  cursor: pointer;
+}
+
+.search-input {
+  flex: 1;
+  height: 40px;
+  font-size: 12px;
+  background-color: #333;
+  border-radius: 20px;
+  padding: 0 15px;
+  margin: 0 10px;
+  color: #fff;
+}
+
+.search-button {
+  color: #ff00ff;
+  cursor: pointer;
+}
+
+.content {
+  flex: 1;
+  padding: 16px 4px 16px 16px;
+}
+
+.history-section,
+.ideas-section {
+  margin-bottom: 20px;
+  padding-right: 12px;
+}
+
+.title-bar {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.idea-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.clear-all-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.clear-all-icon {
+  margin-right: 5px;
+}
+
+.clear-all {
+  font-size: 14px;
+  color: #999;
+}
+
+.history-list {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+.history-item {
+  background-color: #333;
+  border-radius: 15px;
+  padding: 5px 10px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  flex-direction: row;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-text {
+  color: #fff;
+  font-size: 12px;
+  margin-right: 12px;
+}
+
+.idea-list {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.idea-item {
+  width: 30%; /* 20px is the total space for two gaps between three items */
+  margin-bottom: 15px;
+}
+
+.idea-image-wrapper {
+  width: 100%;
+  padding-top: 100%; /* 1:1 Aspect Ratio */
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.idea-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.idea-text {
+  font-size: 12px;
+  margin-top: 5px;
+  text-align: center;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.results-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.tabs {
+  flex-direction: row;
+  justify-content: space-around;
+  padding: 10px 0;
+  align-items: flex-end; /* Added to align items at the bottom for indicator positioning */
+}
+
+.tab-item-wrapper {
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  height: 26px; /* Ensure enough height for text and indicator */
+  justify-content: flex-end;
+}
+
+.tab-item-text {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin-bottom: 8px; /* Space for the indicator */
+}
+
+.tab-item-text.active {
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.active-tab-indicator {
+  width: 36px;
+  height: 8px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.swiper {
+  flex: 1;
+}
+
+.account-list {
+  flex: 1;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  margin-bottom: 15px;
+  padding: 0 15px;
+}
+
+.account-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.username {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.followers {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.follow-button {
+  background-color: #ff23b8;
+  border-radius: 15px;
+  padding: 5px 15px;
+  margin-left: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.follow-button.following {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.waterfall-item {
+  border-radius: 10px;
+  position: relative;
+}
+
+.item-image {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.play-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.avatar {
+  margin-right: 8px;
+}
+
+.duration-overlay {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.duration-text {
+  color: #fff;
+  font-size: 10px;
+}
+</style>

@@ -1,0 +1,211 @@
+import { request } from "./request";
+import type {
+  ApiResponse,
+  BannerItem,
+  CategoryListResponse,
+  CategoryListWithChildrenResponse,
+  ResourceListResponse,
+  PointsData,
+  ClaimRewardsData,
+} from "../types/index.uts";
+
+// http://localhost:8080/api/homepage/popular-topics?page=1&size=20
+export async function getPopularTopics(page: number = 1, size: number = 10, country: string | null = null): Promise<CategoryListResponse | null> {
+  const data = {
+    page,
+    size,
+  };
+  if (country != null) {
+    data.country = country;
+  }
+  return await request<CategoryListResponse>({
+    url: `homepage/popular-topics`,
+    method: "GET",
+    data,
+  });
+}
+
+export async function getPopularTopicsPosts(page: number = 1, size: number = 10): Promise<CategoryListWithChildrenResponse | null> {
+  return await request<CategoryListWithChildrenResponse>({
+    url: `homepage/popular-topics/posts?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+// homepage/trending-zone
+export async function getTrendingZone(page: number = 1, size: number = 10, country = undefined): Promise<CategoryListResponse | null> {
+  const data = {
+    page,
+    size,
+  };
+  if (country) {
+    data.country = country;
+  }
+  return await request<CategoryListResponse>({
+    url: `homepage/trending-zone`,
+    method: "GET",
+    data,
+  });
+}
+
+export async function getTrendingZonePosts(id: string, page: number = 1, size: number = 10): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `homepage/trending-zone/${id}/posts?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getStars(page: number = 1, size: number = 20): Promise<CategoryListWithChildrenResponse | null> {
+  return await request<CategoryListWithChildrenResponse>({
+    url: `homepage/stars?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getEffets(page: number = 1, size: number = 10): Promise<CategoryListWithChildrenResponse | null> {
+  return await request<CategoryListWithChildrenResponse>({
+    url: `homepage/effects?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getForyou(page: number = 1, size: number = 10, otherParams?: AnyObject): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    // url: `homepage/for-you`,
+    url: `recommend`,
+    method: "GET",
+    data: {
+      page,
+      size,
+      ...otherParams,
+    },
+  });
+}
+
+
+export async function getForyouOld(page: number = 1, size: number = 10, otherParams?: AnyObject): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `homepage/for-you`,
+    method: "GET",
+    data: {
+      page,
+      size,
+      ...otherParams,
+    },
+  });
+}
+
+
+export async function getPosts(page: number = 1, size: number = 10, otherParams?: AnyObject): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `posts`,
+    method: "GET",
+    data: {
+      page,
+      size,
+      ...otherParams,
+    },
+  });
+}
+
+export async function getShortVideos(page: number = 1, size: number = 10): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `homepage/short-videos?page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getBannerList(page: number = 1, size: number = 10, country: string | null = null): Promise<ApiResponse<BannerItem[]> | null> {
+  const data = {
+    page,
+    size,
+  };
+  if (country != null) {
+    data.country = country;
+  }
+  return await request<ApiResponse<BannerItem[]>>({
+    url: `homepage/carousels`,
+    method: "GET",
+    data,
+  });
+}
+
+// 获取今日任务列表
+export function getTodayTaskList(): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `user-tasks/today`,
+    method: "GET",
+  });
+}
+
+// 获取奖励
+export async function getTaskRewards(taskType: string): Promise<ApiResponse<any> | null> {
+  const res = await request<ApiResponse<any>>({
+    url: `user-tasks/claim`,
+    method: "POST",
+    data: { taskType },
+  });
+  return res;
+}
+
+// 获取任务奖励汇总
+export function getPoints(): Promise<ApiResponse<PointsData>> | null {
+  return request({
+    url: `user-tasks/summary`,
+    method: "GET",
+  });
+}
+
+// 获取回归用户奖励详情
+export function getReturnUserRewards(id: string, page: number, size: number): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `user-return-reward/${id}`,
+    method: "GET",
+    data: { page, size },
+  });
+}
+
+// 回归用户领取奖励
+export function claimRewards(id: string, rewardLevel: string): Promise<ApiResponse<ClaimRewardsData>> | null {
+  return request({
+    url: `user-return-reward-claim`,
+    method: "POST",
+    data: { userID: id, rewardLevel },
+  });
+}
+
+// 获取用户标签列表
+export function getTagsList(id: string, toolID: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `users/${id}/hashtags/rec`,
+    method: "GET",
+    data: { scope: "user", toolID },
+  });
+}
+
+// 添加用户标签
+export function addTag(id: string, tag: string): Promise<ApiResponse<ClaimRewardsData>> | null {
+  return request({
+    url: `users/${id}/hashtags/add`,
+    method: "POST",
+    data: { name: tag },
+  });
+}
+
+// 删除用户标签
+export function removeTag(id: string, hashtagIDs: string[]): Promise<ApiResponse<ClaimRewardsData>> | null {
+  return request({
+    url: `users/${id}/hashtags/remove`,
+    method: "POST",
+    data: { hashtagIDs },
+  });
+}
+
+// 获取创作空间tab列表
+export function getPublishTabList(): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `ai-tool-categories`,
+    method: "GET",
+    data: { page: 1, size: 100 },
+  });
+}

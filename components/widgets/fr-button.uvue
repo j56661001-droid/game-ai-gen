@@ -1,0 +1,68 @@
+<template>
+  <button
+    :disabled="disabledBtn"
+    class="fr-button"
+    :class="{ 'fr-button_disabled': props.disabled || props.loading, 'fr-button-block': props.block }"
+    @click="onClickBtn"
+  >
+    <slot name="content">
+      <slot name="icon">
+        <fr-spin v-show="props.loading" style="margin-right: 8px" />
+      </slot>
+      <text class="fr-button-title">
+        <slot> </slot>
+      </text>
+    </slot>
+  </button>
+</template>
+
+<script setup lang="uts">
+import { FrSpin } from "@/components/widgets";
+
+type Props = {
+  disabled?: boolean;
+  loading?: boolean;
+  block?: boolean;
+};
+
+const props = withDefaults(defineProps<Props>(), { disabled: false, loading: false });
+
+const emit = defineEmits<{
+  (e: "click"): void;
+}>();
+
+const disabledBtn = computed<boolean>(() => props.disabled || props.loading || false);
+
+const onClickBtn = () => {
+  emit("click");
+};
+</script>
+
+<style scoped>
+.fr-button {
+  height: 50px;
+  border-radius: 25px;
+  padding: 0 32px;
+  background: linear-gradient(132deg, #ff00d9ff 0%, #fff500 100%);
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.fr-button-block {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fr-button-title {
+  font-size: 16px;
+  color: #fff;
+}
+
+.fr-button_disabled {
+  /* opacity: 0.6; */
+  background: linear-gradient(132deg, #660356 0%, #666200 100%) !important;
+}
+</style>

@@ -1,0 +1,702 @@
+<template>
+  <view class="sidebar-wrapper">
+    <view v-if="props.show" :class="['tab-bar-left', sidebarCollapsed ? '' : 'collapsed']">
+      <view class="tab-bar-header">
+        <view class="menu-toggle" @click="toggleSidebar">
+          <IconFont class="menu-icon-open" :name="sidebarCollapsed ? 'menu_open' : 'menu_close'" :size="18" />
+        </view>
+        <view class="logo-wrapper" @click="goToHome">
+          <image v-show="sidebarCollapsed" src="/static/svg/logo.svg" class="logo-icon"></image>
+        </view>
+      </view>
+      <view class="tab-bar-content">
+        <scroll-view class="menu-scroll" scroll-y="true" :show-scrollbar="false">
+          <view class="menu-container">
+            <!-- 一级菜单 -->
+            <view v-for="item in menuList" :key="item.id" class="menu-item">
+              <view class="first-level-menu" :class="{ active: activeParent === item.id }" @click="handleFirstLevelClick(item)">
+                <IconFont
+                  class="menu-icon-logo"
+                  :name="activeParent === item.id ? item.activeIcon : item.icon"
+                  :size="24"
+                  :color="activeParent === item.id ? '#ff0098' : '#fff'"
+                />
+                <text v-if="sidebarCollapsed" class="menu-text">{{ item.title }}</text>
+                <IconFont
+                  class="menu-icon-switch"
+                  v-if="sidebarCollapsed && item.children && item.children.length > 0"
+                  :name="item.expanded ? 'arrowup' : 'arrowdown'"
+                  :size="6"
+                  :color="activeParent === item.id ? '#ff0098' : '#fff'"
+                />
+              </view>
+              <!-- 二级菜单 -->
+              <view class="sub-menu-container" v-show="sidebarCollapsed && item.expanded">
+                <view
+                  v-for="subItem in item.children"
+                  :key="subItem.id"
+                  class="second-level-menu"
+                  :class="{ active: isActiveSubItem(item.id, subItem.key) }"
+                  @click="handleSecondLevelClick(subItem.key, item)"
+                >
+                  <image class="new-icon" src="/static/new2.png" :style="{ display: subItem.isNew ? 'block' : 'none' }"></image>
+                  <text class="sub-menu-text">{{ subItem.title }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+    <view class="tab-bar-center">
+      <view class="center-content">
+        <slot></slot>
+      </view>
+    </view>
+    <!-- 活动入口 -->
+    <view v-if="props.show" class="tab-bar-right">
+      <!-- 签到 -->
+      <fr-activity-entrance
+        :title="$i18n_t('home.activityEntrance.dailyCheckin')"
+        icon="/static/icons/daily-checkin.png"
+        size="small"
+        bgColor="red"
+        @click="goToDailyCheckin"
+      />
+      <!-- 每日任务 -->
+      <fr-activity-entrance
+        :title="$i18n_t('home.activityEntrance.dailyTask')"
+        icon="/static/icons/daily-task.png"
+        size="small"
+        bgColor="yellow"
+        @click="goToDailyTask"
+      />
+      <!-- 用户回归 -->
+      <fr-activity-entrance
+        v-if="isReturnUser"
+        :title="$i18n_t('home.activityEntrance.userReactivation')"
+        :time="calculateTimeRemaining(returnUserCreatedAt).value"
+        icon="/static/icons/user-reactivation@2x.png"
+        size="small"
+        bgColor="purple-red"
+        @click="goToUserReactivation"
+      />
+      <!-- 推广有礼 -->
+      <!-- || user.accountType == 'guest'  -->
+      <fr-activity-entrance
+        v-if="user == null || !isReturnUser"
+        :title="$i18n_t('affiliate.title')"
+        icon="/static/icons/c2cicon.png"
+        size="small"
+        bgColor="pink"
+        @click="goToAffiliate"
+      />
+      <!-- 转盘抽奖 -->
+      <fr-activity-entrance
+        v-if="showLotteryEntrance"
+        :title="$i18n_t('home.activityEntrance.luckyWheel')"
+        icon="/static/icons/lucky-wheel​.png"
+        size="small"
+        bgColor="purple"
+        @click="goToLuckyWheel"
+      />
+
+      <view class="recharge-button-wrapper">
+        <!-- 反馈 -->
+        <view class="feedback-button-item" @click="goToFeedback">
+          <image src="/static/icons/feedback.png" class="feedback-button-icon" />
+        </view>
+        <!-- 充值 -->
+        <view class="recharge-button-item" v-if="user != null" @click="openExternalTopupPage('home-recharge-button')">
+          <image src="/static/icons/recharge@2x.png" class="recharge-button-icon"></image>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, reactive, onMounted } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import {
+  currentTab,
+  handleTabChange,
+  isReturnUser,
+  returnUserCreatedAt,
+  showLotteryEntrance,
+  sidebarCollapsed,
+  publishTabList,
+  publishActiveTabKey,
+  publishActiveTabKeyChanged,
+} from "@/store/menu.uts";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import FrActivityEntrance from "@/components/widgets/fr-activity-entrance.uvue";
+import { user, tokenStorage } from "@/store/user.uts";
+import { setWebviewConfig } from "@/store/index.uts";
+import { isCapacitor, getDomainFromUrl } from "@/utils/platform.uts";
+import { config } from "@/api/request.uts";
+import { getPublishTabList } from "@/api/home.uts";
+import { openExternalTopupPage } from "@/utils/navigator.uts";
+
+const props = withDefaults(
+  defineProps<{
+    show?: boolean;
+  }>(),
+  {
+    show: true, // 默认显示侧边栏
+  },
+);
+
+const baseDomain = computed(() => getDomainFromUrl(config.baseUrl));
+const homeText = computed(() => $i18n_t("pages.index&index&home"));
+const publishText = computed(() => $i18n_t("pages.index&index&publish"));
+const videoText = computed(() => $i18n_t("pages.index&index&video"));
+const compassText = computed(() => $i18n_t("pages.index&index&compass"));
+const profileText = computed(() => $i18n_t("pages.index&index&profile"));
+
+// 响应式数据
+const activeParent = ref<number>(0); // 激活的一级菜单索引
+const activeChild = reactive<{ [key: string]: string | number }>({}); // 激活的二级菜单映射
+const menuList = ref([
+  {
+    id: 0,
+    title: homeText,
+    page: "home",
+    icon: "home",
+    activeIcon: "home_active",
+  },
+  {
+    id: 1,
+    title: publishText,
+    page: "publish",
+    icon: "AI_Apps",
+    activeIcon: "AI_Apps_active",
+  },
+  {
+    id: 2,
+    title: videoText,
+    page: "video",
+    icon: "video",
+    activeIcon: "video_active",
+  },
+  {
+    id: 3,
+    title: compassText,
+    page: "compass",
+    icon: "plaza",
+    activeIcon: "plaza_active",
+  },
+  {
+    id: 4,
+    title: profileText,
+    page: "profile",
+    icon: "profile",
+    activeIcon: "profile_active",
+  },
+]);
+
+// 切换侧边栏展开/收起
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  if (sidebarCollapsed.value && currentTab.value === "publish") {
+    menuList.value.forEach((menuItem) => {
+      if (menuItem.id === 1) {
+        menuItem.expanded = true;
+      }
+    });
+  }
+}
+
+// 跳转首页
+const goToHome = () => {
+  uni.navigateTo({ url: "/pages/index/index?tabbar=home" });
+};
+
+// 处理一级菜单点击
+function handleFirstLevelClick(item) {
+  if (item.page === currentTab.value && item.children && item.children.length) {
+    item.expanded = !item.expanded; // 切换当前菜单展开状态
+    return;
+  }
+  publishActiveTabKey.value = publishTabList.value[0]?.key; // 初始化
+  currentTab.value = item.page; // 在index页面onLoad中赋值，这里不需要
+  handleTabChange(item.page);
+}
+
+// 处理二级菜单点击
+function handleSecondLevelClick(itemkey, item) {
+  publishActiveTabKey.value = itemkey; // 记录激活的子菜单
+
+  const pages = getCurrentPages();
+  const currentPage = pages[pages.length - 1];
+  if (currentPage && currentPage.route === "pages/index/index") {
+    activeChild[item.id] = itemkey; // 记录激活的子菜单
+    return;
+  }
+  handleTabChange(item.page); // 从其他深度页面点击菜单时跳转
+}
+
+// 检查子菜单是否激活
+function isActiveSubItem(parentId, childKey) {
+  return activeChild[parentId] === childKey;
+}
+
+// 设置激活项
+function setActiveMenu() {
+  const defaultTopLevelMenu = currentTab.value || "home";
+  const defaultSubMenu = publishActiveTabKey.value || publishTabList.value[0]?.key;
+
+  for (let i = 0; i < menuList.value.length; i++) {
+    const item = menuList.value[i];
+    // 检查一级菜单
+    if (defaultTopLevelMenu === item.page) {
+      // 如果没有子菜单，直接激活
+      if (!item.children || item.children.length === 0) {
+        activeParent.value = item.id;
+        return;
+      }
+      // 清除所有已激活的子菜单
+      Object.keys(activeChild).forEach((key) => {
+        delete activeChild[key];
+      });
+      // 关闭其他展开的菜单
+      menuList.value.forEach((menuItem, idx) => {
+        if (idx !== item.id) {
+          menuItem.expanded = false;
+        }
+      });
+      item.expanded = !item.expanded; // 切换当前菜单展开状态
+      activeParent.value = item.id; // 激活当前菜单
+      // 二级菜单处理
+      for (let j = 0; j < item.children.length; j++) {
+        const childItem = item.children[j];
+        if (defaultSubMenu === childItem.key) {
+          activeChild[item.id] = childItem.key; // 记录激活的子菜单
+        }
+      }
+    }
+  }
+}
+
+const goToDailyCheckin = () => {
+  if (user.value == null) {
+    //|| user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/pages/daily-checkin/index?from=main&tabbar=home", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/daily-checkin/index?from=main&tabbar=home" });
+  }
+};
+
+const goToDailyTask = () => {
+  if (user.value == null) {
+    //|| user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: `/pages/daily-task/index?from=main&tabbar=home`, successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: `/pages/daily-task/index?userId=${user.value?.id}&from=main&tabbar=home` });
+  }
+};
+
+const goToUserReactivation = () => {
+  // uni.showToast({title: '开发中...', icon: 'none'});
+  uni.navigateTo({ url: `/pages/user-return/index?userId=${user.value?.id}&tabbar=home` });
+};
+
+const goToAffiliate = () => {
+  if (user.value == null) {
+    //|| user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/pages/affiliate/index?from=home&tabbar=home", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/affiliate/index?tabbar=home" });
+  }
+};
+
+const goToLuckyWheel = () => {
+  if (isCapacitor()) {
+    const token = tokenStorage.get<string>("token");
+    if (user.value == null || !token) {
+      //|| user.value.accountType === "guest"
+      uni.showModal({
+        title: $i18n_t("home.aigfLoginRequiredTitle"),
+        content: $i18n_t("home.aigfLoginRequiredContent"),
+        confirmText: $i18n_t("common.login"),
+        cancelText: $i18n_t("common.cancel"),
+        success: (res) => {
+          if (res.confirm) {
+            uni.$emit("login:show");
+          }
+        },
+      });
+      return;
+    }
+    const url = `https://${baseDomain.value}/lottery/?token=${token}`;
+    setWebviewConfig({ url: url, isAigf: false, title: $i18n_t("home.activityEntrance.luckyWheel") });
+    uni.navigateTo({ url: "/pages/webview/webview" });
+  } else {
+    // Original behavior for web
+    if (user.value == null) {
+      //|| user.value.accountType == "guest"
+      uni.$emit("login:show", { page: "register", to: "/lottery/", action: "href", successRedirectOnly: true });
+      return;
+    }
+    window.location.href = "/lottery/";
+  }
+};
+
+// 计算回归用户活动剩余时间
+const calculateTimeRemaining = (timeString) => {
+  const formatTime = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+  const initialTime = new Date(timeString);
+  // 计算初始时间 + 6天后的时间
+  const targetTime = new Date(initialTime.getTime() + 6 * 24 * 60 * 60 * 1000);
+  // 获取当前时间
+  const currentTime = new Date();
+  // 计算时间差（毫秒）
+  const timeDiff = targetTime.getTime() - currentTime.getTime();
+  // 如果目标时间已经过去，返回负数表示已过期
+  if (timeDiff <= 0) {
+    return {
+      value: formatTime(currentTime),
+      isExpired: true,
+    };
+  }
+  return {
+    value: formatTime(targetTime),
+    isExpired: false,
+  };
+};
+
+const updatePublishTabList = async () => {
+  try {
+    const { data } = await getPublishTabList();
+    const reslist = data.map((item) => {
+      return {
+        key: "tab_" + item.id,
+        title: fmtBackendLang(item.displayName),
+        id: item.id,
+        isNew: item.isNew,
+        name: item.name,
+      };
+    });
+    publishTabList.value = reslist;
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+// 反馈按钮点击事件
+const goToFeedback = () => {
+  uni.navigateTo({ url: "/pages/feedback/index" });
+};
+
+const init = async () => {
+  if (!publishTabList.value || publishTabList.value.length === 0) {
+    await updatePublishTabList();
+  }
+  menuList.value = menuList.value.map((item, index) => {
+    if (index === 1) {
+      item.children = publishTabList.value;
+    }
+    return item;
+  });
+  // 设置默认激活菜单
+  setActiveMenu();
+};
+
+// 监听 publishActiveTabKeyChanged 变化
+watch(
+  () => publishActiveTabKeyChanged.value,
+  (newValue, oldValue) => {
+    if (newValue && newValue !== oldValue) {
+      handleSecondLevelClick(publishActiveTabKey.value, menuList.value[1]);
+    }
+  },
+);
+
+// 监听国际化语言变化
+watch(
+  () => $i18n_t("pages.index&index&home"), // 监听任意一个国际化文本的变化
+  () => {
+    console.log("Language changed, reinitializing...");
+    updatePublishTabList(); // 语言变化时更新次级菜单
+  },
+  { deep: true },
+);
+
+// 初始化展开状态
+onMounted(() => {
+  init();
+});
+</script>
+
+<style scoped lang="scss">
+/* 手机设备 (横向) 和平板 (纵向) */
+@media (max-width: 899.98px) {
+  .tab-bar-left {
+    display: none !important;
+  }
+  .tab-bar-right {
+    display: none !important;
+  }
+}
+
+.sidebar-wrapper {
+  display: flex;
+  height: 100%;
+  flex-direction: row;
+  .tab-bar-left {
+    display: flex;
+    height: 100vh;
+    background-color: transparent;
+    &.collapsed {
+      width: 100px;
+      .tab-bar-header {
+        background-color: transparent;
+      }
+    }
+  }
+  .tab-bar-center {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    .center-content {
+      max-width: 1400px;
+      width: 100%;
+      height: 100%;
+    }
+  }
+  .tab-bar-right {
+    background-color: transparent;
+    height: 100%;
+    width: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 40px;
+    padding-top: 88px;
+  }
+}
+.tab-bar-header {
+  height: 82px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 32px 0 10px;
+  padding-left: 30px;
+  // justify-content: center;
+  .menu-toggle {
+    cursor: pointer;
+    display: flex;
+    background: #191919;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    .menu-icon-open {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+  }
+  .logo-wrapper {
+    margin-left: 19px;
+    cursor: pointer;
+  }
+  .logo-icon {
+    width: 80px;
+    height: 22px;
+  }
+}
+.tab-bar-content {
+  flex: 1;
+  box-sizing: border-box;
+
+  .menu-scroll {
+    height: 100%;
+  }
+}
+
+.menu-container {
+  padding: 40px 20px;
+}
+
+.menu-item {
+  margin-bottom: 10px;
+}
+
+.first-level-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 24px;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  flex-direction: row;
+  border-radius: 25px 25px 25px 25px;
+  .menu-icon-switch {
+    margin-top: 5px;
+  }
+
+  &:hover {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0%, rgba(128, 128, 128, 0.2) 100%);
+    .menu-text {
+    }
+  }
+
+  &.active {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0%, rgba(128, 128, 128, 0.2) 100%);
+    .menu-text {
+      color: #ff0098;
+    }
+
+    // &::before {
+    //   content: "";
+    //   position: absolute;
+    //   left: 0;
+    //   top: 0;
+    //   bottom: 0;
+    //   width: 6px;
+    //   background-color: #409eff;
+    // }
+  }
+
+  .icon {
+    width: 32px;
+    height: 32px;
+    margin-right: 20px;
+  }
+
+  .menu-text {
+    margin-left: 16px;
+    flex: 1;
+    color: #ffffff;
+    margin-right: 16px;
+
+    height: 28px;
+    line-height: 30px;
+
+    font-family: Outfit, Outfit;
+    font-weight: bold;
+    font-size: 18px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+
+  .arrow-icon {
+    width: 20px;
+    height: 20px;
+    transition: transform 0.3s;
+    color: #909399;
+  }
+}
+
+.sub-menu-container {
+  padding-left: 44px;
+  background-color: transparent;
+
+  .second-level-menu {
+    padding: 13px 24px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: visible;
+
+    &:hover {
+      .sub-menu-text {
+        color: rgba(255, 255, 255, 1);
+      }
+    }
+
+    &.active {
+      .sub-menu-text {
+        color: rgba(255, 255, 255, 1);
+      }
+
+      // &::after {
+      //   content: "";
+      //   position: absolute;
+      //   right: 10px;
+      //   top: 50%;
+      //   transform: translateY(-50%);
+      //   width: 12px;
+      //   height: 12px;
+      //   border-radius: 50%;
+      //   background-color: #409eff;
+      // }
+    }
+
+    .sub-menu-text {
+      color: rgba(255, 255, 255, 0.5);
+      text-align: left;
+
+      font-family: Outfit, Outfit;
+      font-weight: 400;
+      font-size: 16px;
+      font-style: normal;
+      text-transform: none;
+    }
+    .new-icon {
+      width: 36px;
+      height: 26px;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: -14px;
+    }
+  }
+}
+
+.recharge-button-wrapper {
+  z-index: 300;
+
+  background-color: transparent; /* No background, image will fill */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  position: fixed;
+  right: 30px;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+.recharge-button-item {
+  width: 55px;
+  height: 55px;
+  cursor: pointer;
+}
+
+.feedback-button-item {
+  padding: 5px;
+  width: 55px;
+  height: 55px;
+  background: #181818;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+.feedback-button-icon {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #fb1fbb;
+  border-radius: 50%;
+  padding: 5px;
+}
+
+.recharge-button-icon {
+  width: 100%;
+  height: 100%;
+}
+</style>

@@ -1,0 +1,47 @@
+export type ComponentType = "input" | "textarea" | "image" | "select" | "case" | "slider" | "number" | "video";
+
+export type CardSelectorValue = string | number;
+
+export type CardSelectorOption = {
+  value: CardSelectorValue;
+  label: string;
+  title?: string;
+  image?: string;
+
+  isCorrect?: boolean;
+
+  description?: string; //??
+};
+
+export type CardSelectorProps = {
+  multiple?: boolean;
+  value?: CardSelectorValue | CardSelectorValue[];
+  options: CardSelectorOption[];
+};
+
+export type CardSelectorSlot = {
+  option: CardSelectorOption;
+};
+
+// 定义组件的依赖条件
+export type ComponentDependency = {
+  key: string; // 依赖的组件的key
+  values: CardSelectorValue[]; // 依赖组件的值，当其值在此数组中时，当前组件可用。
+};
+
+export type ComponentInfo = {
+  label: string; //组件名
+  desc: string; //展示给用户的说明
+  key: string;
+  type: ComponentType;
+  maxLength?: number; //文本最大长度
+  minLength?: number; //文本最小长度
+  placeholder?: UTSJSONObject; //文本默认提示，多语言
+  rows?: number; //textarea展示行数
+  options?: CardSelectorOption[]; //选项
+  maxValue?: number; //number 最大值
+  minValue?: number; //number 最小值
+  sliderStep?: number;
+  required?: boolean;
+  dependsOn?: ComponentDependency; // 依赖组件的可用性条件
+};

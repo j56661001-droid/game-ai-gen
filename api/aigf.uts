@@ -1,0 +1,17 @@
+import { request } from "./request.uts";
+import type { ApiResponse } from "@/types/index.uts";
+
+// 定义获取 AIGF URL 的 API
+export const getAigfUrl = (): Promise<ApiResponse<{ authUrl: string }>> => {
+  return request({ url: "aigf/url", method: "GET" });
+};
+
+// 定义 AIGF 登录的 API
+export const loginAigf = (): Promise<ApiResponse<{ balance: number }>> => {
+  return request({ url: "aigf/login", method: "POST" });
+};
+
+// 定义 AIGF 登出的 API
+export const logoutAigf = (): Promise<ApiResponse<{balance: number}>> => {
+  return request({ url: "aigf/logout", method: "POST" });
+};

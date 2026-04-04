@@ -1,0 +1,249 @@
+<template>
+  <view class="fr-image-uploader">
+    <view class="uploaded-image-list_container">
+      <scroll-view class="uploaded-image-list" direction="horizontal">
+        <template v-if="hasImages">
+          <fr-ratio-box
+            v-for="(path, idx) in (imageList as string[])"
+            :key="path"
+            :ratio="9 / 16"
+            style="position: relative"
+            :class="{ 'uploaded-image-item-col-gap': idx != 0 }"
+          >
+            <fr-image class="uploaded-image-item" mode="aspectFit" :src="perfShowImagePath(path)" />
+            <view v-if="props.removable" class="uploaded-image-remove-btn" @click="onRemoveImage(idx)">
+              <icon-font name="close_filled" :size="24" color="#fff"></icon-font>
+            </view>
+          </fr-ratio-box>
+        </template>
+        <fr-ratio-box v-if="showUploadBtn" key="upload-btn" :ratio="9 / 16">
+          <view class="uploader-section" @click="onUploaderPicker">
+            <icon-font name="picture_outlined" :size="20" color="#707070" class="uploader-placeholder-icon" />
+            <text class="uploader-placeholder-text">{{ uploadImageText }}</text>
+          </view>
+        </fr-ratio-box>
+      </scroll-view>
+    </view>
+
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+/**
+ * TODO: 带组件功能实现，及应用
+ */
+
+import IconFont from "../IconFont/IconFont.uvue";
+import { nativeUpload } from "@/api/request.uts";
+import FrImage from "./fr-image.uvue";
+import FrRatioBox from "./fr-ratio-box.uvue";
+
+const uploadImageText = computed(() => $i18n_t("common.uploadImage"));
+
+type Props = {
+  disabled?: boolean;
+  value?: string[] | string;
+  /** 最多可以选择的图片张数，app端不限制，微信小程序最多可支持20个。default: 9 */
+  count?: number;
+  removable?: boolean;
+  customUploader?: boolean;  // 是否使用自定义上传组件
+};
+
+const props = withDefaults(defineProps<Props>(), { value: [], disabled: false, count: 1, removable: true });
+const emit = defineEmits<{
+  (e: "change", info: string[] | string | null): void;
+  (e: "customUploader"): void;
+}>();
+
+const uploadLock = ref<boolean>(false);
+const state = reactive<{ uploading: boolean }>({ uploading: false });
+const localSourceCache = reactive<UTSJSONObject>({});
+
+const imageList = computed((): string[] => {
+  if (typeof props.value == "string") {
+    return [props.value];
+  } else if (Array.isArray(props.value)) {
+    return props.value;
+  }
+
+  return [];
+});
+
+const hasImages = computed((): boolean => imageList.value.length >= 1);
+
+const showUploadBtn = computed((): boolean => imageList.value.length < props.count);
+
+const onUploaderPicker = () => {
+  if (props.customUploader) {
+    emit("customUploader");
+    return;
+  }
+  onImagePicker();
+};
+
+/**
+ * 上传文件
+ * @param file 图片文件
+ * @returns 
+ */
+const uploadImage = async (file: any) => {
+  if (uploadLock.value) {
+    return;
+  }
+
+  uni.showLoading({
+    title: $i18n_t("common.uploading"),
+    mask: true,
+  });
+
+  try {
+    let nativeFile: File;
+    let localPath: string;
+
+    // 检查是否是原生 File 对象还是临时文件路径对象
+    if (file instanceof File) {
+      // 直接是 File 对象
+      nativeFile = file;
+      localPath = URL.createObjectURL(file); // 创建本地预览URL
+    } else if (file.path) {
+      // 临时文件路径，需要转换
+      const response = await fetch(file.path);
+      const blob = await response.blob();
+      nativeFile = new File([blob], file.name || 'image.jpg', { type: 'image/jpeg' });
+      localPath = file.path;
+    } else {
+      throw new Error('Invalid file object');
+    }
+
+    await nativeUpload({
+      url: `files/upload`,
+      file: nativeFile,
+      data: {
+        category: "image"
+      },
+    }, true)
+      .then(({ data }) => {
+        if (data == null) {
+          return;
+        }
+        let fileURL: string | string[] = data.fileURL as string;
+        if (props.count > 1) {
+          fileURL = [...imageList.value, fileURL] as string[];
+        }
+
+        localSourceCache[data.fileURL] = localPath;
+
+        emit("change", fileURL);
+      });
+  } catch (error) {
+    console.error('Upload failed:', error);
+    uni.showToast({
+      title: $i18n_t("s_msg.uploadFailed") || "上传失败",
+      icon: "none",
+    });
+  } finally {
+    uni.hideLoading();
+  }
+};
+
+const perfShowImagePath = (path: string) => {
+  return localSourceCache[path] != null ? localSourceCache[path] : path;
+};
+
+const onRemoveImage = (idx: number) => {
+  const value = imageList.value.filter((p, i) => i != idx);
+  emit("change", props.count == 1 ? value[0] : value);
+};
+
+/**
+ * 选择照片
+ * @returns 
+ */
+const onImagePicker = () => {
+  if (props.disabled) {
+    return;
+  }
+
+  uni.chooseImage({
+    success(res) {
+      const file = res.tempFiles?.[0];
+      if (file != null) {
+        uploadImage(file);
+      }
+    },
+    fail(err) {
+      // TODO
+    },
+  });
+};
+</script>
+
+<style scoped>
+.fr-image-uploader {
+  padding: 16px;
+  background-color: #1a1a1a;
+}
+
+.uploaded-image-list_container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+}
+
+.uploaded-image-list {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #707070;
+  border-radius: 4px;
+  padding: 0 8px;
+}
+
+.uploaded-image-item {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.uploaded-image-remove-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+}
+
+.uploaded-image-item-col-gap {
+  margin-left: 4px;
+}
+
+.uploader-section {
+  height: 100%;
+  width: 100%;
+  border: 1px dashed #707070;
+  border-radius: 4px;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.uploader-placeholder-icon {
+  color: #707070;
+  margin-bottom: 10px;
+}
+
+.uploader-placeholder-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: #707070;
+  text-align: center;
+  line-height: 1.5;
+}
+</style>

@@ -1,0 +1,449 @@
+<template>
+  <div class="android-tutorial-card">
+    <header class="card-header">
+      <h2 class="card-title">
+        <span class="icon">🤖</span>
+        {{ $i18n_t("pwa_install.android.title") }}
+      </h2>
+    </header>
+
+    <div class="tutorial-content">
+      
+      <!-- 步骤 1: 点击菜单按钮 -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">1</span>
+          {{ $i18n_t("pwa_install.android.step1") }}
+        </p>
+
+        <!-- Chrome 顶部栏模拟 -->
+        <div class="chrome-mockup-header">
+          <div class="url-bar">
+            <span class="lock-icon">🔒</span>
+            <span class="domain-text">{{ currentDomain }}</span>
+          </div>
+          <div class="toolbar-actions">
+            <!-- 菜单按钮 (高亮目标) -->
+            <div class="menu-btn-wrapper">
+              <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path>
+              </svg>
+              <div class="tap-indicator"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤 2: 选择安装应用 -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">2</span>
+          {{ $i18n_t("pwa_install.android.step2") }}
+        </p>
+
+        <!-- CSS 模拟 Chrome 下拉菜单 -->
+        <div class="chrome-menu-mockup">
+          <div class="menu-list">
+            <div class="menu-row">
+              <span class="menu-icon">☆</span>
+              <span class="menu-text">{{ $i18n_t("common.bookmark") }}</span>
+            </div>
+            <div class="menu-row">
+              <span class="menu-icon">⟳</span>
+              <span class="menu-text">{{ $i18n_t("common.recent_tabs") }}</span>
+            </div>
+            <div class="menu-divider"></div>
+            
+            <!-- 高亮行：安装应用 -->
+            <div class="menu-row highlight-row">
+              <span class="menu-icon mobile-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                  <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"></path>
+                </svg>
+              </span>
+              <span class="menu-text-highlight">
+                {{ $i18n_t("pwa_install.android.install_app") }}
+              </span>
+              <!-- 或者显示 "添加到主屏幕" -->
+              <div class="hand-pointer"></div>
+            </div>
+            
+            <div class="menu-row">
+              <span class="menu-icon">⚙</span>
+              <span class="menu-text">{{ $i18n_t("common.settings") }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤 3: 底部弹窗确认 -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">3</span>
+          {{ $i18n_t("pwa_install.android.step3") }}
+        </p>
+
+        <!-- Android Bottom Sheet 模拟 -->
+        <div class="android-screen-mockup">
+          <div class="screen-content-dimmed">
+            <!-- 背景模糊内容 -->
+          </div>
+          
+          <div class="bottom-sheet">
+            <div class="sheet-header">
+              <span class="sheet-title">{{ $i18n_t("pwa_install.android.install_app") }}</span>
+            </div>
+            
+            <div class="sheet-body">
+              <div class="app-preview">
+                <img src="/static/icons/welcome@2x.png" class="app-icon-box" alt="App Icon" />
+                <div class="app-details">
+                  <div class="app-name">{{ appName || 'App Name' }}</div>
+                  <div class="app-domain">{{ currentDomain }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sheet-footer">
+              <button class="sheet-btn cancel">{{ $i18n_t("common.cancel") }}</button>
+              <button class="sheet-btn install">
+                {{ $i18n_t("common.install") }}
+                <div class="tap-indicator-small"></div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { defineProps } from 'vue';
+import { $i18n_t } from "@/locale";
+
+defineProps<{
+  currentDomain: string;
+  appName?: string;
+}>();
+</script>
+
+<style scoped>
+/* --- 基础卡片 --- */
+.android-tutorial-card {
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif; /* Android 字体优先 */
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid #f2f2f2;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.card-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #f0f0f5;
+  padding-bottom: 12px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-item {
+  margin-bottom: 36px;
+}
+.step-item:last-child {
+  margin-bottom: 0;
+}
+
+.step-text {
+  font-size: 15px;
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.step-number {
+  background-color: #3ddc84; /* Android Green */
+  color: #000;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* --- Step 1: Chrome 顶部栏 --- */
+.chrome-mockup-header {
+  background-color: #2e2e2e; /* Dark Mode Chrome */
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.url-bar {
+  flex: 1;
+  background-color: #1e1e1e;
+  border-radius: 20px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: #fff;
+}
+
+.lock-icon {
+  font-size: 12px;
+  margin-right: 8px;
+  opacity: 0.7;
+}
+
+.domain-text {
+  font-size: 14px;
+  color: #e8eaed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.menu-btn-wrapper {
+  position: relative;
+  color: #e8eaed;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.menu-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* --- Step 2: 菜单列表 --- */
+.chrome-menu-mockup {
+  background-color: #2e2e2e;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  padding: 8px 0;
+  width: 100%; 
+  margin-left: auto; /* 靠右模拟右上角弹出 */
+  margin-right: 10px;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  color: #e8eaed;
+  gap: 16px;
+}
+
+.menu-icon {
+  width: 20px;
+  text-align: center;
+  color: #9aa0a6;
+  font-size: 16px;
+}
+
+.menu-text {
+  font-size: 14px;
+  color: #e8eaed;
+}
+
+.menu-divider {
+  height: 1px;
+  background-color: #5f6368;
+  margin: 4px 0;
+  opacity: 0.5;
+}
+
+/* 高亮选中项 */
+.highlight-row {
+  background-color: rgba(61, 220, 132, 0.15); /* 淡绿色背景 */
+  position: relative;
+}
+.menu-text-highlight {
+  font-size: 14px;
+  color: #3ddc84; /* Android Green Text */
+  font-weight: 500;
+}
+
+.hand-pointer {
+  position: absolute;
+  right: 16px;
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white' stroke='black' stroke-width='2'%3E%3Cpath d='M12 2L15 15L22 22L12 22L2 22L9 15L12 2Z' transform='rotate(-45 12 12)'/%3E%3C/svg%3E");
+  background-size: contain;
+  animation: bounce-hand 1.5s infinite;
+}
+
+/* --- Step 3: Bottom Sheet (底部弹窗) --- */
+.android-screen-mockup {
+  background-color: #000;
+  border-radius: 12px;
+  position: relative;
+  border: 1px solid #333;
+}
+
+.screen-content-dimmed {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.6); /* 遮罩层 */
+}
+
+.bottom-sheet {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #2e2e2e;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding: 20px 24px 16px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+  animation: slide-up 0.5s ease-out;
+}
+
+.sheet-title {
+  display: block;
+  font-size: 18px;
+  color: #e8eaed;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.app-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 8px 0;
+  border-bottom: 1px solid #3c4043;
+}
+
+.app-icon-box {
+  width: 40px;
+  height: 40px;
+  background: #3ddc84;
+  border-radius: 50%; /* Android 图标通常是圆形 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: #000;
+}
+
+.app-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-name {
+  font-size: 16px;
+  color: #e8eaed;
+  font-weight: 500;
+}
+.app-domain {
+  font-size: 12px;
+  color: #9aa0a6;
+}
+
+.sheet-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.sheet-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0px 12px;
+  border-radius: 4px;
+}
+.sheet-btn.cancel {
+  color: #9aa0a6;
+}
+.sheet-btn.install {
+  background-color: #8ab4f8; /* Google Blue Light */
+  color: #202124;
+  position: relative;
+}
+
+/* 动画效果 */
+.tap-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #ff3b30; /* Red Ring */
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: pulse 2s infinite;
+  pointer-events: none;
+}
+
+.tap-indicator-small {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+
+@keyframes pulse-border {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes bounce-hand {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-5px); }
+}
+</style>

@@ -1,0 +1,11 @@
+declare const gtag: any;
+
+function execGTag(...args: any[]) {
+  if (typeof gtag == "function") {
+    gtag(...args);
+  }
+}
+
+export function execGTagEvent(name: string, params?: AnyObject) {
+  execGTag("event", name, params);
+}

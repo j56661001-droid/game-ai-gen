@@ -1,0 +1,146 @@
+<template>
+  <view class="tab-bar-bottom" v-show="appStore.tabBarHiddenCount == 0">
+    <!-- 1. 首页 (Home) -->
+    <view class="tab-item" @click="switchTab('home')">
+      <IconFont :name="homeIconName" :size="24" :opacity="homeOpacity" />
+    </view>
+
+    <!-- 2. 发现/广场 (Compass) -->
+    <view class="tab-item" @click="switchTab('compass')">
+      <IconFont :name="compassIconName" :size="24" :opacity="compassOpacity" />
+    </view>
+
+    <!-- 3. 创建 (Plus) -->
+    <view class="tab-item" @click="switchTab('publish')">
+      <view class="middle-button-wrapper">
+        <IconFont v-if="props.current == 'publish'" name="ai" :size="32" color="#FF23B8" />
+        <view v-else class="create-button">
+          <IconFont name="follow" :size="18" />
+        </view>
+        <image v-if="showNewBadge" src="/static/new2.png" class="new-badge" />
+      </view>
+    </view>
+
+    <!-- 4. 视频 (Video) -->
+    <view class="tab-item" @click="switchTab('video')">
+      <IconFont :name="videoIconName" :size="24" :opacity="videoOpacity" />
+    </view>
+
+    <!-- 5. 我的 (Profile) -->
+    <view class="tab-item" @click="switchTab('profile')">
+      <IconFont :name="profileIconName" :size="24" :opacity="profileOpacity" />
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "../IconFont/IconFont.uvue";
+import { useLoadListRequest, LoadListRequestOptions } from "@/hooks/use-request.uts";
+
+const props = defineProps<{
+  current: string;
+}>();
+
+const emit = defineEmits(["change"]);
+
+const switchTab = (page: string) => {
+  emit("change", page);
+};
+
+import { appStore } from "../../store/index.uts";
+import { computed, onMounted, ref, watch } from "vue";
+
+const showNewBadge = ref(false);
+
+const { loadListRequest } = useLoadListRequest({
+  url: `ai-tools`,
+  onSuccess: (result) => {
+    if (result.data && result.data.length > 0) {
+      showNewBadge.value = true;
+    }
+  },
+} as LoadListRequestOptions);
+
+onMounted(() => {
+  loadListRequest({ isNew: true, size: 1 });
+});
+
+const tabBarVisible = computed(() => appStore.value.tabBarHiddenCount == 0);
+
+const homeOpacity = computed(() => (props.current == "home" ? 1 : 0.4));
+const compassOpacity = computed(() => (props.current == "compass" ? 1 : 0.4));
+const videoOpacity = computed(() => (props.current == "video" ? 1 : 0.4));
+const profileOpacity = computed(() => (props.current == "profile" ? 1 : 0.4));
+
+const homeIconName = computed(() => (props.current == "home" ? "home_filled" : "home"));
+const compassIconName = computed(() => (props.current == "compass" ? "plaza_filled" : "plaza"));
+const videoIconName = computed(() => (props.current == "video" ? "video_filled" : "video"));
+const profileIconName = computed(() => (props.current == "profile" ? "my_filled" : "profile"));
+</script>
+
+<style scoped>
+/* 平板 (横向) 和其他更大屏幕 */
+@media (min-width: 900px) {
+  .tab-bar-bottom {
+    display: none !important;
+  }
+}
+
+.tab-bar-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 65px;
+  background-color: #171717;
+  display: flex;
+  flex-direction: row;
+  z-index: 996;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tab-item {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+
+.create-button {
+  width: 46px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(to bottom right, rgb(255, 0, 216), rgb(255, 245, 0));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.middle-button-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+
+.new-badge {
+  position: absolute;
+  top: -15px;
+  width: 36px;
+  height: 26px;
+  z-index: 1;
+  left: 50%;
+  margin-left: -18px;
+}
+
+.debug {
+  color: #fff;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+</style>

@@ -1,0 +1,191 @@
+<template>
+    <bg-panel>
+      <scroll-view :scroll-y="true" class="merge-container">
+        <view class="merge-header-row">
+          <view class="merge-back-wrapper">
+            <icon-font name="arrowleft" :size="20" color="#fff" @click="onBack"></icon-font>
+          </view>
+          <text class="merge-title-centered">{{ mergeEmailText }}</text>
+          <view class="merge-header-spacer"></view>
+        </view>
+        <view class="merge-content">
+          <text class="merge-title">{{ titleText }}</text>
+          <text class="merge-subtitle">{{ subtitleText }}</text>
+        </view>
+        <view class="merge-form">
+          <text-input
+            :placeholder="passwordText"
+            style="margin-bottom: 16px"
+            type="password"
+            :value="formState.password"
+            @change="onFormChange('password', $event)"
+          ></text-input>
+          <view style="width: 100%">
+            <text style="color: red; font-size: 12px; line-height: 18px" v-if="!!errorMsg">{{ errorMsg }}</text>
+          </view>
+        </view>
+        <submit-button :disabled="!formState.password" :submitting="submitting" @submit="onSubmit">{{ loginText }}</submit-button>
+      </scroll-view>
+    </bg-panel>
+  </template>
+  
+  <script setup lang="uts">
+  import { computed, reactive, ref } from "vue";
+  import { useSubmitRequest } from "@/hooks";
+  import BgPanel from "./widgets/bg-panel.uvue";
+  import IconFont from "@/components/IconFont/IconFont.uvue";
+  import TextInput from "./widgets/text-input.uvue";
+  import SubmitButton from "./widgets/submit-button.uvue";
+  import { $i18n_t } from "@/locale/index.uts";
+  import { bindEmail } from "@/api/user.uts";
+  import { tokenStorage } from "@/store/user.uts";
+  import { execGTagEvent } from "@/utils/index.uts";
+  import { logoutAigf } from "@/api/index.uts";
+  import { handleThirdPartyLoginSuccess } from "@/utils/thirdAuth.uts";
+  
+  const mergeEmailText = computed(() => $i18n_t("account.mergeEmail"));
+  const passwordText = computed(() => $i18n_t("common.password"));
+  const loginText = computed(() => $i18n_t("common.login"));
+  const titleText = computed(() => $i18n_t("account.mergeEmailTitle"));
+  const subtitleText = computed(() => $i18n_t("account.mergeEmailSubtitle"));
+  
+  type FormState = {
+    password?: string;
+  };
+  
+  const errorMsg = ref<string>("");
+  const formState = reactive<FormState>({});
+  const redirectConfig = ref<{ from?: string; to?: string; action?: string; toAction?: string; fromAction?: string }>({});
+  
+  onLoad((options: OnLoadOptions) => {
+    const from = options["from"];
+    const to = options["to"];
+    const action = options["action"];
+    const toAction = options["toAction"];
+    const fromAction = options["fromAction"];
+    
+    redirectConfig.value = { from: from || "", to: to || "", action: action, toAction: toAction, fromAction: fromAction };
+  });
+  
+  const $logoutAigf = async () => {
+    const res = await logoutAigf();
+    if (res.success) {
+      execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "login" } as AnyObject);
+    }
+  };
+  
+  const handleMergeEmailSuccess = async (accessToken: string, bindEmailResult: any) => {
+    await handleThirdPartyLoginSuccess(accessToken, redirectConfig.value, $logoutAigf, bindEmailResult);
+  };
+
+  const { submitRequest, submitting } = useSubmitRequest({
+    url: `auth/bindemail`,
+    customErrorHanlder(err) {
+      errorMsg.value = err.message;
+    },
+    onSuccess(result) {
+      // 合并邮箱成功后的处理逻辑
+      handleMergeEmailSuccess(result.data.accessToken, result);
+    },
+    onFail(err) {
+      // GA 埋点上报: 登录失败
+      execGTagEvent("login", { result: "fail", error_code: err?.code } as AnyObject);
+    },
+  });
+  
+  const onBack = () => {
+    // uni.navigateBack();
+    uni.navigateTo({ url: "/pages/account/register" });
+  };
+  
+  const onFormChange = (field: string, val: string) => {
+    formState[field] = val;
+  };
+  
+  const validateFormData = (): boolean => {
+    if (!formState.password) {
+      return false;
+    }
+  
+    return true;
+  };
+  
+  const onSubmit = () => {
+    const isPass = validateFormData();
+    if (!isPass) {
+      return;
+    }
+  
+    errorMsg.value = "";
+    const provider = tokenStorage.get<string>("provider");
+    const accessToken = tokenStorage.get<string>("provider_token");
+    submitRequest({
+      password: formState.password,
+      provider: provider,
+      access_token: accessToken,
+    });
+  };
+  </script>
+  
+  <style scoped>
+  .merge-container {
+    flex: 1;
+    width: 100%;
+    max-width: 750px;
+    margin: 0 auto;
+    align-items: center;
+  }
+  
+  .merge-header-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    padding-top: 24px;
+    padding-left: 20px;
+    padding-right: 20px;
+    box-sizing: border-box;
+  }
+  
+  .merge-title-centered {
+    flex: 1;
+    text-align: center;
+    font-family: "Baloo Thambi 2-ExtraBold";
+    font-size: 26px;
+    line-height: 40px;
+    color: #fff;
+  }
+  
+  .merge-header-spacer {
+    width: 20px;
+  }
+  
+  .merge-content {
+    width: 100%;
+    padding: 24px 20px;
+    align-items: center;
+  }
+  
+  .merge-title {
+    font-size: 20px;
+    line-height: 28px;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+    font-weight: bold;
+  }
+  
+  .merge-subtitle {
+    font-size: 14px;
+    line-height: 20px;
+    color: #aaa;
+    text-align: center;
+  }
+  
+  .merge-form {
+    margin: 24px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  </style>
+  

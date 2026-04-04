@@ -1,0 +1,139 @@
+<template>
+  <fr-page style="padding-top: 20px; width: 100%; max-width: 1400px; margin: 0 auto;" :title="notificationsText">
+    <fr-scroll-list
+      :data-source="result.records"
+      refresher-enabled
+      :loading="loading"
+      :pagination="result.pagination"
+      :empty-text="emptyText"
+      @refresh="onRefreshNotifications"
+      @loadmore="onLoadMoreNotifications"
+    >
+      <template #record="{ record }">
+        <view class="notification-card" @click="onViewDetail(record)">
+          <fr-avatar mode="aspectFill" :size="48" :url="record.avatar" />
+          <view style="flex: 1; justify-content: center; margin-left: 12px">
+            <view style="flex-direction: row; align-items: center; margin-bottom: 4px">
+              <text class="notification-card-title text-ellipsis" style="flex: 1; margin-right: 8px">{{ record.title }}</text>
+              <text class="notification-card-time">{{ parseTime(record.createdAt) }}</text>
+            </view>
+            <view style="flex-direction: row; align-items: center">
+              <text class="notification-card-message text-ellipsis">{{ record.message }}</text>
+              <view v-if="!record.isRead" class="notification-card-unread"></view>
+            </view>
+          </view>
+        </view>
+      </template>
+    </fr-scroll-list>
+  </fr-page>
+</template>
+
+<script setup lang="uts">
+import { useLoadListRequest, LoadListRequestOptions } from "@/hooks";
+import { dayjs } from "@/uni_modules/kux-dayjs";
+import { $i18n_t } from "@/locale/index.uts";
+import { FREventBus } from "@/utils/index.uts";
+
+import FrPage from "@/components/widgets/fr-page.uvue";
+import FrScrollList from "@/components/widgets/fr-scroll-list.uvue";
+import FrAvatar from "@/components/widgets/fr-avatar.uvue";
+
+const notificationsText = computed((): string => $i18n_t("common.notifications"));
+
+const emptyText = computed((): string => $i18n_t("account.noNotification"));
+
+const { loadListRequest, reloadListRequest, loading, result } = useLoadListRequest({
+  url: "notifications",
+  pageSize: 1,
+  defaultParams: {
+    sortBy: "createdAt",
+    sortOrder: "asc",
+  },
+} as LoadListRequestOptions);
+
+const parseTime = (createdAt: string) => {
+  if (!createdAt) {
+    return "";
+  }
+
+  return dayjs(createdAt).isSame(dayjs().format("YYYY-MM-DD"), "day") ? dayjs(createdAt).format("HH:mm") : dayjs(createdAt).format("MM/DD");
+};
+
+const reloadNotificationHandler = () => {
+  reloadListRequest();
+};
+
+onMounted(() => {
+  loadListRequest(null);
+
+  FREventBus.on("reload:notifications", reloadNotificationHandler);
+});
+
+onUnmounted(() => {
+  FREventBus.off("reload:notifications", reloadNotificationHandler);
+});
+
+const onRefreshNotifications = () => {
+  loadListRequest(null);
+};
+
+const onLoadMoreNotifications = ({ page }) => {
+  loadListRequest({ page });
+};
+
+const onViewDetail = (record: any) => {
+  uni.navigateTo({
+    url: `/pages/account/notification-detail?id=${record.id}&userID=${record.userID}&type=${record.type}&isRead=${record.isRead}`,
+  });
+};
+</script>
+
+<style scoped>
+.notification-card {
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 24px;
+}
+
+.notification-card-title {
+  height: 20px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.notification-card-time {
+  height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #707070;
+}
+
+.notification-card-message {
+  flex: 1;
+  height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #707070;
+}
+
+.notification-card-unread {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff00d8 0%, #fff500 100%);
+  margin-left: 10px;
+}
+
+.text-ellipsis {
+  lines: 1;
+  overflow: hidden;
+
+  /* #ifdef WEB */
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+</style>

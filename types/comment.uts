@@ -1,0 +1,33 @@
+export type CommentAuthor = {
+  avatar: string;
+  bio: string;
+  createdAt: string;
+  email: string;
+  followersCount: number;
+  followingCount: number;
+  id: number;
+  location: string;
+  nickname: string;
+  postsCount: number;
+  username: string;
+};
+
+export type CommentMention = {
+	mentionedUserID: string;
+	username: string;
+}
+
+export type Comment = {
+  author: CommentAuthor;
+	mentions?: CommentMention[];
+  content: string;
+  createdAt: string;
+  id: string;
+  isLiked: boolean;
+  likesCount: number;
+  postID: string;
+  replies: string[];
+  repliesCount: number;
+  updatedAt: string;
+  userID: string;
+};

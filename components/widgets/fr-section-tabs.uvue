@@ -1,0 +1,79 @@
+<template>
+  <view class="fr-section-tabs">
+    <fr-tabs v-if="props.showTabs" :tabs="props.tabs" :active-tab-key="props.activeTabKey" @switch="onTabChange">
+      <template #label="{ tab, selected }">
+        <slot name="tab-label" :tab="tab" :selected="selected"></slot>
+      </template>
+      <template #extra="{ tab, selected }">
+        <slot name="tab-extra" :tab="tab" :selected="selected"></slot>
+      </template>
+      <template #icon="{ tab, selected }">
+        <slot name="tab-icon" :tab="tab" :selected="selected"></slot>
+      </template>
+    </fr-tabs>
+    <swiper class="fr-section-tabs_body" :current-item-id="props.activeTabKey" @change="onSwiperChange">
+      <swiper-item v-for="(tab, idx) in props.tabs" :item-id="tab.key">
+        <slot v-if="activeCacheState[tab.key]" :tab="tab" :index="idx" :selected="props.activeTabKey == tab.key"></slot>
+      </swiper-item>
+    </swiper>
+  </view>
+</template>
+
+<script setup lang="uts">
+import FrTabs from "./fr-tabs.uvue";
+import { Tab } from "./type.uts";
+
+type TabKey = string | number;
+
+type Props = {
+  tabs: Tab[];
+  activeTabKey?: TabKey;
+  showTabs: boolean;
+};
+
+type DefaultSlotProps = {
+  index: number;
+  tab: Tab;
+};
+
+const props = withDefaults(defineProps<Props>(), { tabs: [], showTabs: true });
+const emit = defineEmits<{
+  (e: "change:tab", key: TabKey): void;
+}>();
+
+defineSlots<{
+  default(p: DefaultSlotProps): any;
+  tabLabel(p: { tab: Tab; selected: boolean }): any;
+  tabIcon(p: { tab: Tab; selected: boolean }): any;
+  tabExtra(p: { tab: Tab; selected: boolean }): any;
+}>();
+
+const activeCacheState = reactive<UTSJSONObject>({});
+
+watch(
+  () => props.activeTabKey,
+  (key: string) => {
+    activeCacheState[key] = true;
+  },
+  { immediate: true },
+);
+
+const onTabChange = (key: TabKey) => {
+  emit("change:tab", key);
+};
+
+const onSwiperChange = (d: UniSwiperChangeEvent) => {
+  const key = d.detail?.currentItemId as string;
+  emit("change:tab", key);
+};
+</script>
+
+<style scoped>
+.fr-section-tabs {
+  flex: 1;
+}
+
+.fr-section-tabs_body {
+  flex: 1;
+}
+</style>

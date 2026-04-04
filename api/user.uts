@@ -1,0 +1,188 @@
+import { request, canIgnore } from "./request";
+import { ApiResponse, UserItem, CreditHistoryListResponse, CheckResult } from "../types/index.uts";
+import { generateDeviceFingerprint } from "@/utils/fingerprint.uts";
+import { tokenStorage } from "@/store/user.uts";
+import { storage } from "@/store/index.uts";
+
+export async function postThirdPartyLogin(provider?: 'google' | 'meta' | 'x' | 'apple', options: any): Promise<ApiResponse<any>> | null {
+  let url = `auth/login`;
+  const deviceFingerprint = await generateDeviceFingerprint();
+  const affiliateCode = (window as any).location.hostname;
+  const callback = (window as any).location.protocol + "//" + (window as any).location.hostname + "/pages/account/auth";
+  const source = import.meta.env.VITE_APP_SOURCE;
+  const extraData: any = {
+    affiliateCode,
+    callback,
+    deviceFingerprint,
+    source,
+  };
+
+  tokenStorage.set<string>("provider", provider);
+  return request({
+    url: url,
+    method: "POST",
+    data: {
+      provider: provider,
+      ...extraData,
+      ...options,
+    }
+  });
+}
+
+export function exchangeToken(provider: 'google' | 'meta' | 'x' | 'apple', token: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/exchange`,
+    method: "POST",
+    data: {
+      provider: provider,
+      oauth_token: token,
+    }
+  });
+}
+
+
+export function bindEmail(accessToken: string, password: string, provider: 'google' | 'meta' | 'x' | 'apple'): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/bindemail`,
+    method: "POST",
+    data: {
+      access_token: accessToken,
+      password: password,
+      provider: provider,
+    }
+  });
+}
+
+export function getUserProfileInfo(userId: string): Promise<ApiResponse<UserItem>> | null {
+  return request({
+    url: `user-profiles/${userId}`,
+    method: "GET",
+  });
+}
+
+
+export const getMe = canIgnore(function (errcallback?: ()=> void): Promise<ApiResponse<UserItem>> | null {
+  return request({
+    url: `user-profiles/me`,
+    method: "GET",
+    customErrorHanlder: errcallback
+  });
+});
+
+
+export function CheckUserName(username: string, errcallback?: ()=> void): Promise<ApiResponse<CheckResult>> | null {
+  return request({
+    url: `users/username/${username}/check`,
+    method: "GET",
+    customErrorHanlder: errcallback
+  });
+}
+
+export function setUserInfo(userId: string, data:  UTSJSONObject): Promise<ApiResponse<UserItem>> | null {
+  return request({
+    url: `users/${userId}`,
+    method: "PUT",
+    data: data,
+  });
+}
+
+export function postLogout():Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/logout`,
+    method: "POST"
+  })
+}
+
+export async function getFavorites(
+  userId:string,
+  page: number = 1,
+  size: number = 20,
+  keyword: string = "",
+): Promise<ResourceListResponse | null> {
+  let url = `users/${userId}/favorites?page=${page}&size=${size}`;
+  if (keyword.length > 0) {
+    url += `&keyword=${encodeURIComponent(keyword)}`;
+  }
+  return await request<ResourceListResponse>({
+    url: url,
+    method: "GET",
+  });
+}
+
+/**
+ * 发送邮箱验证码
+ * @param email 邮箱地址
+ */
+export function sendEmailVerificationCode(email: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/resend-verification`,
+    method: "POST",
+    data: {
+      email: email
+    }
+  });
+}
+
+/**
+ * 验证邮箱验证码
+ * @param email 邮箱地址
+ * @param code 验证码
+ */
+export function verifyEmailCode(email: string, code: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/verify-email`,
+    method: "GET",
+    data: {
+      token: code
+    }
+  });
+}
+
+/**
+ * 验证用户密码
+ * @param password 用户密码
+ */
+export function verifyPassword(password: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `auth/verify-password`,
+    method: "POST",
+    data: {
+      password: password
+    }
+  });
+}
+
+
+/**
+ * 获取用户媒体库
+ * @param id 用户id
+ */
+export function getUserLibrary(params: LibraryRequestParams): Promise<ApiResponse<UserLibraryResponse>> | null {
+  return request<ApiResponse<UserLibraryResponse>>({
+    url: `users/${params.id}/library`,
+    method: "GET",
+    data: params,
+  });
+}
+
+/**
+ * 获取用户积分历史记录
+ * @param userId 用户ID
+ * @param page 页码
+ * @param size 每页数量
+ */
+export function getCreditsHistory(
+  userId: string,
+  page: number = 1,
+  size: number = 10,
+  type: string | undefined
+): Promise<CreditHistoryListResponse | null> {
+  let url = `users/${userId}/credits/history?page=${page}&size=${size}`;
+  if(type){
+    url += `&type=${type}`
+  }
+  return request<CreditHistoryListResponse>({
+    url: url,
+    method: "GET",
+  });
+}

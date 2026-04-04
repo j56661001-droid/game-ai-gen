@@ -1,0 +1,66 @@
+<template>
+  <view class="btn-container">
+    <view
+      v-for="(opt, index) in props.options"
+      :key="opt.value"
+      class="btn-item"
+      :class="{
+        'btn-item-gap': index != 0,
+        'btn-selected': props.value == opt.value,
+      }"
+      @click="onSelect(opt.value)"
+    >
+      <slot :option="opt">
+        <text class="btn-text">{{ opt.label }}</text>
+      </slot>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ButtonSelectorValue, ButtonSelectorOption, ButtonSelectorProps, ButtonSelectorSlot } from "./type.uts";
+
+defineSlots<{
+  default(props: ButtonSelectorSlot): any;
+}>();
+
+const props = defineProps<ButtonSelectorProps>();
+
+const emit = defineEmits<{ (e: "change", v: ButtonSelectorValue): void }>();
+
+const onSelect = (v: ButtonSelectorValue) => {
+  emit("change", v);
+};
+</script>
+
+<style scoped>
+.btn-container {
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 48px;
+}
+
+.btn-item {
+  flex: 1;
+  padding: 14px 10px;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+}
+
+.btn-item-gap {
+  margin-left: 12px;
+}
+
+.btn-selected {
+  background-color: rgba(246, 33, 178, 0.2);
+  border-color: rgba(255, 35, 184, 1);
+}
+
+.btn-text {
+  color: #fff;
+  font-size: 14px;
+}
+</style>

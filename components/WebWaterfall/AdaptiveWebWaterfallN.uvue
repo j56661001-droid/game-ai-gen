@@ -1,0 +1,405 @@
+<template>
+    <view ref="waterfallWrapperRef" class="waterfall-wrapper">
+      <view class="waterfall-content">
+        <view 
+          v-for="(columnItems, colIndex) in columnItemsList" 
+          :key="colIndex"
+          class="waterfall-column"
+          :style="getColumnStyle(colIndex)">
+          <view 
+            v-for="item in columnItems" 
+            :key="item.id"
+            :id="getItemId(colIndex, item.id)"
+            class="waterfall-item-wrapper">
+            <slot :item="item" :onItemReady="onItemReady"></slot>
+          </view>
+        </view>
+      </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, getCurrentInstance } from 'vue';
+
+type WaterfallItem = {
+  id: string;
+}
+
+type Props = {
+  items: WaterfallItem[];
+  column?: number;
+  minWidth?: number;
+  gap?: number;
+  minColumn?: number;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  items: [],
+  column: undefined,
+  minWidth: 230,
+  minColumn: 2,
+  gap: 16,
+});
+
+const emits = defineEmits(['scrolltolower']);
+
+// --- State ---
+// 窗口宽度响应式变量
+const windowWidth = ref<number | null>(null);
+const windowWidthLoading = ref<boolean>(true);
+
+// 动态列数据
+const columnItemsList = ref<WaterfallItem[][]>([]);
+
+// 高度缓存
+const itemHeightCache = new Map<string, number>();
+// 瀑布流每项底部的间距
+const ITEM_MARGIN_BOTTOM = 10;
+
+// 计算实际的列数
+const computedColumn = computed((): number => {
+  // 如果传入了 column，直接使用
+  if (props.column != null && props.column > 0) {
+    return Math.floor(props.column);
+  }
+  
+  // 否则根据窗口宽度和 minWidth 计算
+  const width = windowWidth.value;
+  const minWidth = props.minWidth;
+  const gap = props.gap;
+  
+  // 如果窗口宽度还未初始化或无效，返回默认值
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(minWidth) || minWidth <= 0 || !Number.isFinite(gap) || gap < 0) {
+    return props.minColumn;
+  }
+
+  // 计算可容纳的列数：column = (width + gap) / (minWidth + gap)
+  const calculatedColumn = Math.floor((width + gap) / (minWidth + gap));
+  
+  // 确保计算结果是有效的整数
+  if (!Number.isFinite(calculatedColumn) || calculatedColumn <= 0) {
+    return props.minColumn;
+  }
+  
+  // 如果计算出的列数小于 minColumn，则 column = minColumn
+  if (calculatedColumn < props.minColumn) {
+    return props.minColumn;
+  }
+  
+  // 确保至少返回 1
+  return Math.max(props.minColumn || 1, calculatedColumn);
+});
+
+const getItemId = (colIndex: number, id: string) => {
+  return "waterfall-item-" + colIndex + "-" + id;
+}
+
+// 获取列样式
+const getColumnStyle = (colIndex: number) => {
+  const column = computedColumn.value;
+  const gap = props.gap;
+  if (column <= 1) {
+    return { width: '100%' };
+  }
+  // 计算每列的宽度：(100% - (列数-1) * gap) / 列数
+  const columnWidth = `calc((100% - ${(column - 1) * gap}px) / ${column})`;
+  // 最后一列不需要右边距
+  const isLastColumn = colIndex === column - 1;
+  return { 
+    width: columnWidth,
+    marginRight: isLastColumn ? '0px' : `${gap}px`
+  };
+}
+
+const triggerLayoutCalculation = (id: string = '') => {
+  const column = computedColumn.value;
+  
+  // 如果列数无效，清空数据
+  if (!Number.isFinite(column) || column <= 0) {
+    columnItemsList.value = [];
+    return;
+  }
+  
+  // 测量并缓存新加载项的高度
+  // 遍历所有当前渲染在DOM中的项目，如果其高度尚未缓存，则进行测量
+  if(id != ''){
+    itemHeightCache.delete(id);
+  }
+  const itemsToMeasureNow = props.items.filter(item => !itemHeightCache.has(item.id));
+
+  for (const item of itemsToMeasureNow) {
+    const element = uni.getElementById(getItemId(item.id));
+    if (element != null && element.offsetHeight != null) {
+      itemHeightCache.set(item.id, element.offsetHeight);
+    } else {
+      // console.warn(`Failed to measure item ${item.id}. Using default height 200.`);
+      itemHeightCache.set(item.id, 200); // 设置一个默认高度
+    }
+  }
+
+  // 重新分配所有项目到多列
+  const columns: WaterfallItem[][] = [];
+  const columnHeights: number[] = [];
+  
+  // 初始化列数组和高度数组
+  for (let i = 0; i < column; i++) {
+    columns[i] = [];
+    columnHeights[i] = 0;
+  }
+
+  // 将每个项目分配到高度最小的列
+  for (const item of props.items) {
+    const itemHeight = itemHeightCache.get(item.id);
+    
+    if (itemHeight == null) {
+      console.error(`Height for item ${item.id} not found in cache. Using default.`);
+      // 找到高度最小的列
+      let minHeightIndex = 0;
+      for (let i = 1; i < column; i++) {
+        if (columnHeights[i] < columnHeights[minHeightIndex]) {
+          minHeightIndex = i;
+        }
+      }
+      columns[minHeightIndex].push(item);
+      columnHeights[minHeightIndex] += 200 + ITEM_MARGIN_BOTTOM; // Use default height
+      continue;
+    }
+    
+    // 找到高度最小的列
+    let minHeightIndex = 0;
+    for (let i = 1; i < column; i++) {
+      if (columnHeights[i] < columnHeights[minHeightIndex]) {
+        minHeightIndex = i;
+      }
+    }
+    
+    columns[minHeightIndex].push(item);
+    columnHeights[minHeightIndex] += Math.floor(itemHeight) + ITEM_MARGIN_BOTTOM;
+  }
+  
+  columnItemsList.value = columns;
+};
+
+
+// --- Core Logic ---
+
+// 由父组件调用，通知某个item的图片已加载完成
+const onItemReady = (itemId: string) => {
+  nextTick(() => {
+    triggerLayoutCalculation(itemId); // 立即触发重新布局
+  });
+};
+
+const distributeItems = async () => {
+  const column = computedColumn.value;
+  
+  // 如果列数无效，清空数据
+  if (!Number.isFinite(column) || column <= 0) {
+    columnItemsList.value = [];
+    return;
+  }
+  
+  // 找出所有需要测量的新项目（即不在缓存中的项目）
+  const newItems = props.items.filter(item => !itemHeightCache.has(item.id));
+
+  // 如果列数变化了，需要重新初始化列数组
+  if (columnItemsList.value.length != column) {
+    columnItemsList.value = [];
+    for (let i = 0; i < column; i++) {
+      columnItemsList.value[i] = [];
+    }
+  }
+
+  // 初始平均分配新项目到多列进行渲染，以便测量
+  const tempColumns: WaterfallItem[][] = [];
+  for (let i = 0; i < column; i++) {
+    tempColumns[i] = [];
+  }
+  
+  newItems.forEach((item, index) => {
+    const colIndex = index % column;
+    tempColumns[colIndex].push(item);
+  });
+  
+  // 将新项目添加到现有列中
+  for (let i = 0; i < column; i++) {
+    if (columnItemsList.value[i] == null) {
+      columnItemsList.value[i] = [];
+    }
+    columnItemsList.value[i].push(...tempColumns[i]);
+  }
+
+  // 确保 DOM 更新后立即触发布局计算
+  await nextTick();
+  triggerLayoutCalculation();
+};
+
+const onScrollToLower = () => {
+  emits('scrolltolower');
+};
+
+// 获取组件实例和 ref
+const instance = getCurrentInstance();
+const waterfallWrapperRef = ref<any>(null);
+
+// 轮询检测定时器
+let windowCheckTimer: number | null = null;
+let checkTimer: number | null = null;
+const CHECK_INTERVAL = 50; // 每50ms检查一次
+const MAX_WAIT_TIME = 3000; // 最大等待3秒
+let startTime = 0;
+
+
+// 清除轮询定时器
+const clearCheckTimer = () => {
+  if (checkTimer != null) {
+    clearInterval(checkTimer);
+    checkTimer = null;
+  }
+}
+
+/**
+ * 更新窗口宽度的函数（获取最外层 view 组件的宽度）
+ */
+const updateWindowWidth = () => {
+  // 清除之前的定时器
+  clearCheckTimer();
+  startTime = Date.now();
+
+  // 超时检查
+  const checkTimeout = (): boolean => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed < MAX_WAIT_TIME) return false; // 未超时
+    // 超时，处理超时逻辑
+    windowWidthLoading.value = false;
+    clearCheckTimer();
+    return true;
+  }
+  
+  // 尝试获取宽度的函数
+  const tryGetWidth = () => {
+    const query = uni.createSelectorQuery().in(instance);
+    query
+      .select('.waterfall-wrapper')
+      .boundingClientRect((res: any) => {
+        //  获取失败
+        if (!res?.width || res?.width <= 0) {
+          checkTimeout()
+          return;
+        }
+
+        // 成功获取到宽度
+        windowWidth.value = res.width;
+        windowWidthLoading.value = false;
+        clearCheckTimer(); // 清除定时器
+        triggerLayoutCalculation(); // 宽度变化时重新计算布局
+      }).exec();
+  };
+  
+  // 立即尝试一次
+  nextTick(() => {
+    tryGetWidth();
+    // 轮询检测宽度
+    checkTimer = setInterval(() => {
+      // 如果已经获取到宽度，停止轮询
+      if (windowWidth.value != null && windowWidth.value > 0) {
+        clearCheckTimer()
+        return
+      };
+      if (checkTimeout()) return;  // 检查是否超时
+      // // 未超时继续尝试获取宽度
+      tryGetWidth();
+    }, CHECK_INTERVAL) as any;
+  
+  });
+};
+
+// 监听列数变化，重新计算布局
+watch(() => computedColumn.value, () => {
+  if (props.items != null && props.items.length > 0) {
+    // 列数变化时清空列数据，保留高度缓存（因为项目高度不会因列数变化而改变）
+    columnItemsList.value = [];
+    // 重新触发布局计算，使用已有的高度缓存
+    nextTick(() => {
+      triggerLayoutCalculation();
+    });
+  }
+});
+
+// 监听 props.items 的变化
+watch(() => props.items, (newItems: WaterfallItem[]) => {
+  if (newItems != null && newItems.length > 0) {
+    distributeItems();
+  } else {
+    // 如果传入的 items 为空，则清空所有列
+    columnItemsList.value = [];
+    itemHeightCache.clear(); // 清空缓存
+  }
+}, { immediate: true, deep: true });
+
+// 组件挂载时初始化窗口宽度
+onMounted(() => {
+  // 使用 nextTick 确保 DOM 已渲染后再查询
+  nextTick(() => {
+    updateWindowWidth();
+  });
+  
+  // WEB平台监听窗口变化
+  // #ifdef WEB
+  nextTick(() => {
+    try {
+      if (typeof window != "undefined" && window != null && window.addEventListener != null) {
+        window.addEventListener("resize", updateWindowWidth);
+      }
+    } catch (e) {
+      console.error("Failed to add resize listener:", e);
+    }
+  });
+  // #endif
+});
+
+onUnmounted(() => {
+  // 清除轮询定时器
+  // if (windowWidthCheckTimer) {
+  //   clearInterval(windowWidthCheckTimer);
+  //   windowWidthCheckTimer = null;
+  // }
+  
+  // #ifdef WEB
+  // 清理 WEB 平台的监听器
+  try {
+    if (typeof window != "undefined" && window != null && window.removeEventListener != null) {
+      window.removeEventListener("resize", updateWindowWidth);
+    }
+  } catch (e) {
+    console.error("Failed to remove resize listener:", e);
+  }
+  // #endif
+});
+
+defineExpose({
+  column: computedColumn,
+});
+</script>
+
+
+<style scoped>
+.waterfall-wrapper {
+  flex: 1;
+  width: 100%;
+}
+.waterfall-content {
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+  width: 100%;
+}
+.waterfall-column {
+  display: flex;
+  flex-direction: column;
+}
+.waterfall-item-wrapper {
+  margin-bottom: 10px;
+  transition: opacity 0.3s ease-in-out; /* Smooth transition for opacity */
+}
+</style>

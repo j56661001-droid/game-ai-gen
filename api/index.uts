@@ -1,0 +1,4 @@
+export * as userApi from './user';
+export * as fingerprintApi from './fingerprint';
+export * from './affiliate.uts'
+export * from './aigf.uts'

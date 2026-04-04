@@ -1,0 +1,287 @@
+import { tokenStorage, user } from "@/store/user.uts";
+import { ApiResponse, FileInfo, ServerError } from "@/types/index.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { isDevelopmentEnv, isCapacitor, getDomainFromUrl } from "@/utils/platform.uts";
+
+export const config = {
+  baseUrl: import.meta.env.VITE_API_BASE_URL,
+};
+
+tokenStorage.set('baseUrl', config.baseUrl);
+
+// function parseJwt(token: string) {
+//   try {
+//     const base64Url = token.split(".")[1];
+//     if (!base64Url) {
+//       return null;
+//     }
+//     let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+//     const padLength = 4 - (base64.length % 4);
+//     if (padLength < 4) {
+//       base64 += "=".repeat(padLength);
+//     }
+//     const binaryString = atob(base64);
+//     const bytes = new Uint8Array(binaryString.length);
+//     for (let i = 0; i < binaryString.length; i++) {
+//       bytes[i] = binaryString.charCodeAt(i);
+//     }
+//     const jsonPayload = new TextDecoder("utf-8").decode(bytes);
+
+//     return JSON.parse(jsonPayload);
+//   } catch (error) {
+//     console.error("Failed to parse JWT:", error);
+//     return null;
+//   }
+// }
+
+// let hasPrint = false;
+
+const errorHandler = (error: { code: number; message: string }, options: UTSJSONObject) => {
+  if (typeof options.customErrorHanlder == "function") {
+    options.customErrorHanlder(error as any);
+    return error;
+  }
+
+  if (error.code == 401) {
+    tokenStorage.set("token", "");
+    user.value = null;
+    uni.$emit("login:show");
+    return error;
+  }
+
+  const localeMessage = $i18n_t(`s_msg.err_${error.code}`);
+  const displayMessage = localeMessage || error.message;
+
+  uni.showToast({
+    title: displayMessage,
+    icon: "none",
+  });
+
+  return error;
+};
+
+export function request<T>(options: { url: string; method?: RequestMethod; data?: any; header?: any; customErrorHanlder?: (err: any) => void }): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const fullUrl = config.baseUrl + options.url;
+    const token = tokenStorage.get<string>("token");
+
+    const headers = {
+      ...(options.header || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    uni.request({
+      url: fullUrl,
+      method: options.method || "GET",
+      data: options.data,
+      header: headers,
+      success: (res) => {
+        let data = res.data as ApiResponse<any>;
+        if (data == null) {
+          data = { success: false, error: { code: 400, message: $i18n_t("s_msg.requestFailed") } } as ApiResponse<any>;
+        }
+
+        if (res.statusCode == 401) {
+          const error = data.error as ServerError;
+          const customError = errorHandler({ code: res.statusCode, message: error.message }, options as any);
+          reject(customError as any);
+          return;
+        }
+
+        if (data.success) {
+          resolve(data as T);
+        } else {
+          const error = data.error as ServerError;
+          const customError = errorHandler({ code: error.code, message: error.message }, options as any);
+          reject(customError as any);
+        }
+      },
+      fail: (err) => {
+        uni.showToast({
+          title: err.errMsg || $i18n_t("s_msg.requestFailed"),
+          icon: "none",
+        });
+        reject({ code: err?.errCode || 400, message: err?.errMsg || $i18n_t("s_msg.requestFailed") } as any);
+      },
+    });
+  });
+}
+
+/**
+ * 函数修饰器：如果当前没有token，则直接返回null。
+ * @param originalRequest 原始的请求函数
+ * @returns 包装后的请求函数，如果无token则返回null
+ */
+export function canIgnore<T, Args extends any[]>(originalFunction: (...args: Args) => Promise<T>): (...args: Args) => Promise<T | null> {
+  return (...args) => {
+    const token = tokenStorage.get<string>("token") as string;
+    if (token.length == 0) {
+      // console.log("No token, ignoring function call.");
+      return Promise.resolve(null as T); // 返回null
+    }
+    return originalFunction(...args);
+  };
+}
+
+export function upload<T>(options: { url: string; filePath: string; name: string; formData?: any; header?: any }, paddingOrigin: boolean = false): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const fullUrl = config.baseUrl + options.url;
+    const token = tokenStorage.get<string>("token");
+
+    const headers = {
+      ...(options.header || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    uni.uploadFile({
+      url: fullUrl,
+      filePath: options.filePath,
+      name: options.name,
+      formData: options.formData,
+      header: headers,
+      success: (uploadRes) => {
+        const data = JSON.parse(uploadRes.data) as ApiResponse<any>;
+        if (data != null && data.success && data.data != null) {
+          const fileinfo = data.data as FileInfo;
+          if (paddingOrigin && fileinfo.fileURL != null && !/^https?:\/\//.test(fileinfo.fileURL)) {
+            if(isDevelopmentEnv() || isCapacitor()){
+              fileinfo.fileURL = getDomainFromUrl(config.baseUrl) + fileinfo.fileURL;
+            }else{
+              // 浏览器环境下，从浏览器路径去domain
+              const domain = getDomainFromUrl(window.location.href);
+              if(domain.length > 0){
+                fileinfo.fileURL = domain + fileinfo.fileURL;
+              }
+            }
+            
+          }
+          resolve(data as T);
+        } else {
+          const error = data.error as ServerError;
+          if (error.code == 401) {
+            uni.$emit("login:show");
+          } else {
+            const localeMessage = $i18n_t(`s_msg.err_${error.code}`);
+            const displayMessage = localeMessage || error.message;
+            uni.showToast({
+              title: displayMessage,
+              icon: "none",
+            });
+          }
+          reject(null);
+        }
+      },
+      fail: (err) => {
+        uni.showToast({
+          title: err.errMsg || $i18n_t("s_msg.requestFailed"),
+          icon: "none",
+        });
+        reject(null);
+      },
+    });
+  });
+}
+
+export function nativeUpload<T>(
+  options: { url: string; file: File; data?: any; header?: any; customErrorHanlder?: (err: any) => void },
+  paddingOrigin: boolean = false,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const fullUrl = config.baseUrl + options.url;
+    const token = tokenStorage.get<string>("token");
+
+    // 创建 FormData
+    const formData = new FormData();
+    formData.append('file', options.file);
+
+    // 添加其他数据
+    if (options.data) {
+      Object.keys(options.data).forEach(key => {
+        formData.append(key, options.data[key]);
+      });
+    }
+
+    // 设置请求头
+    const headers: UTSJSONObject = {
+      ...(options.header || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    // 使用原生 fetch 上传
+    fetch(fullUrl, {
+      method: 'POST',
+      headers: headers as any,
+      body: formData as any,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data: ApiResponse<any>) => {
+        if (data.success) {
+          const fileinfo = data.data as FileInfo;
+          if (paddingOrigin && fileinfo.fileURL != null && !/^https?:\/\//.test(fileinfo.fileURL)) {
+            if(isDevelopmentEnv() || isCapacitor()){
+              fileinfo.fileURL = getDomainFromUrl(config.baseUrl) + fileinfo.fileURL;
+            }else{
+              // 浏览器环境下，从浏览器路径去domain
+              const domain = getDomainFromUrl(window.location.href);
+              if(domain.length > 0){
+                fileinfo.fileURL = domain + fileinfo.fileURL;
+              }
+            }
+          }
+          resolve(data as T);
+        } else {
+          const error = data.error as ServerError;
+
+          if (typeof options.customErrorHanlder == "function") {
+            options.customErrorHanlder(error as any);
+            reject(null);
+            return;
+          }
+
+          if (error.code == 401) {
+            uni.$emit("login:show");
+            reject(null);
+            return;
+          }
+          const localeMessage = $i18n_t(`s_msg.err_${error.code}`);
+          const displayMessage = localeMessage || error.message;
+          uni.showToast({
+            title: displayMessage,
+            icon: "none",
+          });
+          reject(null);
+        }
+      })
+      .catch((err) => {
+        if (typeof options.customErrorHanlder == "function") {
+          options.customErrorHanlder(err);
+          reject(null);
+          return;
+        }
+
+        uni.showToast({
+          title: err.message || $i18n_t("s_msg.requestFailed"),
+          icon: "none",
+        });
+        reject(null);
+      });
+  });
+}
+
+export const getAbsoluteMediaUrl = (url: string | null): string => {
+  if (url == null || url.length == 0 || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/static/") || url.startsWith("blob:")) {
+    return url || "";
+  }
+
+  if (isDevelopmentEnv() || isCapacitor()) {
+    return getDomainFromUrl(config.baseUrl) + url;
+  } else {
+    // 浏览器环境下不用管
+    return `${window.location.origin}${url}`;
+  }
+};

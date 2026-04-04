@@ -1,0 +1,91 @@
+<template>
+  <bg-panel :hide-footer="true">
+    <view class="auth-container">
+      <fr-spin type="primary" :size="40" />
+    </view>
+  </bg-panel>
+</template>
+
+<script setup lang="uts">
+import { ref } from "vue";
+import BgPanel from "./widgets/bg-panel.uvue";
+import { FrSpin } from "@/components/widgets";
+import { tokenStorage } from "@/store/user.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { logoutAigf } from "@/api/index.uts";
+import { handleThirdPartyLoginSuccess } from "@/utils/thirdAuth.uts";
+
+const redirectConfig = ref<{ from?: string; to?: string; action?: string; toAction?: string; fromAction?: string }>({});
+
+const $logoutAigf = async () => {
+  const res = await logoutAigf();
+  if (res.success) {
+    execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "login" } as AnyObject);
+  }
+};
+
+const handleLoginSuccess = async (accessToken: string) => {
+  await handleThirdPartyLoginSuccess(accessToken, redirectConfig.value, $logoutAigf);
+};
+
+const handleLoginFail = (err?: any) => {
+  // GA 埋点上报: 登录失败
+  execGTagEvent("login", { result: "fail", error_code: err?.code } as AnyObject);
+};
+
+onLoad((options: OnLoadOptions) => {
+  const code = options["state"];
+  const token = options["token"];
+  const from = options["from"];
+  const to = options["to"];
+  const action = options["action"];
+  const toAction = options["toAction"];
+  const fromAction = options["fromAction"];
+  
+  redirectConfig.value = { from: from || "", to: to || "", action: action, toAction: toAction, fromAction: fromAction };
+  
+  if (code != null) {
+    if (code === '0') {
+      // 三方登陆成功逻辑
+      if (token != null) {
+        handleLoginSuccess(token as string).catch((err) => {
+          handleLoginFail(err);
+        });
+      } else {
+        handleLoginFail();
+      }
+    }
+    // 首次三方登陆成功需要绑定邮箱，后续登录直接跳转首页
+    if (code === '2') {
+      tokenStorage.set<string>("provider_token", token as string);
+      let mergeEmailUrl = "/pages/account/merge-email";
+      const params: string[] = [];
+      if (redirectConfig.value.from) params.push(`from=${encodeURIComponent(redirectConfig.value.from)}`);
+      if (redirectConfig.value.to) params.push(`to=${encodeURIComponent(redirectConfig.value.to)}`);
+      if (redirectConfig.value.action) params.push(`action=${encodeURIComponent(redirectConfig.value.action)}`);
+      if (redirectConfig.value.toAction) params.push(`toAction=${encodeURIComponent(redirectConfig.value.toAction)}`);
+      if (redirectConfig.value.fromAction) params.push(`fromAction=${encodeURIComponent(redirectConfig.value.fromAction)}`);
+      if (params.length > 0) {
+        mergeEmailUrl += `?${params.join("&")}`;
+      }
+      uni.navigateTo({
+        url: mergeEmailUrl,
+      });
+    }
+    console.log("code 参数值:", code);
+    console.log("token 参数值:", token);
+  }
+});
+</script>
+
+<style scoped>
+.auth-container {
+  flex: 1;
+  display: flex;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+</style>

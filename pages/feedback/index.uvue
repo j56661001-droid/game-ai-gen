@@ -1,0 +1,747 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <view class="header">
+        <view class="header-row">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ $i18n_t("profile.feedback") }}</text>
+        </view>
+      </view>
+
+      <!-- Tab切换 -->
+      <fr-tabs :tabs="tabs" :active-tab-key="activeTabKey" @switch="onTabSwitch" class="fr-tabs"></fr-tabs>
+
+      <!-- 反馈与投诉tab内容 -->
+      <view v-if="activeTabKey === 'feedback'" class="feedback-tab-content">
+        <scroll-view class="scroll-view">
+
+          <!-- 问题描述输入框 -->
+          <view class="form-section">
+            <text class="form-label">{{ $i18n_t("profile.feedbackDescription") }} <text class="required">*</text></text>
+            <textarea
+              :value="feedbackDescription"
+              :placeholder="$i18n_t('profile.feedbackDescriptionPlaceholder')"
+              class="feedback-textarea"
+              :class="{ error: feedbackDescription.length > MAX_LENGTH_DESCRIPTION }"
+              @input="onDescriptionInput"
+            ></textarea>
+            <text class="form-hint" :class="{ error: feedbackDescription.length > MAX_LENGTH_DESCRIPTION }"
+              >{{ feedbackDescription.length }}/{{ MAX_LENGTH_DESCRIPTION }}</text
+            >
+          </view>
+          
+          <!-- 反馈类型选择 -->
+          <view class="form-section">
+            <text class="form-label">{{ $i18n_t("profile.feedbackType") }}</text>
+            <fr-button-selector
+              :value="feedbackType"
+              :options="feedbackTypeOptions"
+              @change="onFeedbackTypeChange"
+              class="feedback-type-selector"
+            ></fr-button-selector>
+          </view>
+
+          <!-- 图片上传 -->
+          <view class="form-section to-bottom">
+            <text class="form-label">{{ $i18n_t("common.attachments") }} ({{ uploadedImages.length }}/3)</text>
+            <fr-image-uploader :value="uploadedImages" :count="MAX_LENGTH_IMAGES" removable class="image-uploader" @change="onImagesChange"></fr-image-uploader>
+          </view>
+
+        </scroll-view>
+
+        <!-- 提交按钮 -->
+        <view class="submit-section">
+          <fr-button :loading="submitting" :disabled="!canSubmit" @click="onSubmit">
+            {{ $i18n_t("profile.feedbackSubmit") }}
+          </fr-button>
+        </view>
+      </view>
+
+      <!-- 历史记录tab内容 -->
+      <view v-if="activeTabKey === 'history'" class="history-tab-content">
+        <!-- 初始加载状态 -->
+        <view v-if="isInitLoading" class="history-loading">
+          <FrSpin type="primary" :size="30" />
+          <text class="loading-text">{{ $i18n_t("common.loading_") }}</text>
+        </view>
+
+        <!-- 列表内容 -->
+        <scroll-view v-else class="history-list" scroll-y @scrolltolower="loadMore">
+          <view v-if="historyList.length > 0" class="history-list-content">
+            <view v-for="(item, index) in historyList" :key="item.id" class="history-item" @click="onHistoryItemClick(item)">
+              <!-- 第一行：标签、状态和日期时间 -->
+              <view class="history-top-row">
+                <view class="history-type-tag" :class="item.feedbackType === 'complaint' ? 'tag-complaint' : 'tag-suggestion'">
+                  <text class="tag-text">{{ getFeedbackTypeText(item.feedbackType) }}</text>
+                </view>
+                <view class="history-status">
+                  <text class="status-text">{{ getStatusText(item.status) }}</text>
+                </view>
+                <text class="history-date">{{ formatDate(item.createdAt) }}</text>
+              </view>
+
+              <!-- 第二行：描述 -->
+              <text class="history-description">{{ item.description }}</text>
+
+              <!-- 第三行：图片预览 -->
+              <view v-if="item.images && item.images.length > 0" class="history-images">
+                <fr-image
+                  v-for="(img, imgIndex) in item.images"
+                  :key="imgIndex"
+                  :src="img"
+                  mode="aspectFill"
+                  class="history-thumb"
+                  @click.stop="previewImage(item.images, imgIndex)"
+                />
+              </view>
+
+            </view>
+
+            <!-- 加载更多状态 -->
+            <view v-if="historyList.length > 0" class="load-more-container">
+              <FrMoreStatus :loading="loadingHistory" :has-more="hasMore" />
+            </view>
+          </view>
+
+          <!-- 空状态 -->
+          <view v-else class="empty-state">
+            <IconFont name="empty_data" :size="64" color="#707070" />
+            <text class="empty-text">{{ $i18n_t("profile.feedbackEmptyHistory") }}</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+  </bp-navigation-bar-title>
+
+  <!-- 图片预览弹窗 -->
+  <view v-if="previewImages.length > 0 && previewIndex >= 0" class="image-preview">
+    <view class="preview-content">
+      <fr-image :src="previewImages[previewIndex]" mode="aspectFit" class="preview-image"></fr-image>
+      <!-- <view class="preview-index">{{ previewIndex + 1 }}/{{ previewImages.length }}</view> -->
+      <!-- 关闭按钮 -->
+      <view class="preview-close-button">
+        <IconFont name="close_filled" :size="30" color="#ffffff" @click="onPreviewClose" :btnSize="30" />
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, computed } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import FrTabs from "@/components/widgets/fr-tabs.uvue";
+import FrImageUploader from "@/components/widgets/fr-image-uploader.uvue";
+import FrButton from "@/components/widgets/fr-button.uvue";
+import FrImage from "@/components/widgets/fr-image.uvue";
+import FrButtonSelector from "@/components/widgets/fr-button-selector.uvue";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import { submitFeedback, getFeedbackList } from "@/api/feedback.uts";
+import { user } from "@/store/user.uts";
+import { FrSpin, FrMoreStatus } from "@/components/widgets";
+
+const MAX_LENGTH_DESCRIPTION = 500; // 最大输入
+const MAX_LENGTH_IMAGES = 3; // 最大上传图片数量
+
+// Tab数据
+type TabItem = {
+  key: string;
+  title: string;
+};
+
+const tabs = ref<TabItem[]>([
+  { key: "feedback", title: $i18n_t("profile.feedback") },
+  { key: "history", title: $i18n_t("profile.feedbackHistory") },
+]);
+
+// 当前激活的tab
+const activeTabKey = ref<string>("feedback");
+
+// Tab切换事件
+const onTabSwitch = (key: string) => {
+  activeTabKey.value = key;
+  if (key === "history") {
+    // 如果列表为空，则加载数据
+    if (historyList.value.length === 0) {
+      // 重置分页状态
+      currentPage.value = 1;
+      hasMore.value = true;
+      loadHistory(true);
+    }
+  }
+};
+
+// 反馈数据
+const feedbackType = ref<string>("suggestion"); // 反馈类型：suggestion(建议) 或 complaint(投诉)
+const feedbackDescription = ref<string>("");
+const uploadedImages = ref<string[]>([]);
+const submitting = ref<boolean>(false);
+
+// 反馈类型选项
+const feedbackTypeOptions = computed(() => [
+  { value: "suggestion", label: $i18n_t("profile.feedbackTypeSuggestion") },
+  { value: "complaint", label: $i18n_t("profile.feedbackTypeComplaint") },
+]);
+
+// 反馈类型变更
+const onFeedbackTypeChange = (value: string | number) => {
+  feedbackType.value = value as string;
+};
+
+const onDescriptionInput = (e: UniInputEvent) => {
+  feedbackDescription.value = e.detail.value;
+};
+
+// 历史记录数据
+type FeedbackHistoryItem = {
+  id: string;
+  description: string;
+  status: "pending" | "processing" | "resolved" | "rejected";
+  feedbackType: "suggestion" | "complaint";
+  createdAt: string;
+  images?: string[];
+};
+
+const historyList = ref<FeedbackHistoryItem[]>([]);
+const loadingHistory = ref<boolean>(false);
+const isInitLoading = ref<boolean>(false); // 初始加载状态
+const currentPage = ref<number>(1);
+const pageSize = ref<number>(20);
+const hasMore = ref<boolean>(true);
+
+// 判断是否可以提交
+const canSubmit = computed(() => {
+  return feedbackDescription.value.trim().length > 0 && !submitting.value;
+});
+
+// 返回
+const goBack = () => {
+  uni.navigateBack();
+};
+
+/**
+ * 提交事件
+ */
+const onSubmit = async () => {
+  if (!canSubmit.value) {
+    return;
+  }
+
+  // 超出长度限制
+  if (feedbackDescription.value.length > MAX_LENGTH_DESCRIPTION) {
+    uni.showToast({
+      title: $i18n_t("profile.feedbackDescriptionTooLong", { maxLength: MAX_LENGTH_DESCRIPTION }),
+      icon: "none",
+    });
+    return;
+  }
+
+  submitting.value = true;
+
+  try {
+    // 获取当前用户ID
+    const userId = user.value?.id;
+    if (userId == null || userId.length == 0) {
+      uni.showToast({
+        title: $i18n_t("common.requestFailed") || "请先登录",
+        icon: "none",
+      });
+      return;
+    }
+
+    // 将用户ID从string转换为number
+    const userIdNumber = parseInt(userId, 10);
+    if (isNaN(userIdNumber)) {
+      uni.showToast({
+        title: $i18n_t("common.requestFailed") || "用户ID格式错误",
+        icon: "none",
+      });
+      return;
+    }
+
+    // 将图片数组转换为JSON字符串
+    const urlsJson = JSON.stringify(uploadedImages.value);
+
+    // 调用API提交反馈
+    await submitFeedback({
+      feedbackDetail: feedbackDescription.value.trim(),
+      feedbackType: feedbackType.value as "suggestion" | "complaint",
+      status: "pending",
+      urls: urlsJson,
+      userID: userIdNumber,
+    });
+
+    // 提交成功
+    uni.showToast({
+      title: $i18n_t("profile.feedbackSubmitSuccess"),
+      icon: "success",
+    });
+
+    // 重置表单
+    feedbackDescription.value = "";
+    uploadedImages.value = [];
+
+    // 跳转到历史记录tab并重置分页
+    setTimeout(() => {
+      currentPage.value = 1;
+      hasMore.value = true;
+      activeTabKey.value = "history";
+      loadHistory(true);
+    }, 500);
+  } catch (error) {
+    console.error("提交失败:", error);
+    uni.showToast({
+      title: $i18n_t("common.requestFailed") || "请求失败",
+      icon: "none",
+    });
+  } finally {
+    submitting.value = false;
+  }
+};
+
+// 加载历史记录
+const loadHistory = async (isInit: boolean = false) => {
+  if (loadingHistory.value) {
+    return;
+  }
+
+  // 如果是初始加载，设置初始loading状态
+  if (isInit && currentPage.value === 1) {
+    isInitLoading.value = true;
+  }
+
+  loadingHistory.value = true;
+
+  try {
+    // 调用API获取历史记录
+    const response = await getFeedbackList({
+      page: currentPage.value,
+      size: pageSize.value,
+    });
+
+    if (response.success && response.data != null) {
+      // 转换数据格式
+      const items: FeedbackHistoryItem[] = response.data.map((item) => {
+        // 解析urls字段（JSON字符串数组）
+        let images: string[] = [];
+        try {
+          if (item.urls != null && item.urls.length > 0) {
+            images = JSON.parse(item.urls) as string[];
+          }
+        } catch (e) {
+          console.error("解析urls失败:", e);
+        }
+
+        return {
+          id: item.feedbackID || item.id.toString(),
+          description: item.feedbackDetail,
+          status: item.status as "pending" | "processing" | "resolved" | "rejected",
+          feedbackType: item.feedbackType as "suggestion" | "complaint",
+          createdAt: item.createdAt,
+          images: images,
+        };
+      });
+
+      if (currentPage.value === 1) {
+        historyList.value = items;
+      } else {
+        historyList.value = [...historyList.value, ...items];
+      }
+
+      // 更新分页信息
+      if (response.meta != null && response.meta.pagination != null) {
+        hasMore.value = response.meta.pagination.has_next;
+      } else {
+        hasMore.value = items.length >= pageSize.value;
+      }
+    }
+  } catch (error) {
+    console.error("加载历史记录失败:", error);
+    if (currentPage.value === 1) {
+      historyList.value = [];
+    }
+  } finally {
+    loadingHistory.value = false;
+    isInitLoading.value = false;
+  }
+};
+
+// 加载更多
+const loadMore = async () => {
+  if (loadingHistory.value || !hasMore.value) {
+    return;
+  }
+
+  currentPage.value += 1;
+  await loadHistory(false);
+};
+
+// 获取状态文本
+const getStatusText = (status: string): string => {
+  switch (status) {
+    case "pending":
+      return $i18n_t("profile.feedbackStatusPending");
+    case "processing":
+      return $i18n_t("profile.feedbackStatusProcessing") || "处理中";
+    case "resolved":
+      return $i18n_t("profile.feedbackStatusResolved") || "已解决";
+    case "rejected":
+      return $i18n_t("profile.feedbackStatusRejected");
+    default:
+      return "";
+  }
+};
+
+// 获取反馈类型文本
+const getFeedbackTypeText = (type: string): string => {
+  if (type === "complaint") {
+    return $i18n_t("profile.feedbackTypeComplaint");
+  }
+  return $i18n_t("profile.feedbackTypeSuggestion");
+};
+
+// 格式化日期
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const hour = date.getHours().toString().padStart(2, "0");
+  const minute = date.getMinutes().toString().padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+};
+
+// 图片预览
+const previewImages = ref<string[]>([]);
+const previewIndex = ref<number>(0);
+
+const previewImage = (images: string[], index: number) => {
+  previewImages.value = images;
+  previewIndex.value = index;
+};
+
+const onPreviewClose = () => {
+  previewImages.value = [];
+  previewIndex.value = -1;
+};
+
+// 历史记录item点击
+const onHistoryItemClick = (item: FeedbackHistoryItem) => {
+  // 可以在这里实现点击后查看详情的功能
+  console.log("点击历史记录:", item);
+};
+
+const onImagesChange = (images: string[]) => {
+  uploadedImages.value = images;
+};
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.scroll-view {
+  flex: 1;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+/* Tab样式 */
+.fr-tabs {
+  margin: 16px 0;
+  padding: 0 4px;
+}
+
+/* 反馈与投诉tab内容 */
+.feedback-tab-content {
+  flex: 1;
+}
+
+.form-section {
+  margin-bottom: 20px;
+  padding: 0 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.required {
+  color: #ff6b6b;
+}
+
+.feedback-textarea {
+  width: 100%;
+  min-height: 120px;
+  background-color: #1a1a1a;
+  border: 1px solid #333333;
+  border-radius: 8px;
+  padding: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.feedback-textarea.error {
+  border-color: #ff6b6b;
+}
+
+.form-hint {
+  display: block;
+  text-align: right;
+  font-size: 12px;
+  color: #707070;
+  margin-top: 8px;
+}
+
+.form-hint.error {
+  color: #ff6b6b;
+}
+
+.image-uploader {
+  width: 100%;
+}
+
+.feedback-type-selector {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.submit-section {
+  margin-top: 32px;
+  padding: 0 16px 20px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  /* padding-bottom: 20px; */
+}
+
+/* 历史记录tab内容 */
+.history-tab-content {
+  flex: 1;
+}
+
+.history-list-content {
+  padding: 0 16px;
+}
+
+.history-list {
+  flex: 1;
+  height: 100%;
+}
+
+.history-item {
+  padding: 16px;
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* 第一行：标签、状态和日期时间 */
+.history-top-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.history-type-tag {
+  padding: 4px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.tag-complaint {
+  background-color: rgba(244, 67, 54, 0.2);
+}
+
+.tag-suggestion {
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+.tag-text {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tag-complaint .tag-text {
+  color: #F44336;
+}
+
+.tag-suggestion .tag-text {
+  color: #4CAF50;
+}
+
+.history-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.status-text {
+  font-size: 12px;
+  color: #707070;
+}
+
+.history-date {
+  font-size: 12px;
+  color: #707070;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* 第二行：描述 */
+.history-description {
+  display: block;
+  font-size: 14px;
+  color: #ffffff;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+/* 第三行：图片预览 */
+.history-images {
+  display: flex;
+  flex-direction: row;
+  margin-top: 8px;
+}
+
+.history-thumb {
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #2a2a2a;
+  margin-right: 8px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #707070;
+  margin-top: 16px;
+}
+
+/* 加载状态 */
+.history-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+}
+
+.loading-text {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #707070;
+}
+
+/* 加载更多容器 */
+.load-more-container {
+  padding: 16px 0;
+}
+
+/* 图片预览 */
+.image-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 1000px;
+  max-height: 80%;
+}
+
+.preview-close-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+}
+
+.preview-image {
+  height: 100%;
+  width: 100%;
+}
+
+
+.preview-index {
+  position: absolute;
+  bottom: 40px;
+  font-size: 16px;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+.to-bottom {
+  padding-bottom: 100px;
+}
+</style>

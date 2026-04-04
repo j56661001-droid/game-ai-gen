@@ -1,0 +1,104 @@
+import { createI18n } from "@/uni_modules/lime-i18n";
+import { defStorage } from "@/utils/index.uts";
+import { setUserInfo } from "@/api/user.uts";
+import { user } from "@/store/user.uts";
+
+import en from "./en";
+import zhHans from "./zh-Hans";
+import zhHant from "./zh-Hant";
+import jp from "./jp";
+import hi from "./hi";
+import ptBR from "./pt-BR";
+import ptPT from "./pt-PT";
+
+export interface Language {
+  code: string;
+  name: string;
+}
+
+export const availableLanguages: Language[] = [
+  { code: "en", name: "English" },
+  { code: "zh-hans", name: "简体中文" },
+  { code: "zh-hant", name: "繁體中文" },
+  { code: "jp", name: "日本語" },
+  { code: "hi", name: "हिन्दी" },
+  { code: "pt-br", name: "Português (Brasil)" },
+  { code: "pt-pt", name: "Português (Portugal)" },
+];
+
+const i18n = createI18n({
+  locale: "en",
+  fallbackLocale: "zh-hans",
+  messages: {
+    /** 英语 */
+    en: en,
+    /** 简体中文 */
+    "zh-hans": zhHans,
+    /** 繁体中文 */
+    "zh-hant": zhHant,
+    jp: jp,
+    /** 印地语 */
+    hi: hi,
+    /** 巴西葡萄牙语 */
+    "pt-br": ptBR,
+    /** 欧洲葡萄牙语 */
+    "pt-pt": ptPT,
+  },
+});
+
+export function getLocale(): string {
+  let defaultLocale = defStorage.get("user_language");
+  if (!defaultLocale) {
+    defaultLocale = uni.getSystemInfoSync().appLanguage;
+  }
+
+  return defaultLocale != null ? (defaultLocale as string).toLowerCase() : "en";
+}
+
+export function initLocale() {
+  const defaultLocale = getLocale();
+
+  setLocale(defaultLocale, false);
+}
+
+export function setLocale(locale: string, save2server: boolean = true) {
+  i18n.global.locale.value = locale;
+  defStorage.set("user_language", locale);
+  if (save2server) {
+    if (user.value != null) {
+      setUserInfo(user.value.id, {
+        preferredLanguage: locale
+      });
+    }
+  }
+}
+
+export function $i18n_t(key: string, _v: any | null = null, _l: string | null = null): string {
+  return i18n!.global.t(key, _v, _l);
+}
+
+export function fmtBackendLang(info: string | UTSJSONObject | null | undefined): string {
+  if (info == null || info == undefined) {
+    return "";
+  }
+  if (typeof info === "string") {
+    return info;
+  } else if (info instanceof UTSJSONObject) {
+    const locale = getLocale();
+    if (info[locale]) {
+      return info[locale];
+    }
+    if (info["en"]) {
+      return info["en"];
+    }
+
+    const keys = UTSJSONObject.keys(info);
+    if (keys.length > 0) {
+      return info[keys[0]] || "";
+    }
+  }
+
+  return "";
+}
+
+export default i18n;

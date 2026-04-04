@@ -1,0 +1,68 @@
+/**
+ * 错误详情类型
+ * 用于描述具体错误的详细信息
+ */
+export type ErrorDetail = {
+  field: string; // 错误字段
+  message: string; // 错误信息
+  value: string; // 错误值
+};
+
+/**
+ * 错误类型
+ * 包含错误代码、详细信息和错误消息
+ */
+export type ServerError = {
+  code: number; // 错误代码
+  details: ErrorDetail[]; // 错误详情数组
+  message: string; // 错误消息
+};
+
+/**
+ * 分页信息类型
+ * 描述数据分页相关的信息
+ */
+export type Pagination = {
+  has_next: boolean; // 是否有下一页
+  has_prev: boolean; // 是否有上一页
+  page: number; // 当前页码
+  pages: number; // 总页数
+  size: number; // 每页大小
+  total: number; // 总记录数
+};
+
+/**
+ * 元数据类型
+ * 包含分页信息、请求ID和时间戳
+ */
+export type Meta = {
+  pagination: Pagination; // 分页信息
+  request_id: string; // 请求ID
+  timestamp: string; // 时间戳
+};
+
+export type ApiResponse<T> = {
+  data: T; // 泛型参数，用于表示不同的data类型
+  error: ServerError; // 错误信息
+  meta: Meta; // 元数据
+  success: boolean; // 请求是否成功
+};
+
+export type CreditHistoryRecord = {
+  userID: string;
+  amount: number;
+  balanceAfter: number;
+  type: string;
+  description: string;
+  timestamp: string;
+};
+
+export type CreditHistoryListResponse = ApiResponse<CreditHistoryRecord[]>;
+
+export const ERequestState = {
+  Pending: 0,
+  Processing: 1,
+  Success: 2,
+  Fail: 3,
+  Cancel: 4,
+};

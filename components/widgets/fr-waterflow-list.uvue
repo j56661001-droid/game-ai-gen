@@ -1,0 +1,154 @@
+<template>
+  <!-- #ifdef WEB -->
+  <scroll-view
+    class="fr-waterflow-list"
+    :refresher-enabled="props.refresherEnabled"
+    :refresher-triggered="refreshing"
+    @refresherrefresh="onRefresh"
+    @scrolltolower="onLoadMore"
+  >
+    <view class="fr-waterflow-body--web" :style="listBodyStyle">
+      <view class="fr-waterflow-item--web" v-for="(item, index) in listItems" :type="0" :key="item[props.recordKey]" :style="recordStyle">
+        <slot name="record" :record="item" :index="index"></slot>
+      </view>
+    </view>
+    <view v-show="showFooter" style="width: 100%" :type="1">
+      <fr-more-status :loading="props.loading" :has-more="hasMore"></fr-more-status>
+    </view>
+  </scroll-view>
+  <!-- #endif -->
+  <!-- #ifndef WEB -->
+  <waterflow
+    class="fr-waterflow-list"
+    :refresher-enabled="props.refresherEnabled"
+    :refresher-triggered="refreshing"
+    :cross-axis-count="props.column"
+    :main-axis-gap="props.mainAxisGap"
+    :cross-axis-gap="props.crossAxisGap"
+    @refresherrefresh="onRefresh"
+    @scrolltolower="onLoadMore"
+  >
+    <flow-item :type="0" v-for="(item, index) in props.dataSource" :key="item[props.recordKey]">
+      <slot name="record" :record="item" :index="index"></slot>
+    </flow-item>
+    <flow-item v-show="showFooter" :type="1">
+      <fr-more-status :loading="props.loading" :has-more="hasMore"></fr-more-status>
+    </flow-item>
+  </waterflow>
+  <!-- #endif -->
+</template>
+
+<script setup lang="uts">
+import { TPagination, defaultPagination } from "./type";
+import { arrayChunk } from "@/utils/index.uts";
+import FrMoreStatus from "./fr-more-status.uvue";
+import FrColumn from "./fr-column.uvue";
+
+type Props = {
+  loading?: boolean;
+  dataSource?: UTSJSONObject[];
+  pagination?: TPagination;
+  recordKey?: string;
+  refresherEnabled?: boolean;
+  column?: number;
+  mainAxisGap?: number;
+  crossAxisGap?: number;
+};
+
+type Emits = {
+  (e: "refresh"): void;
+  (e: "loadmore", p: TPagination): void;
+};
+
+const props = withDefaults(defineProps<Props>(), {
+  dataSource: [],
+  pagination: defaultPagination,
+  loading: false,
+  recordKey: "id",
+  column: 2,
+  mainAxisGap: 12,
+  crossAxisGap: 12,
+});
+const emits = defineEmits<Emits>();
+
+const loadMode = ref<"init" | "refresh" | "loadmore" | "reload">("init");
+
+const refreshing = computed((): boolean => props.refresherEnabled == true && props.loading == true);
+const hasMore = computed((): boolean => (props.pagination != null ? props.pagination.has_next || props.pagination.page < props.pagination.pages : false));
+
+const listBodyStyle = computed((): string => {
+  return `column-count: ${props.column}; column-gap: ${props.crossAxisGap}px;`;
+});
+const recordStyle = computed((): string => {
+  return `margin-bottom: ${props.mainAxisGap}px;`;
+});
+
+// #ifdef WEB
+const listItems = computed((): UTSJSONObject[] => {
+  const sortedItemMap: Map<number, UTSJSONObject[]> = new Map<number, UTSJSONObject[]>();
+
+  props.dataSource?.forEach((item, i) => {
+    const colIdx = i % props.column;
+    const colItems = sortedItemMap.get(colIdx);
+    if (colItems == null) {
+      sortedItemMap.set(colIdx, [item]);
+    } else {
+      colItems.push(item);
+      sortedItemMap.set(colIdx, colItems);
+    }
+  });
+
+  let sortedItems: UTSJSONObject[] = [];
+  sortedItemMap.forEach((value) => {
+    sortedItems.push(...value);
+  });
+
+  return sortedItems;
+});
+// #endif
+
+const showFooter = computed((): boolean => props.dataSource != null && props.dataSource.length > 0);
+
+const onRefresh = () => {
+  loadMode.value = "refresh";
+  emits("refresh");
+};
+
+const onLoadMore = () => {
+  // 没有下一页
+  if (!props.pagination.has_next || props.pagination.page >= props.pagination.pages) {
+    return;
+  }
+
+  loadMode.value = "loadmore";
+  emits("loadmore", { ...toRaw(props.pagination), page: props.pagination.page + 1 });
+};
+
+defineExpose({
+  hasMore,
+  refreshing,
+  loadMode,
+  refresh: onRefresh,
+  loadMore: onLoadMore,
+});
+</script>
+
+<style scoped>
+.fr-waterflow-list {
+  flex: 1;
+}
+
+.fr-waterflow-body--web {
+  display: block;
+  column-gap: 12px;
+  counter-reset: count;
+  padding: 0 16px;
+}
+
+.fr-waterflow-item--web {
+  width: auto;
+  position: relative;
+  box-sizing: border-box;
+  counter-increment: count;
+}
+</style>

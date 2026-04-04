@@ -1,0 +1,252 @@
+import { ApiResponse } from "./common.uts";
+import { TagItemData } from "./tags.uts";
+
+export type UserItem = {
+  avatar: string;
+  bio: string;
+  createdAt: string;
+  email: string;
+  followersCount: number;
+  followingCount: number;
+  videoLikeCount: number;
+  photoLikeCount: number;
+  isFollowing: boolean;
+  isVerified?: boolean;
+  id: string;
+  location: string;
+  nickname: string;
+  postsCount: number;
+  username: string;
+  discountRate?: number;
+  preferredLanguage?: string;
+  preferredCountry?: string;
+  aiGenerationsCount?: number;
+  accountType?: string; // 'guest' 表示游客
+};
+
+export type FileInfo = {
+  category: string;
+  createdAt: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  fileURL: string;
+  id: string;
+  isPublic: boolean;
+  mimeType: string;
+  status: string;
+  updatedAt: string;
+  userID: string;
+};
+
+// 媒体元数据类型定义
+export type MediaMetadata = {
+  id: string;
+  status: string;
+  userID: string;
+  fileURL: string;
+  cover: FileInfo;
+  category: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  isPublic: boolean;
+  mimeType: string;
+  createdAt: string;
+  updatedAt: string;
+  encryptionKey?: string;
+};
+
+export type CheckResult = {
+  available: boolean;
+};
+
+export type GenerationParameters = {
+  aspect_ratio: string;
+  image: string;
+  prompt: string;
+  style: string;
+  testinput: string;
+  source_path?: string;
+  target_path?: string;
+};
+
+export type AiTool = {
+  id: string;
+  name: string;
+  displayName: any;
+  cover: string;
+};
+
+export type FileDetail = {
+  fileId: string | number;
+  encryptionKey: string;
+  fileSize: number;
+  mimeType: string;
+  url: string;
+};
+
+export type GenerationedItem = {
+  costInPoints: number;
+  createdAt: string;
+  generationParameters: GenerationParameters;
+  id: string;
+  inputParameters: UTSJSONObject;
+  isFeatured: boolean;
+  isPublic: boolean;
+  outputMetadata: UTSJSONObject;
+  contentType: "video" | "image" | "text" | "audio";
+  cover?: string;
+  resultUrls: string[];
+  resultFiles: FileDetail[];
+  result: string;
+  retryCount: number;
+  status: string;
+  userID: string;
+  toolID: string;
+  aiTool: AiTool;
+};
+
+export type PostItem = {
+  id: string;
+  userID: string;
+  generationID: string;
+  author: UserItem;
+  contentType: string; // "video" | "image" | "text" | "audio";
+  mediaMetadata: MediaMetadata[];
+  caption: string;
+  content: string;
+  mediaFiles: string[];
+  visibility: string;
+  likesCount: number;
+  commentsCount: number;
+  favoritesCount: number;
+  sharesCount: number;
+  viewsCount: number;
+  isPublished: boolean;
+  isArchived: boolean;
+  isFlagged: boolean;
+  isFavorited: boolean;
+  isLiked: boolean;
+  moderationStatus: string;
+  deleted: boolean;
+  publishedAt: string;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  generation: GenerationedItem;
+  tags: TagItemData[] | null;
+};
+
+export type CategoryItem = {
+  createdAt: string; // 创建时间
+  description: string; // 描述信息
+  displayName: UTSJSONObject; // 显示名称
+  id: string; // 唯一标识ID
+  image: string; // 图片URL
+  isBlocked: boolean; // 是否被屏蔽
+  isSensitive: boolean; // 是否包含敏感内容
+  lastTrendingAt: string; // 最后一次成为热门的时间
+  name: string; // 名称
+  postsCount: number; // 帖子数量
+  scope: string; // "topic"
+  totalViews: number; // 总浏览量
+  trendingScore: number; // 热门分数
+  updatedAt: string; // 更新时间
+};
+
+export type CategoryListWithChildren = {
+  hashtag: CategoryItem;
+  posts: PostItem[];
+  users: UserItem[];
+};
+
+export type PopResourceList = {
+  resourceList: PostItem[];
+  initialIndex: number;
+};
+
+export type TMediaMeta = {
+  fileURL: string;
+  fileName: string;
+  cover?: FileInfo;
+  encryptionKey?: string;
+};
+
+export type PublishPostPayload = {
+  contentType: "video" | "image" | "text" | "audio";
+  visibility: string;
+  content: string;
+  mediaMetadata: TMediaMeta[];
+  toolID: string;
+  generationID: string;
+  language: string;
+  tagIDs: string[];
+};
+
+export type Link = {
+  isPost: boolean;
+  postID?: string;
+  url: string;
+  isOpenNewTab: boolean;
+  title: any;
+};
+
+export type BannerItem = {
+  fileURL: string;
+  mimeType: string;
+  title: any;
+  subtitle: any;
+  links: Link[];
+};
+
+export type FileUploadRequest = {
+  file: string; // Local file path for uni.uploadFile (must include file extension, e.g., "file:///path/to/image.jpg")
+  category: string;
+  cover?: string; // Optional cover image file path
+  isPublic?: boolean; // Whether file is public
+  tags?: string; // Comma-separated tags
+};
+
+/**
+ * 根对象类型
+ * 表示整个API响应的结构
+ */
+export type ResourceListResponse = ApiResponse<PostItem[]>; //只有资源列表
+export type CategoryListResponse = ApiResponse<CategoryItem[]>; //只有分类列表
+export type UserListResponse = ApiResponse<UserItem[]>; //用户信息列表
+export type CategoryListWithChildrenResponse = ApiResponse<CategoryListWithChildren[]>; //分类列表并且每个分类附带资源列表
+
+export type HomeSection = {
+  component: "AITools" | "ShortVideos" | "Stars" | "Topics" | "Zone";
+  title: string; // 新增标题属性
+  data: CategoryListWithChildren[] | CategoryItem[] | PostItem[];
+};
+
+export type UserLibraryResponse = {
+  id: string;
+  userID: string;
+  fileName: string; // 文件名
+  filePath: string; // 存储路径
+  fileURL: string; // 文件访问URL
+  fileSize: number; // 文件大小（字节）
+  mimeType: string; // MIME类型
+  createdAt: string; // 创建时间，ISO时间字符串
+  processingStatus: string; // 处理状态，例如"completed"、"processing"等
+};
+
+export type OfficialLibraryResponse = {
+  title: UTSJSONObject; // 资源标题 多语言
+  description: UTSJSONObject;
+  mime: string; // 资源MIME类型
+  url: string; // 资源文件URL
+};
+
+export type LibraryRequestParams = {
+  id: string;
+  page?: number;
+  size?: number;
+  mime?: string;
+  category?: string;
+  keyword?: string;
+};

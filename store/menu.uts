@@ -1,0 +1,47 @@
+import { Ref } from "vue";
+import { storage, setVideoResourceList, setVideoInitialIndex } from "@/store/index.uts";
+
+export type currentTabData = "home" | "compass" | "video" | "publish" | "profile";
+
+// 定义存储键名常量
+const STORAGE_KEYS = {
+  CURRENT_TAB: "CURRENT_TAB",
+  PUBLISH_ACTIVE_TAB_KEY: "PUBLISH_ACTIVE_TAB_KEY",
+};
+
+// 初始化时从 storage 恢复数据
+export const currentTab = ref<currentTabData>(storage.get(STORAGE_KEYS.CURRENT_TAB) || "home"); // 当前页面
+export const publishActiveTabKey = ref<string>(storage.get(STORAGE_KEYS.PUBLISH_ACTIVE_TAB_KEY) || ""); // publish当前激活的标签页
+export const publishActiveTabKeyChanged = ref<number>();
+
+export const isReturnUser = ref<boolean>(false); // 是否是回归用户
+export const returnUserCreatedAt = ref<string>(); // 回归用户创建时间
+export const showLotteryEntrance = ref<boolean>(true); // 显示抽奖入口
+export const sidebarCollapsed = ref(true); // 侧边栏折叠
+export const publishTabList = ref<[]>([
+  // { id: 11, title: "一键换脸" },
+  // { id: 12, title: "图片换衣" },
+  // { id: 13, title: "一键脱衣" },
+  // { id: 14, title: "图生视频" },
+  // { id: 15, title: "小说创作" },
+  // { id: 16, title: "AI语音" },
+]);
+
+export const handleTabChange = (page: currentTabData) => {
+  if (page == "video") {
+    setVideoResourceList([]);
+    setVideoInitialIndex(0);
+  }
+  uni.redirectTo({
+    url: `/pages/index/index?tabbar=${page}`,
+  });
+};
+
+// 监听数据变化并同步到 storage
+watch(currentTab, (newVal) => {
+  storage.set(STORAGE_KEYS.CURRENT_TAB, newVal);
+});
+
+watch(publishActiveTabKey, (newVal) => {
+  storage.set(STORAGE_KEYS.PUBLISH_ACTIVE_TAB_KEY, newVal);
+});

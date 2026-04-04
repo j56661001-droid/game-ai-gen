@@ -1,0 +1,7 @@
+{
+  "appId": "com.aiaipool.aigen",
+  "appName": "ai-gen",
+  "webDir": "unpackage/dist/build/web",
+  "plugins": {
+  }
+}

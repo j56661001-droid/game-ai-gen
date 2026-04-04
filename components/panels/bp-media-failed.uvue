@@ -1,0 +1,77 @@
+<template>
+  <view class="bp-media-failed">
+    <image class="bp-media-failed-bg" src="/static/media-failed@2x.webp" mode="widthFix"></image>
+    <view class="bp-media-failed-body">
+      <icon-font name="media_failed_outlined" :size="50" color="#FFF"></icon-font>
+      <text class="bp-media-failed-title">{{ $i18n_t("common.loadingFailed") }}</text>
+      <text class="bp-media-failed-prompt">{{ $i18n_t("common.resourceLoadFailedPrompt") }}</text>
+      <button class="bp-media-failed-btn" v-if="!props.hideButton" @click="onBack">{{ $i18n_t("common.back") }}</button>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+import IconFont from "../IconFont/IconFont.uvue";
+import { goBack } from "@/utils/page";
+
+type Props = {
+  hideButton?: boolean;
+};
+
+const props = withDefaults(defineProps<Props>(), { hideButton: false });
+
+const onBack = () => {
+  goBack();
+};
+</script>
+
+<style scoped>
+.bp-media-failed {
+  position: relative;
+  flex: 1;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.bp-media-failed-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.bp-media-failed-body {
+  position: relative;
+  z-index: 1;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.bp-media-failed-title {
+  font-family: "Baloo Thambi 2, Baloo Thambi 2";
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 48px;
+  color: #ff23b8;
+  margin-top: 16px;
+}
+
+.bp-media-failed-prompt {
+  font-size: 12px;
+  line-height: 17px;
+  color: #707070;
+}
+
+.bp-media-failed-btn {
+  width: 60%;
+  height: 40px;
+  line-height: 40px;
+  background-color: #fff;
+  font-size: 14px;
+  color: #000;
+  margin-top: 24px;
+}
+</style>

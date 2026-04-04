@@ -1,0 +1,733 @@
+<template>
+  <view class="modal-container" v-if="visible">
+    <view class="modal-mask" @click="handleMaskClick"></view>
+    <view class="modal-content">
+      <!-- 绑定邮箱内容 -->
+      <view class="bind-email-container">
+        <!-- 背景图 -->
+        <image class="background-image" src="/static/bindmail_bg.png" mode="scaleToFill"></image>
+
+        <!-- 顶部邮件图标 -->
+        <image class="mail-ring-icon" src="/static/mail_ring.png" mode="aspectFit"></image>
+        <view class="modal-close-button" @click="handleClose">
+          <IconFont name="close" :size="12" color="#333"></IconFont>
+        </view>
+
+        <!-- 主要内容区域 -->
+        <view class="content-container">
+          <text class="title">{{ $i18n_t('bindEmailModal.step1') }}</text>
+          <!-- <text class="title">{{ awardPoints > 0 ? $i18n_t('bindEmailModal.title') : $i18n_t('bindEmailModal.step1') }}</text> -->
+          <!-- <text class="subtitle">{{ $i18n_t('bindEmailModal.subtitle') }}</text> -->
+
+          <!-- 步骤提示 -->
+          <view class="steps-container">
+            <view class="step-item">
+              <IconFont
+                class="step-icon"
+                name="mail"
+                :size="12"
+                :color="currentStep >= 1 ? '#FF23B8' : '#212121'"
+                :opacity="currentStep >= 1 ? 1 : 0.4"
+              ></IconFont>
+              <text class="step-text" :style="{ color: currentStep >= 1 ? '#FF23B8' : '#212121', opacity: currentStep >= 1 ? 1 : 0.4 }">{{ $i18n_t('bindEmailModal.step1') }}</text>
+            </view>
+            <view class="step-divider"></view>
+            <view class="step-item">
+              <IconFont
+                class="step-icon"
+                name="readmail"
+                :size="12"
+                :color="currentStep >= 2 ? '#FF23B8' : '#212121'"
+                :opacity="currentStep >= 2 ? 1 : 0.4"
+              ></IconFont>
+              <text class="step-text" :style="{ color: currentStep >= 2 ? '#FF23B8' : '#212121', opacity: currentStep >= 2 ? 1 : 0.4 }">{{ $i18n_t('bindEmailModal.step2') }}</text>
+            </view>
+            <view class="step-divider"></view>
+            <view class="step-item">
+              <IconFont
+                class="step-icon"
+                name="gift"
+                :size="12"
+                :color="currentStep >= 3 ? '#FF23B8' : '#212121'"
+                :opacity="currentStep >= 3 ? 1 : 0.4"
+              ></IconFont>
+              <text class="step-text" :style="{ color: currentStep >= 3 ? '#FF23B8' : '#212121', opacity: currentStep >= 3 ? 1 : 0.4 }">{{ $i18n_t('bindEmailModal.step3') }}</text>
+            </view>
+          </view>
+          <!-- 状态1: 输入邮箱地址 -->
+          <view v-if="currentStep === 1" class="step-container">
+            <!-- 权益说明 -->
+            <view class="benefits-container">
+              <template v-if="awardPoints > 0">
+                <text class="benefits-text-line1">{{ $i18n_t('bindEmailModal.benefitsStep1_line1') }}</text>
+                <view class="benefits-text-line2">
+                  <text class="benefits-text-line2-part">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_part1') }}</text>
+                  <text class="benefits-award-text">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_award', { awardPoints: awardPoints }) }}</text>
+                  <text class="benefits-text-line2-part">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_part2') }}</text>
+                </view>
+              </template>
+              <template v-else>
+                <text class="benefits-text">{{ $i18n_t('bindEmailModal.benefitsStep1NoAward') }}</text>
+              </template>
+            </view>
+
+            <!-- 邮箱输入框 -->
+            <view class="input-container">
+              <text-input class="email-input" :placeholder="$i18n_t('bindEmailModal.emailPlaceholder')" type="text" :value="email" @change="onEmailChange" color="#333"></text-input>
+             
+            </view>
+            <text v-if="emailError" class="error-text">{{ emailError }}</text>
+            <!-- 底部按钮 -->
+            <view class="button-container">
+              <view class="button cancel-button" @click="onCancel">
+                <text class="button-text">{{ $i18n_t('bindEmailModal.cancelButton') }}</text>
+              </view>
+              <view class="button confirm-button" @click="onSendCode" :style="{ pointerEvents: isSendingCode ? 'none' : 'auto', opacity: isSendingCode ? 0.6 : 1 }">
+                <text class="button-text">
+                  <template v-if="isSendingCode">
+                    {{ $i18n_t('bindEmailModal.sendingCode') }}...
+                  </template>
+                  <template v-else>
+                    {{ awardPoints > 0 ? $i18n_t('profile.verifyNow') : $i18n_t('bindEmailModal.sendCodeButton') }}
+                  </template>
+                </text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 状态2: 输入验证码 -->
+          <view v-if="currentStep === 2" class="step-container">
+            <view class="benefits-container">
+              <template v-if="awardPoints > 0">
+                <text class="benefits-text-line1">{{ $i18n_t('bindEmailModal.benefitsStep1_line1') }}</text>
+                <view class="benefits-text-line2">
+                  <text class="benefits-text-line2-part">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_part1') }}</text>
+                  <text class="benefits-award-text">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_award', { awardPoints: awardPoints }) }}</text>
+                  <text class="benefits-text-line2-part">{{ $i18n_t('bindEmailModal.benefitsStep1_line2_part2') }}</text>
+                </view>
+              </template>
+              <template v-else>
+                <text class="benefits-text">{{ $i18n_t('bindEmailModal.benefitsStep1NoAward') }}</text>
+              </template>
+            </view>
+            <!-- 验证码错误提示 -->
+            <view v-if="verificationError" class="verification-error-container">
+              <text class="verification-error-text">{{ verificationError }}</text>
+            </view>
+
+            <!-- 验证码输入 -->
+            <view class="verification-container">
+              <text-input
+                class="code-input"
+                :placeholder="$i18n_t('bindEmailModal.codePlaceholder')"
+                type="text"
+                color="#333"
+                :value="verificationCode"
+                @change="onVerificationCodeChange"
+                maxlength="6"
+              ></text-input>
+              <view class="resend-container">
+                <text class="resend-text" @click="onSendCode">
+                  {{ countdown > 0 ? $i18n_t('bindEmailModal.resendCountdown', { countdown: countdown }) : $i18n_t('bindEmailModal.resendCode') }}
+                </text>
+              </view>
+            </view>
+            <view class="benefits-container">
+              <text class="benefits-tip-text">{{ $i18n_t('bindEmailModal.benefitsTip') }}</text>
+            </view>
+
+            <!-- 底部按钮 -->
+            <view class="button-container">
+              <view class="button cancel-button" @click="onBackToStep1">
+                <text class="button-text">{{ $i18n_t('bindEmailModal.backButton') }}</text>
+              </view>
+              <view class="button confirm-button" @click="onVerifyCode" :style="{ pointerEvents: isVerifyingCode ? 'none' : 'auto', opacity: isVerifyingCode ? 0.6 : 1 }">
+                <text class="button-text">
+                  <template v-if="isVerifyingCode">
+                    {{ $i18n_t('bindEmailModal.verifying') }}...
+                  </template>
+                  <template v-else>
+                    {{ $i18n_t('bindEmailModal.verifyButton') }}
+                  </template>
+                </text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 状态3: 绑定成功 -->
+          <view v-if="currentStep === 3" class="step-container success-container">
+            <view class="benefits-container">
+              <text class="benefits-text">{{ $i18n_t('bindEmailModal.benefitsStep3') }}</text>
+              <template v-if="awardPoints > 0">
+                <view class="benefits-number-container">
+                  <IconFont name="flash" :size="24"></IconFont>
+                  <text class="benefits-number">{{ awardPoints }}</text>
+                </view>
+                <text class="benefits-text">{{ $i18n_t('bindEmailModal.benefitsSuccess') }}</text>
+              </template>
+            </view>
+            <!-- 底部按钮 -->
+            <view class="button-container single-button">
+              <view class="button confirm-button" @click="onComplete">
+                <text class="button-text">{{ $i18n_t('bindEmailModal.completeButton') }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="bottom-tips">
+          <text class="bottom-tips-text">{{ $i18n_t('bindEmailModal.bottomTips') }}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, reactive, onMounted, onUnmounted, computed } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import TextInput from "@/pages/account/widgets/text-input.uvue";
+import { sendEmailVerificationCode, verifyEmailCode } from "@/api/user.uts";
+import { getSettings } from "@/api/file.uts"; // Import getSettings
+import { $i18n_t } from "@/locale/index.uts";
+import { user } from "@/store/user.uts"
+// Props
+const props = defineProps<{
+  visible: boolean;
+  maskClosable?: boolean;
+}>();
+
+// Emits
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "success"): void;
+}>();
+
+// 当前步骤：1-输入邮箱，2-输入验证码，3-绑定成功
+const currentStep = ref<number>(1);
+const email = ref<string>("");
+const emailError = ref<string>("");
+const verificationCode = ref<string>("");
+const verificationError = ref<string>("");
+const countdown = ref<number>(0);
+let countdownTimer: number | null = null;
+const awardPoints = ref<number>(0); // 新增：用于存储绑定成功后的奖励积分
+const isSendingCode = ref<boolean>(false); // 控制发送验证码按钮的加载状态
+const isVerifyingCode = ref<boolean>(false); // 控制验证按钮的加载状态
+
+// 邮箱输入变化
+const onEmailChange = (value: string) => {
+  email.value = value;
+  emailError.value = "";
+};
+
+// 验证码输入变化
+const onVerificationCodeChange = (value: string) => {
+  verificationCode.value = value;
+};
+
+// 发送验证码
+const onSendCode = async () => {
+  if (isSendingCode.value) {
+    return;
+  }
+  if (email.value == null || email.value.length === 0) {
+    emailError.value = $i18n_t('bindEmailModal.emailRequiredError');
+    return;
+  }
+
+  // 简单的邮箱格式验证
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.value)) {
+    emailError.value = $i18n_t('bindEmailModal.emailFormatError');
+    return;
+  }
+
+  // 清除错误提示
+  emailError.value = "";
+  isSendingCode.value = true;
+  try {
+    // 调用发送验证码接口
+    const response = await sendEmailVerificationCode(email.value);
+    
+    if (response != null && response.success) {
+      // 发送成功，切换到步骤2
+      currentStep.value = 2;
+      // 开始倒计时
+      startCountdown();
+    } else {
+      // 显示后端返回的错误信息
+      if (response != null && response.error != null) {
+        emailError.value = response.error.message || $i18n_t('bindEmailModal.sendCodeError');
+      } else {
+        emailError.value = $i18n_t('bindEmailModal.sendCodeError');
+      }
+    }
+  } catch (error) {
+    console.error("发送验证码失败:", error);
+    let errorMessage = $i18n_t('bindEmailModal.sendCodeError');
+    if (error != null && typeof error === 'object' && 'message' in error && error.message != null) {
+      errorMessage = error.message as string;
+    }
+    emailError.value = errorMessage;
+  } finally {
+    isSendingCode.value = false;
+  }
+};
+
+
+// 验证验证码
+const onVerifyCode = async () => {
+  if (isVerifyingCode.value) {
+    return;
+  }
+  if (verificationCode.value.length < 6) {
+    verificationError.value = $i18n_t('bindEmailModal.codeLengthError');
+    return;
+  }
+
+  // 清除错误提示
+  verificationError.value = "";
+  isVerifyingCode.value = true;
+  try {
+    // 调用验证验证码接口
+    const response = await verifyEmailCode(email.value, verificationCode.value);
+    
+    if (response != null && response.success) {
+      // 验证成功，切换到步骤3
+      currentStep.value = 3;
+      user.value.email = email.value;
+      // 停止倒计时
+      stopCountdown();
+      // 获取奖励积分
+      if (response.data != null && response.data.award != null) {
+        awardPoints.value = response.data.award;
+      }
+    } else {
+      // 显示后端返回的错误信息
+      if (response != null && response.error != null) {
+        verificationError.value = response.error.message || $i18n_t('bindEmailModal.verifyCodeError');
+      } else {
+        verificationError.value = $i18n_t('bindEmailModal.verifyCodeError');
+      }
+    }
+  } catch (error) {
+    console.error("验证验证码失败:", error);
+    let errorMessage = $i18n_t('bindEmailModal.verifyFailedError');
+    if (error != null && typeof error === 'object' && 'message' in error && error.message != null) {
+      errorMessage = error.message as string;
+    }
+    verificationError.value = errorMessage;
+  } finally {
+    isVerifyingCode.value = false;
+  }
+};
+
+// 返回步骤1
+const onBackToStep1 = () => {
+  currentStep.value = 1;
+  verificationCode.value = "";
+  verificationError.value = "";
+  stopCountdown();
+};
+
+// 取消操作
+const onCancel = () => {
+  emit("close");
+};
+
+// 完成操作
+const onComplete = () => {
+  emit("success");
+  emit("close");
+};
+
+// 开始倒计时
+const startCountdown = () => {
+  countdown.value = 60;
+  stopCountdown();
+
+  countdownTimer = setInterval(() => {
+    if (countdown.value > 0) {
+      countdown.value = countdown.value - 1;
+    } else {
+      stopCountdown();
+    }
+  }, 1000) as number;
+};
+
+// 停止倒计时
+const stopCountdown = () => {
+  if (countdownTimer != null) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+};
+
+// 处理遮罩层点击
+const handleMaskClick = () => {
+  if (props.maskClosable) {
+    emit("close");
+  }
+};
+
+// 处理关闭按钮点击
+const handleClose = () => {
+  emit("close");
+};
+
+onMounted(async () => {
+  const response = await getSettings('verification_award');
+  if (response != null && response.success && response.data != null) {
+    awardPoints.value = Number(response.data.value);
+  }
+});
+
+onUnmounted(() => {
+  stopCountdown();
+});
+</script>
+
+<style scoped>
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 796;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: relative;
+  width: 370px;
+  height: 450px;
+  background-color: transparent;
+  z-index: 701;
+  overflow: visible;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: -50px;
+  right: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 702;
+}
+
+.close-icon {
+  font-size: 20px;
+  color: #333;
+  font-weight: bold;
+}
+
+.bind-email-container {
+  flex: 1;
+  position: relative;
+  overflow: visible;
+}
+
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 370px;
+  height: 450px;
+}
+
+.mail-ring-icon {
+  width: 95px;
+  height: 75px;
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.content-container {
+  height: 100%;
+  padding: 0 24px;
+  align-items: center;
+  position: relative;
+}
+
+.step-container {
+  width: 100%;
+  align-items: center;
+  height: 290px;
+  position: absolute;
+  bottom: 10px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: bold;
+  margin-top: 40px;
+  color: #000;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #212121;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.steps-container {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.step-item {
+  align-items: center;
+  flex-direction: row;
+  justify-content: center;
+}
+
+.step-icon {
+  margin-right: 4px;
+}
+
+.step-text {
+  font-size: 12px;
+}
+
+.step-divider {
+  width: 10px;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.3);
+  margin: 0 4px;
+}
+
+.benefits-container {
+  width: 320px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.benefits-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  line-height: 1.7;
+}
+
+.benefits-tip-text {
+  font-size: 12px;
+  color: #ccc;
+  text-align: center;
+  line-height: 1.3;
+  margin-bottom: 20px;
+}
+
+.input-container {
+  width: 320px;
+  height: 44px;
+  border-radius: 22px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.email-input {
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #333;
+}
+
+.error-text {
+  font-size: 11px;
+  color: #ff4757;
+  background-color: #000;
+  margin-top: 6px;
+  text-align: center;
+}
+
+.verification-error-container {
+  width: 320px;
+  background-color: #ff4757;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.verification-error-text {
+  font-size: 12px;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.verification-container {
+  width: 320px;
+  height: 44px;
+  border-radius: 22px;
+  position: relative;
+  font-size: 12px;
+}
+
+.code-input {
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #333;
+}
+
+.resend-container {
+  position: absolute;
+  top: 18px;
+  right: 12px;
+}
+
+.resend-text {
+  font-size: 12px;
+  color: #333;
+}
+
+.success-container {
+  align-items: center;
+  position: relative;
+}
+
+.success-icon {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 20px;
+}
+
+.success-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.success-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.button-container {
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  position: absolute;
+  bottom: 0px;
+  left: 0;
+}
+
+.button-container.single-button {
+  justify-content: center;
+}
+
+.button {
+  padding: 0 20px;
+  height: 44px;
+  border-radius: 22px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 6px;
+}
+
+.cancel-button {
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.confirm-button {
+  background: #000;
+}
+
+.button-text {
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.benefits-number-container {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.benefits-number {
+  font-size: 48px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.9);
+  margin-left: 8px;
+}
+
+.bottom-tips{
+  position: absolute;
+  bottom: -30px;
+  width: 100%;
+}
+
+.bottom-tips-text{
+  font-size: 12px;
+  color: #ddd;
+  width: 100%;
+  text-align: center;
+}
+
+.benefits-award-text {
+  color: #FFE016;
+  font-size: 32px; /* Updated to 24px */
+  margin: 0 6px;
+}
+
+.benefits-text-line1 {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  line-height: 1.7;
+}
+
+.benefits-text-line2 {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 0; /* Adjust as needed for spacing between lines */
+}
+
+.benefits-text-line2-part {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.9);
+}
+</style>

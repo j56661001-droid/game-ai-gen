@@ -1,0 +1,248 @@
+<template>
+  <view class="modal-container" v-if="visible">
+    <view class="modal-mask" @click="handleMaskClick"></view>
+    <view class="modal-content">
+      <view class="merge-email-container">
+        <!-- 背景图（与 bind-email-modal 同款） -->
+        <image class="background-image" src="/static/bindmail_bg.png" mode="scaleToFill"></image>
+
+        <view class="modal-close-button" @click="handleClose">
+          <IconFont name="close" :size="12" color="#333"></IconFont>
+        </view>
+
+        <!-- 顶部图标 -->
+        <image class="top-logo" src="/static/icons/mergemail-logo.png" mode="aspectFit"></image>
+        <!-- 主要内容区域 -->
+        <view class="content-container">
+          
+          
+          <text class="title">{{ benefitsStep3Parts.title }}</text>
+
+          <view class="success-content">
+            <text class="content-line1">{{ benefitsStep3Parts.contentLine1 }}</text>
+            <view class="content-line2">
+              <IconFont name="flash" :size="24"></IconFont>
+              <text class="content-number">{{ awardPoints }}</text>
+            </view>
+            <text class="content-line3">{{ $i18n_t("bindEmailModal.benefitsSuccess") }}</text>
+          </view>
+
+          <!-- 底部按钮居中 -->
+          <view class="button-container single-button">
+            <view class="button confirm-button" @click="handleExplore">
+              <text class="button-text">{{ $i18n_t("bindEmailModal.completeButton") }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, computed } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { getSettings } from "@/api/file.uts";
+import i18n, { $i18n_t } from "@/locale/index.uts";
+
+const props = defineProps<{
+  visible: boolean;
+  maskClosable?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "explore"): void;
+}>();
+
+const awardPoints = ref<number>(0);
+
+// benefitsStep3 格式为 "标题\n副标题"，按换行拆分为 title 与 contentLine1
+const benefitsStep3Parts = computed(() => {
+  i18n.global.locale.value; // 依赖 locale 以在切换语言时更新
+  const full = $i18n_t("bindEmailModal.benefitsStep3");
+  const parts = full.split("\n");
+  return {
+    title: parts[0] ?? "",
+    contentLine1: parts[1] ?? "",
+  };
+});
+
+onMounted(async () => {
+  const response = await getSettings('verification_award');
+  if (response != null && response.success && response.data != null) {
+    awardPoints.value = Number(response.data.value);
+  }
+});
+
+function handleMaskClick() {
+  if (props.maskClosable !== false) {
+    emit("close");
+  }
+}
+
+function handleClose() {
+  emit("close");
+}
+
+function handleExplore() {
+  emit("explore");
+}
+</script>
+
+<style scoped>
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 796;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: relative;
+  width: 370px;
+  height: 450px;
+  background-color: transparent;
+  z-index: 701;
+  overflow: visible;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: -50px;
+  right: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 702;
+}
+
+.merge-email-container {
+  flex: 1;
+  position: relative;
+  overflow: visible;
+}
+
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 370px;
+  height: 450px;
+}
+
+.content-container {
+  height: 100%;
+  padding: 0 24px;
+  align-items: center;
+  position: relative;
+}
+
+.top-logo {
+  width: 80px;
+  height: 80px;
+  margin-top: -40px;
+  margin-bottom: -30px;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: bold;
+  margin-top: 40px;
+  color: #000;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.success-content {
+  width: 320px;
+  align-items: center;
+  padding-top: 100px;
+
+  /* flex: 1; */
+}
+
+.content-line1 {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.content-line2 {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.content-number {
+  font-size: 48px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.9);
+  margin-left: 8px;
+}
+
+.content-line3 {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  line-height: 1.7;
+  margin-top: 12px;
+}
+
+.button-container {
+  /* flex-direction: row; */
+  justify-content: space-between;
+  width: 100%;
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+}
+
+.button-container.single-button {
+  justify-content: center;
+}
+
+.button {
+  padding: 0 20px;
+  height: 44px;
+  border-radius: 22px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 6px;
+}
+
+.confirm-button {
+  background: #000;
+}
+
+.button-text {
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+}
+</style>

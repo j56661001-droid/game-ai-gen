@@ -1,0 +1,23 @@
+export function arrayChunk<A extends UTSJSONObject[]>(array: A, size: number = 1): A[] {
+  let length = array == null ? 0 : array.length;
+  if (!length || size < 1) {
+    return [] as A[];
+  }
+
+  let chunk: A[] = [];
+  let chunkIndex: number = 0;
+
+  for (let i = 0; i < length; i++) {
+    if (i % size == 0) {
+      if (i != 0) {
+        chunkIndex++;
+      }
+
+      chunk[chunkIndex] = [array[i]] as A;
+    } else {
+      chunk[chunkIndex].push(array[i]);
+    }
+  }
+
+  return chunk;
+}

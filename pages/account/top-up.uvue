@@ -1,0 +1,222 @@
+<template>
+  <fr-page :title="topUpText">
+    <view class="topup-container">
+      <scroll-view style="flex: 1; align-items: center; width: 100%">
+        <text style="font-size: 20px; line-height: 30px; color: #707070; margin-top: 16px">{{
+          creditText
+        }}</text>
+        <text style="font-size: 50px; line-height: 70px; color: #fff">{{ parseNumToThousands(1245) }}</text>
+        <view class="pay-cards">
+          <view
+            class="pay-card"
+            v-for="(c, i) in payCards"
+            :key="c.money"
+            :class="{ 'pay-card_selected': formState.money == c.money }"
+            @click="onSelectCard(c)"
+          >
+            <view style="flex-direction: row; align-items: center">
+              <image style="width: 18px; height: 18px; margin-right: 6px" src="/static/icons/flash@2x.png"></image>
+              <text style="color: #fff; font-size: 20px; line-height: 28px">{{ c.amount }}</text>
+            </view>
+            <view style="flex-direction: row; align-items: center; padding: 8px 0">
+              <text style="color: #fff; font-size: 12px; line-height: 18px; margin-right: 6px">{{
+                priceText
+              }}</text>
+              <text style="color: #ff00d8; font-size: 12px; line-height: 18px">${{ c.money }}</text>
+            </view>
+            <text style="color: #707070; font-size: 12px; line-height: 18px">{{
+              aboutCreationCreditsText(c.amount)
+            }}</text>
+          </view>
+          <view
+            class="pay-card"
+            style="flex-direction: row; align-items: center; justify-content: center"
+            :class="{ 'pay-card_selected': formState.type == 'custom' }"
+            @click="onSelectCard({ money: '00.00', type: 'custom' })"
+          >
+            <fr-input
+              class="custom-amount-input"
+              focus
+              placeholder="Amount"
+              type="number"
+              v-if="formState.type == 'custom'"
+              @input="onAmountInput"
+            />
+            <view v-else style="flex-direction: row; align-items: center; justify-content: center">
+              <text style="color: #707070; font-size: 12px; line-height: 18px; margin-right: 4px">{{
+                customizeAmountText
+              }}</text>
+              <icon-font name="edit_outlined" :size="16" color="#707070"></icon-font>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+      <button class="submit-btn" @click="onSubmit">
+        <text style="font-size: 16px; line-height: 22px; margin-right: 8px; color: #fff">${{ formState.money }}</text>
+        <text style="font-size: 16px; line-height: 22px; color: #fff">{{ payNowText }}</text>
+      </button>
+    </view>
+  </fr-page>
+  <fr-modal :visible="state.visible" @close="onModalClose">
+    <view style="flex-direction: column; align-items: center; position: relative">
+      <image class="pay-success" src="/static/pay_success_bg.png" />
+      <view style="flex-direction: column; transform: translateY(-16px); align-items: center">
+        <fr-typography-symbol style="font-size: 30px; line-height: 47px"
+          >{{ topUpSuccessfulText }}!</fr-typography-symbol
+        >
+        <fr-typography-text style="font-size: 14px" v-html="textHtml"></fr-typography-text>
+        <fr-button style="height: 40px; margin-top: 24px" @click="onGotoCreation">{{
+          startCreatingNowText
+        }}</fr-button>
+      </view>
+      <view class="pay-close-icon" @click="onModalClose">
+        <icon-font name="close_filled" :size="30" color="#fff"></icon-font>
+      </view>
+    </view>
+  </fr-modal>
+</template>
+
+<script setup lang="uts">
+import { computed, reactive, shallowReactive } from "vue";
+import { parseNumToThousands } from "../../utils/parse.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import IconFont from "../../components/IconFont/IconFont.uvue";
+import { FrPage, FrModal, FrTypographySymbol, FrTypographyText, FrButton, FrInput } from "@/components/widgets";
+
+const topUpText = computed(() => $i18n_t('account.topUp'));
+const creditText = computed(() => $i18n_t("account.credit"));
+const priceText = computed(() => $i18n_t("account.price"));
+const aboutCreationCreditsText = (amount: number) => computed(() => $i18n_t("account.aboutCreationCredits", { amount: amount / 10 }));
+const customizeAmountText = computed(() => $i18n_t("account.customizeAmount"));
+const payNowText = computed(() => $i18n_t("account.payNow"));
+const topUpSuccessfulText = computed(() => $i18n_t("account.topUpSuccessful"));
+const startCreatingNowText = computed(() => $i18n_t("account.startCreatingNow"));
+
+type FormState = {
+  money: string;
+  type: "preset" | "custom";
+  amount: number;
+};
+
+const payCards: FormState[] = [
+  {
+    amount: 100,
+    money: "20.00",
+    type: "preset",
+  },
+  {
+    amount: 200,
+    money: "40.00",
+    type: "preset",
+  },
+  {
+    amount: 300,
+    money: "50.00",
+    type: "preset",
+  },
+  {
+    amount: 500,
+    money: "80.00",
+    type: "preset",
+  },
+  {
+    amount: 1000,
+    money: "140.00",
+    type: "preset",
+  },
+];
+
+const state = shallowReactive<{ visible?: boolean }>({ visible: false });
+
+const formState = reactive<FormState>({ ...payCards[0] });
+
+const textHtml = computed((): string =>
+  $i18n_t("account.successfulReceivedPoints", {
+    amount: `<text style="color: #ff23b8">${parseNumToThousands(formState.amount)}</text>`,
+  }),
+);
+
+const onSelectCard = (c: FormState) => {
+  formState.type = c.type;
+  formState.amount = c.amount;
+  formState.money = c.money;
+};
+
+const onAmountInput = (v: string) => {
+  formState.amount = v ? parseInt(v) : 0;
+  formState.money = v ? (parseFloat(v) * 0.2).toFixed(2) : v;
+};
+
+const onSubmit = () => {
+  state.visible = true;
+};
+
+const onModalClose = () => {
+  state.visible = false;
+};
+
+const onGotoCreation = () => {
+  uni.navigateTo({
+    url: "/pages/publish/ai-generator",
+  });
+};
+</script>
+
+<style scoped>
+.topup-container {
+  flex: 1;
+  align-items: center;
+  padding: 24px;
+}
+
+.submit-btn {
+  height: 40px;
+  width: 100%;
+  border-radius: 20px;
+  background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+  margin-top: 16px;
+  line-height: 40px;
+}
+
+.pay-cards {
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.pay-card {
+  flex-basis: 48%;
+  padding: 12px;
+  background-color: #1a1a1a;
+  border-radius: 4px;
+  box-sizing: border-box;
+  border: 1px solid #1a1a1a;
+  margin-bottom: 10px;
+}
+
+.pay-card_selected {
+  border-color: #e51fa5;
+  background-color: #330825;
+}
+
+.pay-success {
+  height: 230px;
+  width: 100%;
+}
+
+.pay-close-icon {
+  position: absolute;
+  top: 0;
+  right: 24px;
+}
+
+.custom-amount-input {
+  height: 36px;
+  border-radius: 15px;
+  padding: 0 16px;
+  background-color: #1b1b1b;
+  font-size: 30px;
+}
+</style>

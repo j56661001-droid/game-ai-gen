@@ -1,0 +1,41 @@
+export type ButtonSelectorValue = string | number;
+
+export type ButtonSelectorOption = {
+  value: ButtonSelectorValue;
+  label: string;
+  title?: string;
+};
+
+export type ButtonSelectorProps = {
+  value?: ButtonSelectorValue;
+  options: ButtonSelectorOption[];
+};
+
+export type ButtonSelectorSlot = {
+  option: ButtonSelectorOption;
+};
+
+export type TPagination = {
+  page: number;
+  pages: number;
+  size: number;
+  total: number;
+  has_next: boolean;
+  has_prev: boolean;
+};
+
+export const defaultPagination: TPagination = {
+  page: 0,
+  pages: 0,
+  size: 0,
+  total: 0,
+  has_next: false,
+  has_prev: false,
+};
+
+export type Tab = {
+  title: string;
+  key: string;
+  icon: string | null;
+  hidden?: boolean;
+};

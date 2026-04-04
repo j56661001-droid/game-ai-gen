@@ -1,0 +1,361 @@
+<!--
+  fr-adaptive-list 自适应列表组件
+  根据窗口自适应列数，列表项会自动排列，
+  可配置项：
+  - column: 列数（固定列数，如需动态不要传入）
+  - minWidth: item最小宽度 （组件会自动根据minWidth 计算能放几列）
+  - gap: 间距 （两个item之间的间距）
+  - minColumn: 最小列数 （限制最小列数，默认2列）
+  - dataSource: 数据源 （数据源）
+  - recordKey: 记录键 （记录的键，如需动态不要传入）
+  - loading: 是否加载中状态
+  - itemClass: 项类名 （项的类名）
+  - itemStyle: 项样式 （项的样式）
+  - emptyText: 空文本 （空文本，用于不展示空状态）
+  - paddingBottom: 底部内边距 （底部内边距，默认0）
+  - pagination: 分页信息 （分页信息）
+-->
+
+
+<template>
+  <view class="adaptive-list-wrapper">
+    <view v-if="isInitLoading || windowWidthLoading" class="scroll-list-loading">
+      <fr-spin type="primary" :size="30" />
+      <text style="margin-top: 16px; color: #707070; font-size: 14px"> {{ $i18n_t("common.loading_") }} </text>
+    </view>
+    <fr-empty v-else-if="isEmpty" :title="props.emptyText" />
+    <list-view
+      v-else
+      class="scroll-list-container"
+      :refresher-enabled="props.refresherEnabled"
+      :refresher-triggered="refreshing"
+      @refresherrefresh="onRefresh"
+      @scrolltolower="onLoadMore"
+    >
+      <list-item
+        class="scroll-list-item"
+        :class="props.itemClass"
+        :style="props.itemStyle"
+        v-for="(cols, idx) in lists"
+        :key="computedColumn > 1 ? idx : cols[props.recordKey] != null ? cols[props.recordKey] : idx"
+        :type="0"
+      >
+        <fr-column v-if="computedColumn > 1" :column="computedColumn" :gap-size="props.gap">
+          <template #default="{ index }:DefaultSlot">
+            <slot v-if="cols?.length > index" name="record" :record="cols[index]"></slot>
+          </template>
+        </fr-column>
+        <template v-else>
+          <slot key="default" name="record" :record="cols"></slot>
+        </template>
+      </list-item>
+      <list-item v-show="showFooter" :type="1" class="footer" :style="{ paddingBottom: paddingBottom }">
+        <fr-more-status :loading="props.loading" :has-more="hasMore"></fr-more-status>
+      </list-item>
+    </list-view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { FrColumn, FrSpin, FrEmpty } from "@/components/widgets";
+import { arrayChunk } from "@/utils/index.uts";
+import { TPagination, defaultPagination } from "./type.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import FrMoreStatus from "./fr-more-status.uvue";
+import { getCurrentInstance } from "vue";
+/**
+ * TODO: 带组件功能实现，及应用
+ */
+type DefaultSlot = {
+  index: number;
+};
+
+type Pagination = {
+  page: number;
+  size: number;
+  total: number;
+  pages: number;
+  has_next: boolean;
+};
+
+type Props = {
+  column?: number;
+  minWidth?: number;
+  gap?: number;
+  minColumn?: number;
+  dataSource: UTSJSONObject[];
+  recordKey?: string;
+  pagination?: Pagination;
+  refresherEnabled?: boolean;
+  loading?: boolean;
+  itemClass?: any;
+  itemStyle?: any;
+  emptyText?: string;
+  paddingBottom?: string;
+};
+
+const DEFAULT_PAGE_SIZE = 20;
+
+const loadingMode = ref<"init" | "refresh" | "loadmore" | "reload">("init");
+
+const isInitLoading = computed((): boolean => loadingMode.value == "init" && props.loading == true);
+
+const isEmpty = computed(
+  (): boolean => ["init", "refresh"].includes(loadingMode.value) && props.loading == false && (props.dataSource == null || props.dataSource?.length == 0),
+);
+
+const props = withDefaults(defineProps<Props>(), {
+  column: undefined,
+  minWidth: 300,
+  minColumn: 2,
+  gap: 16,
+  recordKey: "key",
+  refresherEnabled: false,
+  pagination: defaultPagination,
+
+  dataSource: [],
+  loading: false,
+  itemClass: "",
+  itemStyle: null,
+  paddingBottom: "",
+});
+const emit = defineEmits<{
+  (e: "refresh", initPagination: TPagination): void;
+  (e: "loadmore", nextPagination: TPagination): void;
+}>();
+
+defineSlots<{
+  record(props: { record: UTSJSONObject }): any;
+}>();
+
+const refreshing = computed((): boolean => loadingMode.value == "refresh" && props.loading == true);
+const hasMore = computed((): boolean => (props.pagination != null ? props.pagination.has_next || props.pagination.page < props.pagination.pages : false));
+const showFooter = computed((): boolean => props.dataSource != null && props.dataSource.length > 0);
+
+// 防止重复触发加载更多的标志
+const isLoadingMore = ref<boolean>(false);
+
+// 窗口宽度响应式变量
+const windowWidth = ref<number | null>(null);
+const windowWidthLoading = ref<boolean>(true);
+
+// 计算实际的列数
+const computedColumn = computed((): number => {
+
+  // 加载完成后，windowWidth = null 就返回默认值
+  // if (windowWidth.value == null || windowWidthLoading.value) return 2;
+  
+  // 如果传入了 column，直接使用
+  if (props.column != null && props.column > 0) {
+    return Math.floor(props.column);
+  }
+  
+  // 否则根据窗口宽度和 minWidth 计算
+  const width = windowWidth.value;
+  const minWidth = props.minWidth;
+  const gap = props.gap;
+  
+  // 如果窗口宽度还未初始化或无效，返回默认值
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(minWidth) || minWidth <= 0 || !Number.isFinite(gap) || gap < 0) {
+    return props.minColumn;
+  }
+
+  // 计算可容纳的列数：column = (width + gap) / (minWidth + gap)
+  const calculatedColumn = Math.floor((width + gap) / (minWidth + gap));
+  
+  // 确保计算结果是有效的整数
+  if (!Number.isFinite(calculatedColumn) || calculatedColumn <= 0) {
+    return props.minColumn;
+  }
+  
+  // 如果计算出的列数小于 minColumn，则 column = minColumn
+  if (calculatedColumn < props.minColumn) {
+    return props.minColumn;
+  }
+  
+  // 确保至少返回 1
+  return Math.max(props.minColumn || 1, calculatedColumn);
+});
+
+const lists = computed((): UTSJSONObject[] | UTSJSONObject[][] => {
+  const column = computedColumn.value;
+  
+  // 确保 column 有效且是正整数
+  const validColumn = Math.floor(Math.max(1, column));
+  if (validColumn <= 0 || !Number.isFinite(validColumn)) {
+    return props.dataSource != null ? props.dataSource : [];
+  }
+  
+  if (validColumn == 1) {
+    return props.dataSource != null ? props.dataSource : [];
+  }
+
+  // 确保 dataSource 存在
+  if (props.dataSource == null || props.dataSource.length == 0) {
+    return [];
+  }
+
+  // 确保 column 是有效的整数
+  const chunk = arrayChunk<UTSJSONObject[]>(props.dataSource, validColumn);
+  return chunk != null ? chunk : [];
+});
+
+const onRefresh = () => {
+  // 清除加载更多标志
+  isLoadingMore.value = false;
+  loadingMode.value = "refresh";
+
+  const { size = DEFAULT_PAGE_SIZE, total = 0 } = toRaw<TPagination>(props.pagination);
+
+  emit("refresh", { page: 1, size, total });
+};
+
+const onLoadMore = () => {
+  // 防止重复触发：如果正在加载或没有更多数据，直接返回
+  if (isLoadingMore.value || !hasMore.value || props.loading) {
+    return;
+  }
+
+  const { page = 1, size = DEFAULT_PAGE_SIZE, total = 0, pages = 0 } = toRaw<TPagination>(props.pagination);
+  const nextPage = page + 1;
+  if (nextPage > pages) {
+    return;
+  }
+
+  // 设置加载标志
+  isLoadingMore.value = true;
+  loadingMode.value = "loadmore";
+
+  emit("loadmore", { page: nextPage, size, total });
+};
+
+// 监听 loading 状态变化，当加载完成时清除标志
+watch(() => props.loading, (newLoading: boolean) => {
+  if (!newLoading && loadingMode.value == "loadmore") {
+    // 加载完成，清除标志
+    isLoadingMore.value = false;
+  }
+});
+
+// 监听 isInitLoading 和 isEmpty 变化，当 list-view 出现时更新宽度
+// watch([() => isInitLoading.value, () => isEmpty.value], ([newInitLoading, newIsEmpty]) => {
+//   // 当初始化加载完成且不为空时，list-view 已渲染，更新宽度
+//   if (!newInitLoading && !newIsEmpty) {
+//     updateWindowWidth();
+//   }
+// });
+
+
+// 获取组件实例
+const instance = getCurrentInstance();
+
+// 更新窗口宽度的函数（获取最外层 view 组件的宽度）
+const updateWindowWidth = () => {
+  // 使用 nextTick 确保 DOM 已渲染
+  nextTick(() => {
+    try {
+      // 延迟一下确保 DOM 完全渲染
+      setTimeout(() => {
+        // 创建查询请求，查询最外层 .adaptive-list-wrapper 的宽度
+        // 注意：组件内部查询需要使用 .in(instance) 指定组件作用域
+        uni.createSelectorQuery()
+          .in(instance)
+          .select('.adaptive-list-wrapper')
+          .boundingClientRect((res: any) => {
+            if (res != null && res.width != null && res.width > 0) {
+              windowWidth.value = res.width;
+              windowWidthLoading.value = false;
+            }
+          })
+          .exec();
+      }, 50);
+    } catch (e) {
+      // 如果获取失败，使用窗口宽度作为后备
+      console.error("fr-adaptive-list: Failed to get view width:", e);
+    } finally {
+      windowWidthLoading.value = false;
+    }
+  });
+};
+
+// 窗口resize处理函数（用于WEB平台，PC Web端窗口变化时重新获取view宽度）
+// const handleResize = () => {
+//   updateWindowWidth();
+// };
+
+// 非WEB平台使用 onResize 生命周期钩子
+// // #ifndef WEB
+// onResize(() => {
+//   updateWindowWidth();
+// });
+// // #endif
+
+// 组件挂载时初始化窗口宽度
+onMounted(() => {
+  // 使用 nextTick 确保 DOM 已渲染后再查询
+  nextTick(() => {
+    updateWindowWidth();
+  });
+  
+  // WEB平台监听窗口变化
+  // #ifdef WEB
+  nextTick(() => {
+    try {
+      if (typeof window != "undefined" && window != null && window.addEventListener != null) {
+        window.addEventListener("resize", updateWindowWidth);
+      }
+    } catch (e) {
+      console.error("Failed to add resize listener:", e);
+    }
+  });
+  // #endif
+});
+
+onUnmounted(() => {
+  // #ifdef WEB
+  // 清理 WEB 平台的监听器
+  try {
+    if (typeof window != "undefined" && window != null && window.removeEventListener != null) {
+      window.removeEventListener("resize", updateWindowWidth);
+    }
+  } catch (e) {
+    console.error("Failed to remove resize listener:", e);
+  }
+  // #endif
+});
+
+defineExpose({
+  hasMore,
+  refreshing,
+  loadMode: loadingMode,
+  refresh: onRefresh,
+  loadMore: onLoadMore,
+  column: computedColumn,
+});
+</script>
+
+<style scoped>
+.adaptive-list-wrapper {
+  flex: 1;
+  width: 100%;
+}
+
+.scroll-list-container {
+  flex: 1;
+}
+
+.scroll-list-loading {
+  flex: 1;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.scroll-list-item {
+  margin-bottom: 16px;
+}
+
+.footer {
+  padding-bottom: 8px;
+}
+</style>

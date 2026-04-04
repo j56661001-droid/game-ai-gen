@@ -1,0 +1,25 @@
+<template>
+  <text class="fr-typography-title">
+    <slot></slot>
+  </text>
+</template>
+
+<script setup lang="uts"></script>
+
+<style scoped>
+.fr-typography-title {
+  font-size: 14px;
+  line-height: 20px;
+  color: #ffffff;
+
+  /* #ifdef APP */
+  lines: 1;
+  /* #endif */
+
+  /* #ifdef WEB */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+</style>

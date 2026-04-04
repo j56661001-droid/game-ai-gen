@@ -1,0 +1,29 @@
+type HandlerCB = (...args: any[]) => void;
+
+class EventBus {
+  private namespace: string = "fr.";
+
+  constructor(ns?: string | null) {
+    if (ns != null) {
+      this.namespace = ns;
+    }
+  }
+
+  on(name: string, handler: HandlerCB): number {
+    return uni.$on(`${this.namespace}${name}`, handler);
+  }
+
+  off(name: string, handler: HandlerCB) {
+    uni.$off(`${this.namespace}${name}`, handler);
+  }
+
+  emit(name: string, ...args: any[]) {
+    uni.$emit(`${this.namespace}${name}`, ...args);
+  }
+
+  once(name: string, handler: HandlerCB): number {
+    return uni.$once(`${this.namespace}${name}`, handler);
+  }
+}
+
+export const FREventBus = new EventBus();

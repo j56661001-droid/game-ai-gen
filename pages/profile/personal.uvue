@@ -1,0 +1,1267 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar :show="isPage">
+      <!-- Root container, apply full screen style -->
+      <view class="page">
+        <!-- Top action buttons -->
+        <view class="top-actions" :style="headerBgStyle">
+          <view class="left-actions-container">
+            <view
+              v-if="isPage"
+              class="action-item back-button-container"
+              @click="
+                () => {
+                  goBack();
+                }
+              "
+            >
+              <IconFont name="arrowleft" :size="16" class="icon-arrowleft" />
+            </view>
+            <credits-balance-icon v-if="isCurrentUser" class="credits-balance points"></credits-balance-icon>
+            <view
+              v-if="!isCurrentUser"
+              v-show="showHeaderAvater"
+              style="flex-direction: row; align-items: center; height: 40px; border-radius: 20px; padding-left: 0"
+              :class="['follow-button', userProfile.isFollowing ? 'following' : '']"
+              @click="toggleFollow"
+            >
+              <fr-avatar
+                :url="userProfile.avatar != null ? userProfile.avatar : '/static/defaultAvatar.png'"
+                style="width: 40px; height: 40px; border-radius: 20px; margin-right: 12px"
+                mode="aspectFill"
+              ></fr-avatar>
+              <text class="button-text">{{ userProfile.isFollowing ? followingText : followText }}</text>
+            </view>
+          </view>
+          <view class="right-actions-container">
+            <view v-if="isCurrentUser" class="action-item" @click="showPage('setting')">
+              <IconFont name="setting" class="icon-settings" />
+            </view>
+            <view v-if="isCurrentUser" class="action-item">
+              <bp-notification-icon dot />
+              <!-- <IconFont name="message" class="icon-notification" /> -->
+            </view>
+          </view>
+        </view>
+
+        <scroll-view
+          class="scrollview"
+          :style="{ paddingBottom: pagePaddingBottom + 'px' }"
+          :show-scrollbar="false"
+          @scrolltolower="onScrollToLower"
+          @scroll="onScroll"
+        >
+          <!-- <sticky-section> -->
+          <view class="header-area">
+            <!-- 1.1 Background -->
+            <image :src="userProfile.avatar ? userProfile.avatar : '/static/defaultPersonalBg.png'" class="background-image" mode="aspectFill"></image>
+            <view class="gradient-overlay"></view>
+
+            <!-- Profile info core area -->
+            <view class="profile-info">
+              <view class="avatar-container" @click="uploadAvatar">
+                <FrAvatar :url="userProfile.avatar" :size="74"></FrAvatar>
+                <view v-if="isCurrentUser" class="edit-icon">
+                  <IconFont name="edit" :size="10" class="icon-edit" />
+                </view>
+              </view>
+              <text class="username">{{ userProfile.accountType == "guest" ? $i18n_t("common.guest") : userProfile.nickname }}</text>
+              <text class="email">{{ userProfile.username }}</text>
+              <text class="bio">{{ userProfile.bio }}</text>
+              <view
+                v-if="isCurrentUser && userProfile.accountType == 'guest'"
+                class="register-button"
+                @click="
+                  () => {
+                    uni.$emit('login:show', { page: 'register' });
+                  }
+                "
+              >
+                <text class="button-text">{{ $i18n_t("common.register") }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- Statistics data -->
+          <view class="stats-container">
+            <view class="stat-item" @click="handleLikesClick">
+              <text class="stat-value">{{ userProfile.photoLikeCount + userProfile.videoLikeCount || 0 }}</text>
+              <text class="stat-label">{{ likesText }}</text>
+            </view>
+            <view class="stat-item" @click="goToFollowPage('followers')">
+              <text class="stat-value">{{ userProfile.followersCount || 0 }}</text>
+              <text class="stat-label">{{ followersText }}</text>
+            </view>
+            <view class="stat-item" @click="goToFollowPage('following')">
+              <text class="stat-value">{{ userProfile.followingCount || 0 }}</text>
+              <text class="stat-label">{{ followingText }}</text>
+            </view>
+            <view v-if="isCurrentUser" class="stat-item" @click="goToProcessingRecordsPage">
+              <creation-record-stat #default="{ count, updated }">
+                <fr-badge :dot="updated" :count="updated ? count : 0">
+                  <text class="stat-value">{{ count || 0 }}</text>
+                </fr-badge>
+              </creation-record-stat>
+              <text class="stat-label">{{ recordText }}</text>
+            </view>
+          </view>
+
+          <!-- 活动入口 -->
+          <view class="activity-container">
+            <!-- 签到 -->
+            <fr-activity-entrance
+              :title="$i18n_t('home.activityEntrance.dailyCheckin')"
+              :description="$i18n_t('home.activityEntrance.dailyCheckinDescription')"
+              icon="/static/icons/daily-checkin.png"
+              size="small"
+              bgColor="red"
+              @click="goToDailyCheckin"
+            />
+            <!-- 每日任务 -->
+            <fr-activity-entrance
+              :title="$i18n_t('home.activityEntrance.dailyTask')"
+              :description="$i18n_t('home.activityEntrance.dailyTaskDescription')"
+              icon="/static/icons/daily-task.png"
+              size="small"
+              bgColor="yellow"
+              @click="goToDailyTask"
+            />
+
+            <!-- C2C推广 -->
+            <fr-activity-entrance
+              v-if="showAffiliate"
+              :title="$i18n_t('affiliate.title')"
+              :description="$i18n_t('affiliate.subtitle')"
+              icon="/static/icons/c2cicon.png"
+              size="small"
+              bgColor="#FB8E54"
+              @click="goToAffiliate"
+            />
+            <!-- 转盘抽奖 -->
+            <fr-activity-entrance
+              v-if="showLotteryEntrance"
+              :title="$i18n_t('home.activityEntrance.luckyWheel')"
+              :description="$i18n_t('home.activityEntrance.luckyWheelDescription')"
+              icon="/static/icons/lucky-wheel​.png"
+              size="small"
+              bgColor="purple"
+              @click="goToLuckyWheel"
+            />
+          </view>
+
+          <!-- following button -->
+          <view v-if="!isCurrentUser" :class="['follow-button', userProfile.isFollowing ? 'following' : '']" @click="toggleFollow" style="margin: 24px 24px 0">
+            <text class="button-text">{{ userProfile.isFollowing ? followingText : followText }}</text>
+          </view>
+
+          <!-- Works/Collection toggle -->
+          <view class="tabs-container">
+            <view style="flex: 1">
+              <FrTabs style="padding: 0" :tabs="tabs" :activeTabKey="activeTab" @switch="switchTab" />
+            </view>
+            <view class="searchiicon" @click="goToSearch()">
+              <IconFont name="search" :size="16" />
+            </view>
+          </view>
+          <history-list v-if="showHistory" :reload="true" status="completed" :columns="showTabsCondition ? 1 : 2" />
+          <template v-else>
+            <!-- Works waterfall flow -->
+            <!-- #ifdef WEB -->
+            <AdaptiveWebWaterfallN class="waterfall" :items="listData">
+              <template v-slot:default="{ item, onItemReady }">
+                <view class="waterfall-item" @click="handleItemClick(item as PostItem)">
+                  <bp-media-display
+                    class="item-image"
+                    :type="item.contentType"
+                    :src="item.mediaMetadata[0]?.fileURL"
+                    :cover="item.mediaMetadata[0]?.cover?.fileURL"
+                    :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                  ></bp-media-display>
+                  <!-- Audit Status Label -->
+                  <view v-if="item.auditStatus == 'pending' || item.auditStatus == 'rejected'" class="audit-status-overlay">
+                    <text class="audit-status-text">{{
+                      item.auditStatus == "pending" ? $i18n_t("publish.audit_pending") : $i18n_t("publish.audit_rejected")
+                    }}</text>
+                  </view>
+                  <!-- Delete Button for Rejected Items -->
+                  <view v-if="item.auditStatus == 'rejected' && isCurrentUser" class="delete-button" @click.stop="onDeletePost(item.id)">
+                    <IconFont name="del" :size="16" color="#ff0000" />
+                  </view>
+                </view>
+              </template>
+            </AdaptiveWebWaterfallN>
+            <!-- #endif -->
+            <!-- #ifndef WEB -->
+            <waterflow
+              class="waterfall"
+              :refresher-enabled="true"
+              :refresher-triggered="refresherTriggered"
+              @refresherpulling="onRefresherpulling"
+              @refresherrefresh="onRefresherrefresh"
+              @refresherrestore="onRefresherrestore"
+              refresher-default-style="none"
+            >
+              <flow-item v-for="item in (listData as PostItem[])" :key="item.id" class="waterfall-item" @click="handleItemClick(item)">
+                <bp-media-display
+                  class="item-image"
+                  :type="item.contentType"
+                  :src="item.mediaMetadata[0].fileURL"
+                  :cover="item.mediaMetadata[0].cover?.fileURL"
+                  :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                ></bp-media-display>
+                <!-- Audit Status Label -->
+                <view v-if="item.auditStatus == 'pending' || item.auditStatus == 'rejected'" class="audit-status-overlay">
+                  <text class="audit-status-text">{{
+                    item.auditStatus == "pending" ? $i18n_t("publish.audit_pending") : $i18n_t("publish.audit_rejected")
+                  }}</text>
+                </view>
+                <!-- Delete Button for Rejected Items -->
+                <view v-if="item.auditStatus == 'rejected' && isCurrentUser" class="delete-button" @click.stop="onDeletePost(item.id)">
+                  <IconFont name="del" :size="16" color="#ff0000" />
+                </view>
+              </flow-item>
+            </waterflow>
+            <!-- #endif -->
+            <FrEmpty v-if="(listData as PostItem[]).length == 0 && !isLoading && activeTab !== 'history'" />
+            <view v-if="isLoading && !(listData as PostItem[]).length" style="align-items: center; justify-content: center; padding: 24px 0">
+              <FrSpin type="primary" />
+            </view>
+            <fr-more-status v-show="(listData as PostItem[]).length > 0" :loading="isLoading" :has-more="hasMore"></fr-more-status>
+          </template>
+          <!-- </sticky-section> -->
+          <fr-back-top></fr-back-top>
+        </scroll-view>
+        <!-- LikeStar 弹窗组件 -->
+        <LikeStar
+          v-if="showLikeStarPopup"
+          :username="userProfile.username"
+          :photoLikeCount="userProfile.photoLikeCount || 0"
+          :videoLikeCount="userProfile.videoLikeCount || 0"
+          @close="showLikeStarPopup = false"
+        ></LikeStar>
+        <!-- <view v-if="showAffiliate" :class="['affiliate-button-fixed', isAffiliateButtonCollapsed ? 'collapsed' : '']" @click="goToAffiliate">
+        <image class="gift-icon" src="/static/icons/gift@2x.png"></image>
+        <view class="text-content">
+          <text class="title-text">{{ $i18n_t("affiliate.title") }}</text>
+          <text class="subtitle-text">{{ $i18n_t("affiliate.subtitle") }}</text>
+        </view>
+      </view> -->
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { Ref, watch, onUnmounted, computed, onMounted, ref, nextTick, provide } from "vue";
+
+// sticky-section / sticky-header 设计用于 list-view，在 scroll-view 内使用时需手动 provide 其依赖的注入
+provide("__listViewIsVertical", true);
+provide("__listViewDefaultHeaderSize", 0);
+import { setVideoResourceList, setVideoInitialIndex } from "@/store/index.uts";
+import { PostItem, PopResourceList, UserItem, Pagination, ApiResponse, FileUploadRequest } from "@/types/index.uts"; // 导入 ApiResponse
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { isMyId, user } from "@/store/user";
+import { getCoverUrl } from "@/utils/coverUtils.uts";
+import { getUserProfileInfo, getFavorites, getMe, setUserInfo } from "@/api/user.uts"; // 导入 getMe
+import { getTimeline, followUser, unfollowUser } from "@/api/social.uts"; // 导入 followUser 和 unfollowUser
+import { goBack } from "@/utils/page.uts";
+import FrAvatar from "@/components/widgets/fr-avatar.uvue";
+import FrTabs from "@/components/widgets/fr-tabs.uvue";
+import { Tab } from "@/components/widgets/type.uts";
+import FrEmpty from "@/components/widgets/fr-empty.uvue"; // Import FrEmpty component
+import FrSpin from "@/components/widgets/fr-spin.uvue"; // Import FrSpin component
+// #ifdef WEB
+// import WebWaterfallN from "@/components/WebWaterfall/WebWaterfallN.uvue";
+import AdaptiveWebWaterfallN from "@/components/WebWaterfall/AdaptiveWebWaterfallN.uvue";
+// #endif
+import { BpNotificationIcon } from "@/components/panels/index.uts";
+import LikeStar from "@/pages/profile/LikeStar.uvue"; // 导入 LikeStar 组件
+import { $i18n_t } from "@/locale/index.uts";
+import i18n from "@/locale/index.uts";
+import { fileUpload, delPostByid, getSettings } from "@/api/file.uts";
+import CreditsBalanceIcon from "../publish/panel/credits-balance-icon.uvue";
+import CreationRecordStat from "./panels/creation-record-stat.uvue";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import FrBadge from "@/components/widgets/fr-badge.uvue";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import { checkLock, setLock } from "@/utils/debounce.uts";
+import FrBackTop from "@/components/widgets/fr-back-top.uvue";
+import FrActivityEntrance from "@/components/widgets/fr-activity-entrance.uvue";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+import HistoryList from "@/pages/publish/panel/history-list.uvue";
+
+const isAffiliateButtonCollapsed = ref(false);
+let scrollTimeout: number | null = null;
+const showLotteryEntrance = ref(true);
+const showHistory = ref(false);
+
+const headerBgStyle = ref<string>("background-color: rgba(0, 0, 0, 0)");
+const actualScrollTop = ref<number>(0); // Tracks the actual scroll position
+
+const onScroll = (e: UniScrollEvent) => {
+  actualScrollTop.value = e.detail.scrollTop;
+
+  if (showAffiliate.value) {
+    if (scrollTimeout != null) {
+      clearTimeout(scrollTimeout);
+    }
+    isAffiliateButtonCollapsed.value = true;
+    scrollTimeout = setTimeout(() => {
+      isAffiliateButtonCollapsed.value = false;
+    }, 1000);
+  }
+};
+
+onUnmounted(() => {
+  if (scrollTimeout != null) {
+    clearTimeout(scrollTimeout);
+  }
+});
+
+watch(actualScrollTop, (top: number) => {
+  const opacity = Math.min(top / 300, 1);
+
+  headerBgStyle.value = `background-color: rgba(0, 0, 0, ${opacity}); opacity: ${1 - opacity}`;
+});
+
+const showHeaderAvater = computed((): boolean => {
+  return actualScrollTop.value / 360 > 1;
+});
+
+const followingText = computed(() => $i18n_t("profile.following"));
+const followText = computed(() => $i18n_t("common.follow"));
+const likesText = computed(() => $i18n_t("common.likes"));
+const followersText = computed(() => $i18n_t("common.followers"));
+const recordText = computed(() => $i18n_t("common.records"));
+
+const isPage = ref<boolean>(false);
+
+const showLikeStarPopup = ref<boolean>(false); // 控制 LikeStar 弹窗显示隐藏
+
+const handleLikesClick = () => {
+  showLikeStarPopup.value = true;
+};
+
+const userProfile: Ref<UserItem> = ref<UserItem>({
+  id: "",
+  username: "",
+  avatar: "",
+  email: "",
+  bio: "",
+  followersCount: 0,
+  followingCount: 0,
+  videoLikeCount: 0,
+  photoLikeCount: 0,
+  nickname: "",
+  isFollowing: false,
+  postsCount: 0,
+  location: "",
+  createdAt: "",
+});
+
+const isCurrentUser = computed<boolean>(() => {
+  return userProfile.value.id == user.value?.id;
+});
+
+const pagePaddingBottom = computed<number>(() => {
+  return (isCurrentUser.value ? 64 : 30) + 60;
+});
+
+const showAffiliate = computed<boolean>(() => {
+  return true;
+});
+
+const toggleFollow = async () => {
+  if (!checkLock("user_follow")) {
+    return;
+  }
+  setLock("user_follow");
+  try {
+    if (userProfile.value.isFollowing) {
+      // Unfollow
+      const res: ApiResponse<any> | null = await unfollowUser(userProfile.value.id);
+      if (res != null && res.success) {
+        userProfile.value.isFollowing = false;
+        userProfile.value.followersCount -= 1;
+        uni.$emit("onFollowStatusChange", {
+          userId: userProfile.value.id,
+          isFollowing: false,
+        });
+        // console.log(`User ${userProfile.value.nickname} unfollowed`);
+      } else {
+        console.error(`Failed to unfollow user ${userProfile.value.nickname}:`, res?.error?.message);
+      }
+    } else {
+      // Follow
+      const res: ApiResponse<any> | null = await followUser(userProfile.value.id);
+      if (res != null && res.success) {
+        userProfile.value.isFollowing = true;
+        userProfile.value.followersCount += 1;
+        uni.$emit("onFollowStatusChange", {
+          userId: userProfile.value.id,
+          isFollowing: true,
+        });
+        // console.log(`User ${userProfile.value.nickname} followed`);
+      } else {
+        console.error(`Failed to follow user ${userProfile.value.nickname}:`, res?.error?.message);
+      }
+    }
+  } catch (error) {
+  } finally {
+    setLock("user_follow", -1);
+  }
+};
+
+const activeTab = ref("works");
+
+const refresherTriggered = ref(false);
+const state = ref(0);
+const worksList = ref<PostItem[]>([]);
+const collectionList = ref<PostItem[]>([]);
+
+const worksPagination = ref<Pagination>({
+  has_next: false,
+  has_prev: false,
+  page: 0,
+  pages: 0,
+  size: 0,
+  total: 0,
+});
+const collectionPagination = ref<Pagination>({
+  has_next: false,
+  has_prev: false,
+  page: 0,
+  pages: 0,
+  size: 0,
+  total: 0,
+});
+
+const isLoading = ref(false);
+const hasMoreWorks = ref(true);
+const hasMoreCollection = ref(true);
+
+const listData = computed<PostItem[]>(() => {
+  return activeTab.value == "works" ? worksList.value : collectionList.value;
+});
+
+const fetchWorks = async (refresh: boolean = false) => {
+  if (isLoading.value) return;
+  if (!refresh && !hasMoreWorks.value) return;
+
+  isLoading.value = true;
+  const nextPage = refresh ? 1 : worksPagination.value.page + 1;
+  const res = await getTimeline(userProfile.value.id, nextPage);
+  if (res != null && res.success && res.data != null) {
+    if (refresh) {
+      worksList.value = res.data;
+    } else {
+      const existingIds = new Set(worksList.value.map((item) => item.id));
+      const uniqueNewWorks = res.data.filter((item) => !existingIds.has(item.id));
+      worksList.value = [...worksList.value, ...uniqueNewWorks];
+    }
+    worksPagination.value = res.meta.pagination;
+    hasMoreWorks.value = res.meta.pagination.has_next;
+  }
+  isLoading.value = false;
+};
+
+const fetchCollection = async (refresh: boolean = false) => {
+  if (isLoading.value) return;
+  if (!refresh && !hasMoreCollection.value) return;
+
+  isLoading.value = true;
+  const nextPage = refresh ? 1 : collectionPagination.value.page + 1;
+  const res = await getFavorites(userProfile.value.id, nextPage);
+  if (res != null && res.success && res.data != null) {
+    if (refresh) {
+      collectionList.value = res.data;
+    } else {
+      collectionList.value = [...collectionList.value, ...res.data];
+    }
+    collectionPagination.value = res.meta.pagination;
+    hasMoreCollection.value = res.meta.pagination.has_next;
+  }
+  isLoading.value = false;
+};
+
+const handleItemClick = (item: PostItem) => {
+  if (item.auditStatus != null && item.auditStatus != "passed") {
+    let message = "";
+    if (item.auditStatus == "pending") {
+      message = i18n.global.t("publish.audit_pending");
+    } else if (item.auditStatus == "rejected") {
+      message = i18n.global.t("publish.audit_rejected");
+    }
+    if (message) {
+      uni.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+    return;
+  }
+
+  const index = listData.value.findIndex((resource) => resource.id == item.id);
+  setVideoResourceList([...listData.value]);
+  setVideoInitialIndex(index);
+  worksList.value = [];
+  collectionList.value = [];
+  uni.navigateTo({ url: `/pages/video?source=profile&userId=${userProfile.value.id}&tab=${activeTab.value}` });
+};
+
+const switchTab = async (tab: string) => {
+  activeTab.value = tab;
+  if (tab == "works" && worksList.value.length == 0) {
+    await fetchWorks(true);
+  } else if (tab == "collection" && collectionList.value.length == 0) {
+    await fetchCollection(true);
+  }
+  showHistory.value = tab == "history";
+};
+
+const goToSearch = () => {
+  if (userProfile.value.id != "") {
+    uni.navigateTo({ url: `/pages/search?userid=${userProfile.value.id}&username=${userProfile.value.nickname}` });
+  }
+};
+
+const goToFollowPage = (type: string) => {
+  uni.navigateTo({
+    url: `/pages/follow?userId=${userProfile.value.id}&username=${userProfile.value.username}&type=${type}`,
+  });
+};
+
+const goToProcessingRecordsPage = () => {
+  uni.navigateTo({
+    url: "/pages/publish/processing-records?tabKey=completed",
+  });
+};
+
+// 每日任务
+const goToDailyTask = () => {
+  if (user.value == null) {
+    // || user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: `/pages/daily-task/index?from=personal&tabbar=profile`, successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: `/pages/daily-task/index?userId=${user.value?.id}&from=personal&tabbar=profile` });
+  }
+};
+
+const goToDailyCheckin = () => {
+  if (user.value == null) {
+    // || user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/pages/daily-checkin/index?from=personal&tabbar=profile", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/daily-checkin/index?from=personal&tabbar=profile" });
+  }
+};
+
+// 幸运转盘
+const goToLuckyWheel = () => {
+  if (user.value == null) {
+    // || user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/lottery/", action: "href", successRedirectOnly: true });
+    return;
+  }
+  window.location.href = "/lottery/";
+};
+
+const showPage = (page: string) => {
+  let url = "/pages/profile/";
+  switch (page) {
+    case "setting":
+      url += "Setting";
+      break;
+    case "profileInfo":
+      url += "ProfileInfo";
+      break;
+    case "language":
+      url += "Language";
+      break;
+    case "privacyPolicy":
+      url += "PrivacyPolicy";
+      break;
+  }
+  uni.navigateTo({ url: url });
+};
+
+const onRefresherpulling = (e: UniRefresherEvent) => {
+  if (e.detail.dy < 0) return;
+  state.value = e.detail.dy > 80 ? 1 : 0;
+};
+
+const onRefresherrefresh = async () => {
+  refresherTriggered.value = true;
+  state.value = 2;
+  if (activeTab.value == "works") {
+    await fetchWorks(true);
+  } else {
+    await fetchCollection(true);
+  }
+  state.value = 3;
+  refresherTriggered.value = false;
+};
+
+const onRefresherrestore = () => {
+  state.value = 0;
+};
+
+const goToTopUp = () => {
+  uni.navigateTo({ url: "/pages/account/top-up" });
+};
+
+const goToAffiliate = () => {
+  if (user.value == null) {
+    // || user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/pages/affiliate/index?from=personal&tabbar=profile", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/affiliate/index?tabbar=profile" });
+  }
+};
+
+const onDeletePost = async (postId: string) => {
+  if (!checkLock("delete_post")) {
+    return;
+  }
+  setLock("delete_post");
+  try {
+    // Assuming deletePost is imported from an API module
+    const res = await delPostByid(postId);
+    if (res != null && res.success) {
+      uni.showToast({
+        title: i18n.global.t("shareSheet.postDeletedSuccessfully"),
+        icon: "success",
+      });
+      // Refresh the list by removing the item locally or refetching
+      worksList.value = worksList.value.filter((p) => p.id != postId);
+    } else {
+      uni.showToast({
+        title: res?.error?.message ?? i18n.global.t("shareSheet.failedToDeletePost"),
+        icon: "none",
+      });
+    }
+  } catch (e) {
+    uni.showToast({
+      title: i18n.global.t("shareSheet.failedToDeletePost"),
+      icon: "none",
+    });
+  } finally {
+    setLock("delete_post", -1);
+  }
+};
+
+const tabs = computed<Tab[]>(() => {
+  i18n.global.locale.value;
+  return [
+    {
+      title: $i18n_t("profile.works"),
+      key: "works",
+      icon: "",
+    } as Tab,
+    {
+      title: $i18n_t("profile.collection"),
+      key: "collection",
+      icon: "",
+    } as Tab,
+    {
+      title: $i18n_t("common.records"),
+      key: "history",
+      icon: "",
+    } as Tab,
+  ];
+});
+
+const hasMore = computed<boolean>(() => {
+  return activeTab.value == "works" ? hasMoreWorks.value : hasMoreCollection.value;
+});
+
+const onScrollToLower = async () => {
+  if (isLoading.value) {
+    return; // 如果正在加载，则不重复请求
+  }
+  if (activeTab.value == "works") {
+    if (worksPagination.value.has_next) {
+      await fetchWorks(false);
+    }
+  } else {
+    if (collectionPagination.value.has_next) {
+      await fetchCollection(false);
+    }
+  }
+};
+
+// 头像上传逻辑
+const uploadAvatar = () => {
+  if (user.value == null || !isCurrentUser.value) {
+    return;
+  }
+  uni.chooseImage({
+    count: 1,
+    sizeType: ["compressed"],
+    sourceType: ["album", "camera"],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0];
+      const fileSize = res.tempFiles[0].size; // 获取文件大小，单位字节
+
+      const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+      const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+      const filename = res.tempFiles[0].name!;
+      const fileExtension = filename.substring(filename.lastIndexOf(".")).toLowerCase();
+
+      if (!allowedExtensions.includes(fileExtension)) {
+        uni.showToast({
+          title: $i18n_t("profile.invalidImageFormat"), // Assuming you'll add this i18n key
+          icon: "none",
+        });
+        return;
+      }
+
+      if (fileSize > MAX_FILE_SIZE) {
+        uni.showToast({
+          title: $i18n_t("profile.avatarTooLarge"),
+          icon: "none",
+        });
+        return;
+      }
+
+      uni.showLoading({
+        title: $i18n_t("common.uploading"),
+      });
+      try {
+        if (user.value == null) {
+          return;
+        }
+        const uploadRes = await fileUpload({
+          file: tempFilePath,
+          category: "avatar",
+        } as FileUploadRequest);
+        if (user.value != null && uploadRes != null && uploadRes.success && uploadRes.data != null) {
+          const newAvatarUrl = uploadRes.data.fileURL;
+          await setUserInfo(user.value.id, { avatar: newAvatarUrl } as UTSJSONObject);
+          userProfile.value.avatar = newAvatarUrl;
+          user.value.avatar = newAvatarUrl; // 更新本地头像
+          uni.showToast({
+            title: $i18n_t("common.uploadSuccess"),
+            icon: "success",
+          });
+        } else {
+          uni.showToast({
+            title: uploadRes?.error?.message || $i18n_t("common.uploadFailed"),
+            icon: "none",
+          });
+        }
+      } catch (error) {
+        console.error("Upload failed", error);
+        uni.showToast({
+          title: $i18n_t("common.uploadFailed"),
+          icon: "none",
+        });
+      } finally {
+        uni.hideLoading();
+      }
+    },
+    fail: (err) => {
+      // console.log("Choose image failed", err);
+    },
+  });
+};
+
+const refreshPage = async () => {
+  let res: ApiResponse<UserItem> | null = null;
+  let isMe = !userProfile.value.id || userProfile.value.id == user.value?.id;
+  if (isMe) {
+    res = await getMe();
+  } else {
+    res = await getUserProfileInfo(userProfile.value.id);
+  }
+
+  if (res != null && res.success) {
+    userProfile.value = res.data;
+    if (isMe) {
+      user.value = res.data;
+    }
+    if (activeTab.value == "works") {
+      await fetchWorks(true);
+    } else {
+      await fetchCollection(true);
+    }
+  }
+};
+
+onPageShow(async () => {
+  headerBgStyle.value = "background-color: rgba(0, 0, 0, 0)";
+
+  try {
+    const lotterySetting = await getSettings("enable.lottery");
+    if (lotterySetting != null && lotterySetting.success && lotterySetting.data != null) {
+      showLotteryEntrance.value = String(lotterySetting.data.value).toLowerCase() === "true";
+    }
+  } catch (error) {}
+
+  await refreshPage();
+});
+
+watch(
+  () => user.value?.id,
+  (newId, oldId) => {
+    if (newId != oldId) {
+      refreshPage();
+    }
+  },
+);
+
+onLoad(async (options: OnLoadOptions) => {
+  const userId = options["userId"];
+  if (userId != null && userId.length > 0) {
+    userProfile.value.id = userId;
+  } else {
+    userProfile.value.id = user.value?.id || "";
+  }
+});
+
+onMounted(() => {
+  // 延迟执行，给页面栈更多时间初始化
+  setTimeout(() => {
+    const pages = getCurrentPages();
+    if (pages.length > 0) {
+      isPage.value = pages[pages.length - 1].route === "pages/profile/personal";
+    } else {
+      console.warn("页面栈为空，无法确定当前页面");
+    }
+  }, 0);
+});
+
+// 添加屏幕宽度判断
+const screenWidth = ref(0);
+const showTabsCondition = computed(() => screenWidth.value < 900);
+// 获取屏幕宽度的方法
+const getScreenWidth = () => {
+  screenWidth.value = window.innerWidth;
+};
+
+onLoad((options: any) => {
+  // 初始化时获取屏幕宽度
+  getScreenWidth();
+  // H5端监听窗口变化
+  if (uni.onWindowResize) {
+    uni.onWindowResize((res) => {
+      screenWidth.value = window.innerWidth;
+    });
+  }
+});
+</script>
+
+<style scoped>
+/* 样式部分替换为您之前的简单样式，以实现完整的设计图效果 */
+.page {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.scrollview {
+  flex: 1;
+  height: 100vh; /* 明确设置高度 */
+  overflow-y: auto; /* 确保可以滚动 */
+}
+
+.top-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 32px 16px 12px;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  height: auto;
+  z-index: 11; /* Ensure it's on top */
+}
+
+.header-area {
+  position: relative;
+  overflow: visible;
+  width: 100%;
+  height: 260px;
+  /* 确保内容在背景之上 */
+  z-index: 1;
+}
+
+.header-area .background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* filter: blur(3.5px); */
+  z-index: -1; /* 确保背景在内容之下 */
+}
+
+.gradient-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 147px; /* 参考渐变代码中的高度 */
+  background: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none; /* 确保渐变层不阻挡下方内容的点击事件 */
+  z-index: 0; /* 在背景之上，内容之下 */
+}
+
+.flash {
+  width: 17px;
+  height: 17px;
+}
+
+/* 移除 top-actions-current-user 的 justify-content: flex-end; */
+
+.left-actions-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.right-actions-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.back-button-container {
+  margin-left: 0 !important;
+  justify-content: flex-start !important;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  width: 40px;
+  padding: 10px;
+  margin-left: 12px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 20px;
+}
+
+.action-item uni-view {
+  overflow: unset;
+}
+
+.points {
+  margin-left: 12px; /* Add margin-left to separate from the back button */
+  padding-left: 16px;
+  padding-right: 16px;
+  width: auto;
+  height: 40px;
+  border-radius: 20px;
+  /* background-color: rgba(0, 0, 0, 0.35); */
+  flex-direction: row;
+}
+
+.points-text {
+  color: #fff;
+  font-size: 14px;
+}
+
+.action-item .icon-settings,
+.action-item .icon-notification {
+  font-size: 22px;
+}
+
+.icon-arrowleft {
+  font-size: 22px;
+  color: #fff;
+}
+
+.follow-button {
+  background-color: #ff23b8;
+  border-radius: 20px;
+  padding: 12px 24px;
+  margin-left: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.follow-button.following {
+  color: #9d9d9d;
+  background-color: #333;
+}
+
+.button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.icon-lightning {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.profile-info {
+  flex-direction: column;
+  align-items: center;
+  margin-top: 90px;
+  padding: 0 20px;
+  position: relative; /* Add this to enable absolute positioning of children */
+}
+
+.avatar-container {
+  position: relative;
+  width: 74px;
+  height: 74px;
+}
+
+.edit-icon {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background-color: #333;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid #0d0d0d;
+}
+
+.icon-edit {
+  font-size: 14px;
+}
+
+.username {
+  margin-top: 15px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.email {
+  margin-top: 4px;
+  font-size: 14px;
+  color: #aaa;
+}
+
+.bio {
+  margin-top: 15px;
+  font-size: 14px;
+  color: #eee;
+  text-align: center;
+  line-height: 1.5;
+  padding: 0 20px;
+}
+
+.register-button {
+  background-color: #ff23b8;
+  border-radius: 20px;
+  padding: 12px 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.stats-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  width: 100%;
+  margin-top: 25px;
+  margin-bottom: 8px;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.stats-container uni-view {
+  overflow: unset;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 18px;
+  color: #fff;
+  font-weight: bold;
+}
+
+.stat-label {
+  margin-top: 5px;
+  font-size: 14px;
+  color: #aaa;
+}
+
+.tabs-container {
+  /* #ifdef */
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  /* #endif */
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 22px 20px 0;
+  background-color: #000;
+}
+
+.icon-search {
+  font-size: 22px;
+}
+
+.waterfall {
+  padding: 0 16px;
+  flex: none;
+}
+
+.waterfall-item {
+  background-color: #1e1e1e;
+  border-radius: 10px;
+  position: relative;
+}
+
+.item-image {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.searchiicon {
+  /* position: absolute;
+  right: 12px; */
+}
+
+.play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.refresh-box {
+  height: 80px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tip-text {
+  color: #aaaaaa;
+  font-size: 14px;
+}
+
+.audit-status-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;
+  pointer-events: none; /* Allow clicks to pass through */
+}
+
+.audit-status-text {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 5px 10px;
+  border-radius: 5px;
+}
+
+.delete-button {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+}
+
+.affiliate-button-fixed {
+  position: fixed;
+  right: max(0px, calc(50% - 375px));
+  bottom: 100px;
+  height: 50px;
+  background-image: linear-gradient(to right, #5c3fe5, #f500ff);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  z-index: 50;
+  border-radius: 25px 0 0 25px;
+  transition: width 0.3s ease;
+  overflow: hidden;
+}
+
+.affiliate-button-fixed.collapsed {
+  width: 50px;
+}
+
+.affiliate-button-fixed .gift-icon {
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+}
+
+.affiliate-button-fixed .text-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 12px 0 8px;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.affiliate-button-fixed.collapsed .text-content {
+  opacity: 0;
+}
+
+.title-text {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap; /* Prevent text from wrapping */
+}
+
+.subtitle-text {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  white-space: nowrap; /* Prevent text from wrapping */
+}
+
+.activity-container {
+  margin: 30px 18px;
+  display: flex;
+  flex-direction: row;
+  /* justify-content: space-between; */
+  justify-content: space-around;
+  align-items: center;
+  background-color: #000;
+  overflow: visible;
+}
+
+/* 平板 (横向) 和其他更大屏幕 */
+@media (min-width: 900px) {
+  .activity-container {
+    display: none !important;
+  }
+}
+</style>

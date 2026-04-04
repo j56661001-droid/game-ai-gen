@@ -1,0 +1,160 @@
+<template>
+  <view v-if="isInitLoading" class="scroll-list-loading">
+    <fr-spin type="primary" :size="30" />
+    <text style="margin-top: 16px; color: #707070; font-size: 14px"> {{ $i18n_t("common.loading_") }} </text>
+  </view>
+  <fr-empty v-else-if="isEmpty" :title="props.emptyText" />
+  <list-view
+    v-else
+    class="scroll-list-container"
+    :refresher-enabled="props.refresherEnabled"
+    :refresher-triggered="refreshing"
+    @refresherrefresh="onRefresh"
+    @scrolltolower="onLoadMore"
+  >
+    <list-item
+      class="scroll-list-item"
+      :class="props.itemClass"
+      :style="props.itemStyle"
+      v-for="(cols, idx) in lists"
+      :key="props.column > 1 ? idx : cols[props.recordKey] != null ? cols[props.recordKey] : idx"
+      :type="0"
+    >
+      <fr-column v-if="props.column > 1" :column="props.column">
+        <template #default="{ index }:DefaultSlot">
+          <slot v-if="cols?.length > index" name="record" :record="cols[index]">
+            <view> </view>
+          </slot>
+        </template>
+      </fr-column>
+      <template v-else>
+        <slot key="default" name="record" :record="cols">
+          <view> </view>
+        </slot>
+      </template>
+    </list-item>
+    <list-item v-show="showFooter" :type="1" class="footer" :style="{ paddingBottom: paddingBottom }">
+      <fr-more-status :loading="props.loading" :has-more="hasMore"></fr-more-status>
+    </list-item>
+  </list-view>
+</template>
+
+<script setup lang="uts">
+import { FrColumn, FrSpin, FrEmpty } from "@/components/widgets";
+import { arrayChunk } from "@/utils/index.uts";
+import { TPagination, defaultPagination } from "./type.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import FrMoreStatus from "./fr-more-status.uvue";
+/**
+ * TODO: 带组件功能实现，及应用
+ */
+type DefaultSlot = {
+  index: number;
+};
+
+type Props = {
+  column?: number;
+  dataSource: UTSJSONObject[];
+  recordKey?: string;
+  pagination?: any;
+  refresherEnabled?: boolean;
+  loading?: boolean;
+  itemClass?: any;
+  itemStyle?: any;
+  emptyText?: string;
+  paddingBottom?: string;
+};
+
+const DEFAULT_PAGE_SIZE = 20;
+
+const loadingMode = ref<"init" | "refresh" | "loadmore" | "reload">("init");
+
+const isInitLoading = computed((): boolean => loadingMode.value == "init" && props.loading == true);
+
+const isEmpty = computed(
+  (): boolean => ["init", "refresh"].includes(loadingMode.value) && props.loading == false && (props.dataSource == null || props.dataSource?.length == 0),
+);
+
+const props = withDefaults(defineProps<Props>(), {
+  column: 1,
+  recordKey: "key",
+  refresherEnabled: false,
+  pagination: defaultPagination,
+
+  dataSource: [],
+  loading: false,
+  itemClass: "",
+  itemStyle: null,
+  paddingBottom: "",
+});
+const emit = defineEmits<{
+  (e: "refresh", initPagination: TPagination): void;
+  (e: "loadmore", nextPagination: TPagination): void;
+}>();
+
+defineSlots<{
+  record(props: { record: UTSJSONObject }): any;
+}>();
+
+const refreshing = computed((): boolean => loadingMode.value == "refresh" && props.loading == true);
+const hasMore = computed((): boolean => (props.pagination != null ? props.pagination.has_next || props.pagination.page < props.pagination.pages : false));
+const showFooter = computed((): boolean => props.dataSource != null && props.dataSource.length > 0);
+
+const lists = computed((): UTSJSONObject[] | UTSJSONObject[][] => {
+  if (props.column == 1) {
+    return props.dataSource != null ? props.dataSource : [];
+  }
+
+  const chunk = arrayChunk<UTSJSONObject[]>(props.dataSource, props.column);
+  return chunk;
+});
+
+const onRefresh = () => {
+  loadingMode.value = "refresh";
+
+  const { size = DEFAULT_PAGE_SIZE, total = 0 } = toRaw<TPagination>(props.pagination);
+
+  emit("refresh", { page: 1, size, total });
+};
+
+const onLoadMore = () => {
+  loadingMode.value = "loadmore";
+
+  const { page = 1, size = DEFAULT_PAGE_SIZE, total = 0, pages = 0 } = toRaw<TPagination>(props.pagination);
+  const nextPage = page + 1;
+  if (nextPage > pages) {
+    return;
+  }
+
+  emit("loadmore", { page: nextPage, size, total });
+};
+
+defineExpose({
+  hasMore,
+  refreshing,
+  loadMode: loadingMode,
+  refresh: onRefresh,
+  loadMore: onLoadMore,
+});
+</script>
+
+<style scoped>
+.scroll-list-container {
+  flex: 1;
+}
+
+.scroll-list-loading {
+  flex: 1;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.scroll-list-item {
+  margin-bottom: 16px;
+}
+
+.footer {
+  padding-bottom: 8px;
+}
+</style>

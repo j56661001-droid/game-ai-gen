@@ -1,0 +1,1365 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container" :class="{ 'is-published': isPublished }">
+      <!-- 顶部导航栏 -->
+      <view class="header" v-show="!isPublished">
+        <view class="header-row">
+          <view class="icon-wrapper">
+            <IconFont name="arrowleft" :size="16" color="#ffffff" @click="goBack()" :btnSize="30"></IconFont>
+          </view>
+          <view v-if="item?.contentType != 'text'" class="media-index-display">
+            <text class="media-index-text">{{ currentMediaIndex + 1 }}/{{ currentMediaList.length }}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- Full-screen Image/Video Display -->
+      <swiper v-if="item?.contentType != 'text'" class="media-display" :current="currentMediaIndex" @change="onSwiperChange">
+        <swiper-item v-for="(media, index) in currentMediaList" :key="index">
+          <bp-media-failed v-if="mediaLoadFailedState[index]" />
+          <template v-else>
+            <bp-image-display
+              v-if="item?.contentType == 'image'"
+              :autoresize="false"
+              :src="media.url"
+              mode="aspectFit"
+              class="full-media"
+              :encryptionKey="media.encryptionKey"
+              @error="onMediaError(index)"
+            ></bp-image-display>
+            <bp-video-display
+              v-else-if="item?.contentType == 'video'"
+              :id="'videoPlayer-' + index"
+              :controls="false"
+              :show-play-btn="false"
+              :src="media.url"
+              :autoresize="false"
+              :autoplay="true"
+              :loop="true"
+              class="full-media"
+              crossOrigin="anonymous"
+              :encryptionKey="media.encryptionKey"
+              @click="toggleVideoPlayback"
+              @load="onVideoLoad(index, $event)"
+              @progress="onVideoProgress(index, $event)"
+              @timeupdate="onVideoTimeUpdate(index, $event)"
+              @error="onMediaError(index)"
+            ></bp-video-display>
+            <view v-else-if="item?.contentType == 'audio'" class="col-center" style="flex: 1">
+              <bp-audio-display
+                :src="media.url"
+                @play="toggleAudioPlayback(true)"
+                @pause="toggleAudioPlayback(false)"
+                @error="onMediaError(index)"
+              ></bp-audio-display>
+            </view>
+            <view v-else class="full-media placeholder-text">{{ noMediaToDisplayText }}</view>
+          </template>
+        </swiper-item>
+      </swiper>
+      <scroll-view v-if="item?.contentType == 'text'" style="flex: 1">
+        <view class="text-content">{{ item?.result }}</view>
+      </scroll-view>
+
+      <!-- Bottom Section -->
+      <view>
+        <!-- Thumbnail scroll view -->
+        <scroll-view v-if="!isPublished && currentMediaList.length > 1" direction="horizontal" class="thumbnail-scroll-view">
+          <view class="thumbnail-wrapper" v-for="(media, index) in currentMediaList" :key="index">
+            <view class="thumbnail-item" :class="{ 'selected-thumbnail': isSelected(index) }">
+              <image :src="getAbsoluteMediaUrl(media.url)" mode="aspectFit" class="thumbnail-image" @click="onThumbnailClick(index)" />
+              <view class="selection-icon" @click="toggleSelection(index)">
+                <IconFont v-if="isSelected(index)" name="ok" :size="10" color="#FF23B8" />
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+
+        <template v-if="!hadMediaFailed">
+          <view v-if="!isPublished">
+            <view v-if="item?.auditStatus == 'pending'" style="text-align: center; color: #999; font-size: 12px; margin-bottom: -10px; margin-top: 20px">
+              {{ $i18n_t("publish.publish_after_approval") }}
+            </view>
+            <view v-else-if="item?.auditStatus == 'rejected'" style="text-align: center; color: red; font-size: 12px; margin-bottom: -10px; margin-top: 20px">
+              {{ $i18n_t("publish.audit_rejected") }}{{ item?.auditMessage ? ", " + item.auditMessage : "" }}
+            </view>
+            <view class="button-group">
+              <!-- <view class="action-icon-button" @click="onDelete">
+              <icon-font name="del" :size="18" color="#fff" />
+            </view> -->
+              <view class="action-icon-button" @click="onDownload">
+                <icon-font name="download" :size="18" color="#fff" />
+              </view>
+              <view style="flex: 1">
+                <fr-button v-if="item?.contentType != 'text'" class="publish-button" :disabled="isPublishDisabled" block @click="onPublish">
+                  {{ publishButtonText }}
+                </fr-button>
+              </view>
+            </view>
+          </view>
+
+          <!-- State 2: Input box and Publish button -->
+          <!-- <view v-else class="publish-input-group">
+            <textarea class="publish-input" :placeholder="enterDescriptionPlaceholder" v-model="publishDescription"></textarea> -->
+          <!-- <view class="paste-prompt-button">
+              <text class="paste-prompt-text">{{ pastePromptText }}</text>
+            </view> -->
+          <!-- <fr-button class="confirm-publish-button" :loading="isPublishing" @click="onConfirmPublish">{{ confirmPublishButtonText }}</fr-button>
+          </view> -->
+
+          <transition name="slide-up" mode="out-in">
+            <TagsModal
+              v-if="isPublished"
+              :toolID="item?.toolID"
+              :isPublishing="isPublishing"
+              @onConfirmPublish="onConfirmPublish"
+              @close="handleCloseTagsModal"
+            />
+          </transition>
+        </template>
+      </view>
+
+      <view v-if="isDownloading" class="download-toast">
+        <text class="download-text">Downloading... {{ downloadProgress.toFixed(2) }}%</text>
+      </view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { goBack } from "@/utils/page";
+import { user } from "@/store/user.uts";
+import { $i18n_t, getLocale } from "@/locale/index.uts";
+import { appStore } from "@/store/index.uts";
+import { GenerationedItem, PostItem, PublishPostPayload, FileInfo, TMediaMeta } from "@/types";
+import { publishPost, getAIGenerationById, deleteAIGeneration, setAIGenerationCover, fileUpload } from "@/api/file";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import FrAudio from "@/components/widgets/fr-audio.uvue";
+import { execGTagEvent } from "@/utils/index.uts";
+import { FrSpin, FrButton } from "@/components/widgets";
+import BpVideoDisplay from "@/components/panels/bp-video-display.uvue";
+import BpImageDisplay from "@/components/panels/bp-image-display.uvue";
+import BpAudioDisplay from "@/components/panels/bp-audio-display.uvue";
+import BpMediaFailed from "@/components/panels/bp-media-failed.uvue";
+import { decryptBncToBlobUrl } from "@/utils/decrypt.uts";
+
+import { isCapacitor, getDomainFromUrl } from "@/utils/platform.uts";
+import { config, getAbsoluteMediaUrl } from "@/api/request.uts";
+import TagsModal from "./panel/tags-modal.uvue";
+
+const inputParameters = ref<UTSJSONObject>({});
+
+const item = ref<GenerationedItem | null>(null);
+
+const currentMediaIndex = ref<number>(0);
+
+const mediaLoadFailedState = reactive<UTSJSONObject>({});
+const isPublished = ref(false);
+// const publishDescription = ref("");
+const isPlaying = ref(false); // New state for audio playback
+const isPublishing = ref(false); // New state for publish loading
+let innerAudioContext: InnerAudioContext | null = null; // Audio context instance
+let innerVideoContext: UniApp.VideoContext | null = null; // Video context instance
+const itemId = ref<string | null>(null);
+const videoFrameReadyPromise = ref<Promise<void> | null>(null);
+let resolveVideoFrameReadyPromise: (() => void) | null = null;
+const selectedMediaIndices = ref<number[]>([]);
+const generatedCoverFilePath = ref<string | null>(null); // New reactive variable
+const videoDuration = ref<number>(0); // New reactive variable to store video duration
+
+const noMediaToDisplayText = computed(() => $i18n_t("publish.noMediaToDisplay"));
+
+const currentMediaList = computed(() => {
+  if (item.value?.resultFiles && item.value.resultFiles.length > 0) {
+    return item.value.resultFiles;
+  }
+  if (item.value?.resultUrls && item.value.resultUrls.length > 0) {
+    // Convert resultUrls to FileDetail-like objects for consistency
+    return item.value.resultUrls.map((url) => ({
+      fileId: 0, // Dummy ID
+      encryptionKey: "",
+      fileSize: 0, // Dummy size
+      mimeType: "", // Dummy mimeType
+      url: url,
+    }));
+  }
+  return [];
+});
+
+const isPublishDisabled = computed(() => {
+  if (item.value?.contentType == "text") {
+    return true;
+  }
+  if (item.value?.auditStatus == "pending" || item.value?.auditStatus == "rejected") {
+    return true;
+  }
+  return false;
+});
+
+const publishButtonText = computed(() => {
+  if (item.value?.auditStatus == "pending") {
+    return $i18n_t("publish.audit_pending");
+  }
+  // if (item.value?.auditStatus == 'rejected') {
+  //   return $i18n_t("publish.audit_rejected");
+  // }
+  return $i18n_t("publish.publishButton");
+});
+const enterDescriptionPlaceholder = computed(() => $i18n_t("publish.enterDescriptionPlaceholder"));
+const pastePromptText = computed(() => $i18n_t("publish.pastePromptText"));
+const confirmPublishButtonText = computed(() => $i18n_t("publish.confirmPublishButton"));
+const publishedToastText = computed(() => $i18n_t("publish.publishedToast"));
+const publishFailedToastText = computed(() => $i18n_t("publish.publishFailedToast"));
+const deleteSuccessToastText = computed(() => $i18n_t("publish.deleteSuccessToast"));
+const deleteFailedToastText = computed(() => $i18n_t("publish.deleteFailedToast"));
+const downloadSuccessToastText = computed(() => $i18n_t("publish.downloadSuccessToast"));
+const downloadFailedToastText = computed(() => $i18n_t("publish.downloadFailedToast"));
+const unsupportedTextToastText = computed(() => $i18n_t("publish.unsupportedTextToast"));
+
+// 根据contentType添加合适的文件后缀名
+const getFileNameWithExtension = (url: string, contentType: string): string => {
+  const fileName = url.substring(url.lastIndexOf("/") + 1);
+
+  // 检查文件是否已有后缀名
+  if (fileName.includes(".")) {
+    return fileName;
+  }
+
+  // 根据contentType添加对应的后缀名
+  switch (contentType) {
+    case "image":
+      return fileName + ".jpg";
+    case "video":
+      return fileName + ".mp4";
+    case "text":
+      return fileName + ".txt";
+    case "audio":
+      return fileName + ".mp3";
+    default:
+      return fileName;
+  }
+};
+
+const isDownloading = ref(false);
+const downloadProgress = ref(0);
+const downloadTask = ref<DownloadTask | null>(null);
+
+const hadMediaFailed = computed((): boolean => {
+  let failed = false;
+  for (let k in mediaLoadFailedState) {
+    if (mediaLoadFailedState[k]) {
+      failed = true;
+    }
+  }
+  return failed;
+});
+
+const toggleSelection = (index: number) => {
+  const selectedIndex = selectedMediaIndices.value.indexOf(index);
+  if (selectedIndex > -1) {
+    selectedMediaIndices.value.splice(selectedIndex, 1);
+  } else {
+    selectedMediaIndices.value.push(index);
+  }
+};
+
+const isSelected = (index: number): boolean => {
+  return selectedMediaIndices.value.includes(index);
+};
+
+const onMediaError = (index: number) => {
+  mediaLoadFailedState[index] = true;
+};
+
+const onThumbnailClick = (index: number) => {
+  currentMediaIndex.value = index;
+};
+
+const onDelete = async () => {
+  if (itemId.value == null) {
+    uni.showToast({
+      title: deleteFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+    return;
+  }
+
+  const response = await deleteAIGeneration(itemId.value);
+  if (response != null && response.success) {
+    uni.showToast({
+      title: deleteSuccessToastText.value,
+      icon: "success",
+      duration: 2000,
+    });
+    setTimeout(() => {
+      goBack();
+    }, 2000);
+  } else {
+    uni.showToast({
+      title: deleteFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+  }
+};
+
+const onDownload = async () => {
+  if (item?.value == null) {
+    return;
+  }
+
+  if (item.value.contentType == "text") {
+    // Handle text content download
+    const textContent = item.value.result;
+    if (textContent == null || textContent.length == 0) {
+      uni.showToast({
+        title: downloadFailedToastText.value,
+        icon: "error",
+        duration: 2000,
+      });
+      return;
+    }
+
+    if (isCapacitor()) {
+      // Capacitor environment: use Filesystem plugin to write the file
+      try {
+        const Filesystem = window.Capacitor.Plugins.Filesystem;
+        if (Filesystem) {
+          const fileName = `${item.value.id}.txt`;
+          await Filesystem.writeFile({
+            path: fileName,
+            data: textContent,
+            directory: "DOCUMENTS",
+            encoding: "utf8",
+          });
+          uni.showToast({
+            title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileName }),
+            icon: "success",
+            duration: 5000,
+          });
+        } else {
+          throw new Error("Capacitor Filesystem plugin not available");
+        }
+      } catch (error) {
+        console.error("Failed to write text file with Capacitor:", error);
+        uni.showToast({
+          title: downloadFailedToastText.value,
+          icon: "error",
+          duration: 2000,
+        });
+      }
+    } else {
+      // H5 environment: use Blob download
+      const blob = new Blob(["\uFEFF" + textContent], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const fileName = `${item.value.id}.txt`; // Default filename
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url); // Clean up the object URL
+      uni.showToast({
+        title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileName }),
+        icon: "success",
+        duration: 5000,
+      });
+    }
+    return; // Exit after handling text download
+  }
+
+  // Handle media download with Capacitor support
+  isDownloading.value = true;
+  downloadProgress.value = 0;
+  const currentMediaItem = currentMediaList.value[currentMediaIndex.value];
+  if (currentMediaItem == null || currentMediaItem.url.length == 0) {
+    uni.showToast({
+      title: downloadFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+    isDownloading.value = false;
+    return;
+  }
+
+  let downloadUrl = currentMediaItem.url;
+  const encryptionKey = currentMediaItem.encryptionKey;
+
+  try {
+    if (isCapacitor()) {
+      // Capacitor环境：检查并处理相对路径
+      if (downloadUrl && !/^https?:\/\//.test(downloadUrl)) {
+        // 相对路径，需要加上API domain
+        const apiDomain = getDomainFromUrl(config.baseUrl);
+        downloadUrl = apiDomain + downloadUrl;
+      } else {
+      }
+
+      // Use window.Capacitor to access plugins
+      const fileName = getFileNameWithExtension(downloadUrl, item.value.contentType);
+
+      if (typeof window !== "undefined" && window.Capacitor) {
+        // Directly try to access plugins
+        try {
+          const Filesystem = window.Capacitor.Plugins.Filesystem;
+          const FileTransfer = window.Capacitor.Plugins.FileTransfer;
+
+          if (FileTransfer && Filesystem) {
+            // Get file save path
+            const fileInfo = await Filesystem.getUri({
+              directory: "DOCUMENTS",
+              path: fileName,
+            });
+
+            // Set progress listener
+            let progressListener: any = null;
+
+            if (FileTransfer.addListener) {
+              progressListener = await FileTransfer.addListener("progress", (progress: any) => {
+                const progressPercent = progress.contentLength > 0 ? (progress.bytes / progress.contentLength) * 100 : 0;
+                downloadProgress.value = progressPercent;
+              });
+            }
+
+            // Start downloading the file
+            await FileTransfer.downloadFile({
+              url: downloadUrl,
+              path: fileInfo.uri,
+              progress: true,
+              headers: encryptionKey ? { "X-Encryption-Key": encryptionKey } : {},
+            });
+
+            // Remove progress listener
+            if (progressListener && progressListener.remove) {
+              progressListener.remove();
+            }
+
+            uni.showToast({
+              title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileName }),
+              icon: "success",
+              duration: 5000,
+            });
+          } else {
+            // Plugins not available, fallback to H5 method
+            throw new Error("Required Capacitor plugins not available");
+          }
+        } catch (pluginError) {
+          throw pluginError;
+        }
+      } else {
+        // window.Capacitor not available, fallback to H5 method
+        throw new Error("window.Capacitor not available");
+      }
+    } else {
+      // H5 environment: keep original URL, use uni.downloadFile
+      downloadTask.value = uni.downloadFile({
+        url: downloadUrl,
+        success: (res) => {
+          if (res.statusCode == 200) {
+            const link = document.createElement("a");
+            link.href = res.tempFilePath;
+            const fileNameWithExt = getFileNameWithExtension(downloadUrl, item.value!.contentType);
+            link.download = fileNameWithExt;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            uni.showToast({
+              title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileNameWithExt }),
+              icon: "success",
+              duration: 5000,
+            });
+          }
+        },
+        fail: (err) => {
+          uni.showToast({
+            title: downloadFailedToastText.value,
+            icon: "error",
+            duration: 2000,
+          });
+        },
+      });
+
+      downloadTask.value.onProgressUpdate((res) => {
+        downloadProgress.value = res.progress;
+      });
+    }
+  } catch (error) {
+    console.error("Download failed:", error);
+
+    // If Capacitor environment error, try fallback to H5 method
+    if (isCapacitor()) {
+      try {
+        downloadTask.value = uni.downloadFile({
+          url: downloadUrl,
+          success: (res) => {
+            if (res.statusCode == 200) {
+              uni.showToast({
+                title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: getFileNameWithExtension(downloadUrl, item.value!.contentType) }),
+                icon: "success",
+                duration: 5000,
+              });
+            }
+          },
+          fail: (err) => {
+            uni.showToast({
+              title: downloadFailedToastText.value,
+              icon: "error",
+              duration: 2000,
+            });
+          },
+        });
+
+        downloadTask.value.onProgressUpdate((res) => {
+          downloadProgress.value = res.progress;
+        });
+      } catch (fallbackError) {
+        uni.showToast({
+          title: downloadFailedToastText.value,
+          icon: "error",
+          duration: 2000,
+        });
+      }
+    } else {
+      uni.showToast({
+        title: downloadFailedToastText.value,
+        icon: "error",
+        duration: 2000,
+      });
+    }
+  } finally {
+    isDownloading.value = false;
+    downloadProgress.value = 0;
+  }
+};
+
+const takeVideoSnapshot = async (index: number = 0, resolveCompletion?: () => void): Promise<boolean> => {
+  const videoId = "videoPlayer-" + index;
+
+  const videoElement = document.querySelector(`#${videoId} video`) as HTMLVideoElement;
+  if (!videoElement) {
+    console.error("Video element not found for snapshot:", videoId);
+    return false;
+  }
+  videoElement.crossOrigin = "anonymous";
+  
+  let canvas = document.querySelector("#debugCanvas") as HTMLCanvasElement;
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.id = "debugCanvas";
+    //debug
+    // canvas.style.position = "fixed";
+    // canvas.style.top = "10px";
+    // canvas.style.left = 0;
+    // canvas.style.zIndex = 9999;
+    // canvas.style.border = "1px solid red";
+    // document.body.appendChild(canvas);
+  }
+
+  if (canvas) {
+    let targetWidth = videoElement.videoWidth;
+    let targetHeight = videoElement.videoHeight;
+
+    if (targetWidth > 360) {
+      targetHeight = Math.round(targetHeight * (360 / targetWidth));
+      targetWidth = 360;
+    }
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      if (generatedCoverFilePath.value == null) {
+        ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+        generatedCoverFilePath.value = canvas.toDataURL("image/webp", 0.95);
+        const uploadSuccess = await uploadCover(generatedCoverFilePath.value);
+        if (uploadSuccess) {
+          if (resolveCompletion) {
+            resolveCompletion(); // Only resolve the promise after successful upload
+          }
+          return true;
+        } else {
+          console.error("Failed to upload video cover after snapshot.");
+          return false;
+        }
+      }
+      return true; // Cover already generated and uploaded, or success if not null.
+    } else {
+      console.error("Failed to get canvas context for video snapshot.");
+      return false;
+    }
+  } else {
+    console.error("Canvas element not found or created for video snapshot.");
+    return false;
+  }
+};
+
+const takeImageSnapshot = async (index: number): Promise<boolean> => {
+  return new Promise<boolean>(async (resolve, reject) => {
+    console.log("takeImageSnapshot called for index:", index);
+    const mediaItem = currentMediaList.value[index];
+    if (!mediaItem || !mediaItem.url) {
+      console.error("Media item or URL not found for snapshot for index:", index);
+      resolve(false); // Resolve with false on error
+      return;
+    }
+
+    let displayUrl = mediaItem.url;
+    let objectUrl: string | null = null;
+
+    try {
+      if (displayUrl.endsWith(".bnc") && mediaItem.encryptionKey != null && mediaItem.encryptionKey != "") {
+        console.log("Attempting to decrypt BNC image:", displayUrl);
+        objectUrl = await decryptBncToBlobUrl(displayUrl, mediaItem.encryptionKey);
+        displayUrl = objectUrl;
+        console.log("Decrypted to Blob URL:", displayUrl);
+      } else {
+        console.log("Image is not BNC or no encryption key, using original URL:", displayUrl);
+      }
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = displayUrl;
+
+      img.onload = async () => {
+        console.log("Image loaded for snapshot:", displayUrl);
+        let canvas = document.querySelector("#debugCanvas") as HTMLCanvasElement;
+        if (!canvas) {
+          canvas = document.createElement("canvas");
+          canvas.id = "debugCanvas";
+        }
+
+        if (canvas) {
+          let targetWidth = img.naturalWidth;
+          let targetHeight = img.naturalHeight;
+
+          if (targetWidth > 360) {
+            targetHeight = Math.round(targetHeight * (360 / targetWidth));
+            targetWidth = 360;
+          }
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            if (generatedCoverFilePath.value == null) {
+              ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+              generatedCoverFilePath.value = canvas.toDataURL("image/webp", 0.95);
+              const uploadSuccess = await uploadCover(generatedCoverFilePath.value); // Await and check upload result
+              if (uploadSuccess) {
+                resolve(true); // Resolve with true on successful upload
+              } else {
+                console.error("Failed to upload image cover after snapshot.");
+                resolve(false); // Resolve with false on upload failure
+              }
+            } else {
+              resolve(true); // Cover already generated, consider it successful
+            }
+            if (objectUrl) {
+              URL.revokeObjectURL(objectUrl);
+              console.log("Revoked object URL:", objectUrl);
+            }
+          } else {
+            console.error("Failed to get canvas context for index:", index);
+            resolve(false); // Resolve with false on error
+            if (objectUrl) {
+              URL.revokeObjectURL(objectUrl);
+              console.log("Revoked object URL (on context error):", objectUrl);
+            }
+          }
+        } else {
+          console.error("Canvas element not found or created for index:", index);
+          resolve(false); // Resolve with false on error
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            console.log("Revoked object URL (on canvas error):", objectUrl);
+          }
+        }
+      };
+
+      img.onerror = (err) => {
+        console.error("Failed to load image for snapshot (img.onerror):", err);
+        resolve(false); // Resolve with false on image load error
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          console.log("Revoked object URL (on image error):", objectUrl);
+        }
+      };
+    } catch (e) {
+      console.error("Error in takeImageSnapshot catch block:", e);
+      resolve(false); // Resolve with false on any other error
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        console.log("Revoked object URL (on catch error):", objectUrl);
+      }
+    }
+  });
+};
+const onVideoTimeUpdate = async (index: number, e: Uni.UniVideoTimeUpdateEvent) => {
+  if (index != 0 || !!item.value!.cover || item.value!.contentType != "video" || videoDuration.value === 0) {
+    return;
+  }
+  const midpoint = videoDuration.value * 0.8;
+  const currentTime = e.detail.currentTime;
+  const tolerance = 0.5; // +/- 0.5 seconds
+
+  if (currentTime >= midpoint - tolerance && currentTime <= midpoint + tolerance && resolveVideoFrameReadyPromise != null) {
+    // Await the snapshot and upload, passing the resolver
+    await takeVideoSnapshot(index, resolveVideoFrameReadyPromise);
+    // resolveVideoFrameReadyPromise will be called inside takeVideoSnapshot if successful
+    resolveVideoFrameReadyPromise = null; // Clear the resolver
+  }
+};
+
+const onImageLoad = async (index: number, e: any) => {
+  if (!!item.value?.cover) return;
+  if (index == 0) {
+    await takeImageSnapshot(0);
+  }
+};
+
+const onVideoProgress = (index: number, e: Uni.UniVideoProgressEvent) => {
+  // This function is no longer needed to manage snapshot taking directly,
+  // as onVideoTimeUpdate now handles the timing based on currentTime.
+};
+
+const onVideoLoad = (index: number, e: Uni.UniVideoLoadedMetadataEvent) => {
+  // console.log("onVideoMetaLoad")
+  if (index == currentMediaIndex.value && e.detail?.duration != null) {
+    videoDuration.value = e.detail.duration;
+  }
+};
+
+const uploadCover = async (filePath: string): Promise<boolean> => {
+  try {
+    // uni.uploadFile is the base API, fileUpload is likely a wrapper.
+    // The wrapper should handle platform differences, like dataURL on web.
+    const uploadResult = await fileUpload({
+      file: filePath,
+      category: "cover",
+    });
+    if (uploadResult && uploadResult.success && uploadResult.data) {
+      const res = await setAIGenerationCover(item.value!.id, { cover: uploadResult.data.fileURL });
+      if (res?.success) {
+        item.value!.cover = uploadResult.data.fileURL;
+        uni.$emit("coverUpdated", item.value!);
+        return true; // Indicate success
+      } else {
+        console.error("Failed to set AI generation cover:", res);
+        return false;
+      }
+    } else {
+      console.error("Cover file upload failed:", uploadResult);
+      return false;
+    }
+  } catch (e) {
+    console.error("Error uploading cover:", e);
+    return false; // Indicate failure
+  }
+};
+
+const onPublish = () => {
+  if (item.value == null) return;
+  if (item.value.contentType == "text") {
+    //提示不支持查看文本
+    uni.showToast({
+      title: unsupportedTextToastText.value,
+    });
+    return;
+  }
+  isPublished.value = true;
+};
+
+const handleCloseTagsModal = () => {
+  isPublished.value = false;
+  isPublishing.value = false;
+};
+
+const onConfirmPublish = async (params) => {
+  if (item.value == null) return;
+  isPublishing.value = true; // Set loading to true
+  if (itemId.value == null) {
+    uni.showToast({
+      title: publishFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+    isPublishing.value = false; // Reset loading
+    return;
+  }
+
+  const generationItem = item.value; //appStore.value.generationedItemList.find((item: GenerationedItem) => item.id == itemId.value);
+
+  if (!generationItem || currentMediaList.value.length == 0) {
+    uni.showToast({
+      title: publishFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+    isPublishing.value = false; // Reset loading
+    return;
+  }
+
+  if (!item.value.cover && generatedCoverFilePath.value == null) {
+    if (item.value.contentType == "image") {
+      await takeImageSnapshot(0);
+    } else if (item.value.contentType == "video") {
+      if (videoFrameReadyPromise.value != null) {
+        // If a snapshot process is already ongoing, return early
+        return;
+      }
+
+      if (currentMediaIndex.value != 0) {
+        currentMediaIndex.value = 0;
+      }
+      innerVideoContext = uni.createVideoContext("videoPlayer-0");
+      if (innerVideoContext) {
+        // Create a new promise for video frame readiness
+        videoFrameReadyPromise.value = new Promise((resolve) => {
+          resolveVideoFrameReadyPromise = resolve;
+        });
+
+        const seekTime = videoDuration.value * 0.8;
+        innerVideoContext.seek(seekTime);
+        innerVideoContext.play();
+
+        // Wait for the video frame to be ready and snapshot taken
+        await videoFrameReadyPromise.value;
+
+        innerVideoContext.pause();
+        isPlaying.value = false;
+        videoFrameReadyPromise.value = null; // Reset the promise after it's resolved and used
+      }
+    }
+  }
+  if ((item.value.contentType == "video" || item.value.contentType == "image") && !item.value.cover) {
+    uni.showToast({
+      title: $i18n_t("publish.waitingForSnapshot"), // 假设会添加这个i18n key
+      icon: "none",
+      duration: 2000,
+    });
+    isPublishing.value = false;
+    return;
+  }
+
+  const mediaMetadata: TMediaMeta[] = []; // Changed cover type
+  const indicesToPublish = selectedMediaIndices.value.length > 0 ? selectedMediaIndices.value : [currentMediaIndex.value];
+
+  indicesToPublish.forEach((index) => {
+    const mediaItem = currentMediaList.value[index];
+    if (mediaItem != null) {
+      const metadata: TMediaMeta = {
+        fileURL: mediaItem.url,
+        fileName: mediaItem.url.substring(mediaItem.url.lastIndexOf("/") + 1),
+      };
+      if (mediaItem.encryptionKey) {
+        metadata.encryptionKey = mediaItem.encryptionKey;
+      }
+      if (index == 0 && item.value?.cover) {
+        metadata.cover = { fileURL: item.value?.cover };
+      }
+      mediaMetadata.push(metadata);
+    }
+  });
+
+  if (mediaMetadata.length == 0) {
+    uni.showToast({
+      title: publishFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+    isPublishing.value = false; // Reset loading
+    return;
+  }
+
+  const payload: PublishPostPayload = {
+    contentType: item.value.contentType,
+    visibility: "public",
+    content: params.description,
+    mediaMetadata: mediaMetadata,
+    toolID: generationItem.toolID, // Assuming style is toolID
+    generationID: generationItem.id,
+    language: getLocale(), // Add language parameter
+    tagIDs: params.selectedTagList,
+  };
+
+  const response = await publishPost(payload);
+  if (response != null && response.success && response.data != null) {
+    const postItem = response.data as PostItem;
+    // GA 埋点 上报数据：发布成功
+    execGTagEvent("post", { toolID: item.value?.aiTool?.id } as AnyObject);
+
+    setTimeout(() => {
+      uni.showToast({
+        title: publishedToastText.value,
+        icon: "success",
+        duration: 3000,
+      });
+    }, 2000); // Reset after 2 seconds
+
+    if (!postItem.author) {
+      postItem.author = user.value!;
+    }
+    if (postItem.auditStatus == "passed") {
+      // appStore.value.videoResourceList = [postItem];
+      // appStore.value.videoInitialIndex = 0;
+
+      uni.redirectTo({
+        url: "/pages/index/index?tabbar=video&id=" + postItem.id,
+        success: () => {
+          setTimeout(() => {
+            uni.showToast({
+              title: publishedToastText.value,
+              icon: "success",
+              duration: 3000,
+            });
+          }, 2000); // Reset after 2 seconds
+        },
+      });
+    } else {
+      uni.redirectTo({
+        url: "/pages/index/index?tabbar=profile",
+      });
+    }
+  } else {
+    uni.showToast({
+      title: publishFailedToastText.value,
+      icon: "error",
+      duration: 2000,
+    });
+  }
+  isPublishing.value = false; // Reset loading
+};
+
+// Example of how to change media type and source
+onLoad(async (options) => {
+  if (options && options.id) {
+    itemId.value = options.id;
+    let foundItem = appStore.value.generationedItemList.find((item: GenerationedItem) => item.id == itemId.value);
+    if (!foundItem && typeof itemId.value == "string") {
+      const response = await getAIGenerationById(itemId.value);
+      if (response != null && response.success && response.data) {
+        foundItem = response.data as GenerationedItem;
+      } else {
+        uni.showToast({
+          title: publishFailedToastText.value,
+          icon: "error",
+          duration: 2000,
+        });
+        return;
+      }
+      appStore.value.generationedItemList.push(foundItem);
+    }
+
+    if (foundItem) {
+      item.value = foundItem;
+      currentMediaIndex.value = 0;
+      inputParameters.value = (foundItem.generationParameters || foundItem.inputParameters || {}) as any;
+    }
+  }
+});
+
+const onSwiperChange = (e: UniSwiperChangeEvent) => {
+  currentMediaIndex.value = e.detail?.current as number;
+  // Stop any currently playing media when swiper changes
+  stopAudio();
+  stopVideo();
+};
+
+const toggleAudioPlayback = (playing: boolean) => {
+  isPlaying.value = playing;
+};
+
+const toggleVideoPlayback = () => {
+  innerVideoContext = uni.createVideoContext("videoPlayer-" + currentMediaIndex.value);
+  if (innerVideoContext) {
+    if (isPlaying.value) {
+      innerVideoContext.pause();
+      isPlaying.value = false;
+    } else {
+      innerVideoContext.play();
+      isPlaying.value = true;
+    }
+  }
+};
+
+const stopAudio = () => {
+  if (innerAudioContext) {
+    innerAudioContext.stop();
+    innerAudioContext.destroy();
+    innerAudioContext = null;
+    isPlaying.value = false;
+  }
+};
+
+const stopVideo = () => {
+  if (innerVideoContext) {
+    innerVideoContext.pause(); // Pause the video
+    innerVideoContext = null;
+    isPlaying.value = false;
+  }
+};
+// Initialize media context when component is mounted
+watch(
+  () => currentMediaIndex.value,
+  (newIndex) => {
+    // Stop any currently playing media
+    stopAudio();
+    stopVideo();
+    if (item.value == null) return;
+    if (item.value.contentType == "audio" && item.value.resultUrls[newIndex]) {
+      innerAudioContext = uni.createInnerAudioContext();
+      innerAudioContext.autoplay = false; // We'll control playback manually
+      innerAudioContext.src = item.value.resultUrls[newIndex];
+
+      innerAudioContext.onPlay(() => {
+        isPlaying.value = true;
+      });
+      innerAudioContext.onPause(() => {
+        isPlaying.value = false;
+      });
+      innerAudioContext.onStop(() => {
+        isPlaying.value = false;
+      });
+      innerAudioContext.onEnded(() => {
+        isPlaying.value = false;
+      });
+      innerAudioContext.onError((res) => {
+        console.error("Audio error:", res.errMsg, res.errCode);
+        uni.showToast({
+          title: "Audio playback failed",
+          icon: "error",
+          duration: 2000,
+        });
+        isPlaying.value = false;
+      });
+    } else if (item.value.contentType == "video" && item.value.resultUrls[newIndex]) {
+      isPlaying.value = false;
+    }
+  },
+  { immediate: true },
+); // Immediate: true to run on initial
+
+onUnmounted(() => {
+  // Clean up media contexts when component is unmounted
+  stopAudio();
+  stopVideo();
+});
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  transition: all 0.3s ease; /* 添加高度变化动画 */
+  max-width: 1400px;
+  margin: 0px auto;
+}
+
+.container.is-published {
+  height: 35vh; /* 当 isPublished 为 true 时的高度 */
+}
+
+@media (min-width: 750px) {
+  .container.is-published {
+    width: 50vw;
+    height: 100%;
+  }
+}
+
+/* 添加滑动动画样式 */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-up-enter-from {
+  transform: translateY(100%);
+}
+
+.slide-up-leave-to {
+  transform: translateY(100%);
+}
+
+/* 右边弹出 */
+@media (min-width: 750px) {
+  .slide-up-enter-from {
+    transform: translateX(100%);
+  }
+
+  .slide-up-leave-to {
+    transform: translateX(100%);
+  }
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  margin-top: 20px;
+  left: 0;
+  right: 0;
+  min-height: 58px;
+  padding: 12px 16px;
+  z-index: 11;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between; /* Distribute items with space between them */
+  width: 100%;
+}
+
+.media-index-display {
+  background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent black */
+  border-radius: 15px; /* Rounded corners */
+  padding: 5px 10px;
+  color: #ffffff;
+  margin-left: auto; /* Push to the right */
+}
+
+.media-index-text {
+  font-size: 14px;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+.media-display {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000;
+}
+
+.full-media {
+  width: 100%;
+  height: 100%;
+}
+
+.placeholder-text {
+  color: #ccc;
+  font-size: 18px;
+  margin-top: 78px;
+}
+
+.text-content {
+  color: #fff;
+  font-size: 16px;
+  padding: 20px;
+  white-space: pre-wrap;
+  box-sizing: border-box; /* Include padding in height calculation */
+}
+
+.audio-player-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #333;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.action-button {
+  flex: 1;
+  margin: 0 10px;
+  height: 40px;
+  border-radius: 20px;
+  font-size: 16px;
+  color: #fff;
+  text-align: center;
+  line-height: 40px;
+}
+
+.action-icon-button {
+  width: 40px; /* Make width equal to height for a perfect circle */
+  height: 40px;
+  border-radius: 20px; /* Half of height/width for circular shape */
+  background-color: rgba(51, 51, 51, 0.5); /* Semi-transparent background */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.publish-button,
+.confirm-publish-button {
+  font-weight: bold;
+  height: 40px;
+  font-size: 16px;
+  background: linear-gradient(to right, #ff00d8, #fff500);
+}
+
+.disabled-button {
+  background: #aaa;
+  color: #ddd;
+}
+
+.publish-input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: #000; /* Common black background */
+  padding: 16px; /* Add padding to contain elements */
+  border-radius: 10px 10px 0 0; /* Rounded top corners */
+  position: relative; /* For positioning the paste button */
+  width: 100%; /* Ensure it takes full width */
+  box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.publish-input {
+  width: 100%;
+  height: 165px; /* Set height to 165px as requested */
+  padding: 15px;
+  margin-bottom: 24px;
+  border-radius: 10px;
+  background-color: #333;
+  color: #fff;
+  font-size: 16px;
+  line-height: 20px; /* Adjust line height for better text display */
+  text-align-vertical: top; /* Align text to top for multiline input */
+  box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.paste-prompt-button {
+  position: absolute;
+  bottom: 95px; /* Position relative to the bottom of the input group */
+  left: 30px; /* Position relative to the left of the input group */
+  background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent black background */
+  border-radius: 5px;
+  padding: 5px 10px;
+  z-index: 1; /* Ensure it floats above the textarea */
+}
+
+.paste-prompt-text {
+  color: #fff;
+  font-size: 14px;
+}
+
+.confirm-publish-button {
+  width: 100%;
+  margin: 0;
+}
+
+.icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: 12px;
+}
+
+.thumbnail-scroll-view {
+  padding: 16px;
+  flex-direction: row;
+  /* Removed overflow: hidden; */
+}
+
+.thumbnail-wrapper {
+  padding: 8px 8px 0 0; /* Add padding to accommodate the selection-icon offset */
+  position: relative; /* Needed for proper positioning of children if any */
+  margin-right: 10px; /* Move margin to the wrapper */
+  display: inline-flex; /* Allow wrapper to influence scroll view height */
+  overflow: visible;
+}
+
+.thumbnail-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: visible;
+  border: 1px solid transparent; /* Add a transparent border by default */
+  box-sizing: border-box; /* Ensure border doesn't change size */
+}
+
+.thumbnail-item.selected-thumbnail {
+  border-color: #ff23b8; /* Color of the border when selected */
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.selection-icon {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ff23b8;
+}
+
+.col-center {
+  justify-content: center;
+  align-items: center;
+}
+
+.audio-playing-mark {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(134deg, #ff4e6d 0%, #ff41d3 100%);
+  border-radius: 15px;
+
+  align-items: center;
+  justify-content: center;
+}
+
+.download-toast {
+  position: absolute;
+  bottom: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 10px 0;
+  width: 80%;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+.download-text {
+  font-size: 14px;
+  color: #fff;
+  text-align: center;
+}
+</style>

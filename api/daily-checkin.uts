@@ -1,0 +1,53 @@
+import { ApiResponse, PostItem } from "@/types/index.uts";
+import { DailyCheckinResponse } from "@/types/daily-checkin.uts";
+import { request } from "./request.uts";
+
+
+
+/**
+ * GET /api/sign-in/calendar
+ * 获取每日签到数据
+ * @returns 每日签到数据
+ */
+export async function getDailyCheckinApi(): Promise<ApiResponse<DailyCheckinResponse[]> | null> {
+  return await request<ApiResponse<DailyCheckinResponse[]>>({
+    url: `sign-in/calendar`,
+    method: "GET",
+  });
+}
+
+
+/**
+ * POST /api/sign-in/sign
+ * 签到接口
+ */
+export async function checkinApi(): Promise<ApiResponse<CheckinResponse>> {
+  return await request<ApiResponse<CheckinResponse>>({
+    url: `sign-in/sign`,
+    method: "POST",
+    data: { activity_code: "daily_sign_in_30" }
+  });
+}
+
+/**
+ * POST /api/sign-in/makeup
+ * 补签接口
+ */
+export async function retroactiveCheckinApi(date: string): Promise<ApiResponse<CheckinResponse>> {
+  return await request<ApiResponse<CheckinResponse>>({
+    url: `sign-in/makeup`,
+    method: "POST",
+    data: { activity_code: "daily_sign_in_30", makeup_date: date }
+  });
+}
+
+/**
+ * GET /api/sign-in/rules
+ * 获取签到规则接口
+ */
+export async function getCheckinRulesApi(): Promise<ApiResponse<CheckinRulesResponse>> {
+  return await request<ApiResponse<CheckinRulesResponse>>({
+    url: `sign-in/rules`,
+    method: "GET",
+  });
+}

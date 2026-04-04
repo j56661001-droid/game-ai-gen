@@ -1,0 +1,368 @@
+<template>
+	<view class="share-sheet-overlay" @click="handleOverlayClick">
+		<view class="container">
+			<!-- <view class="search-bar">
+				<input class="search-input" type="text" placeholder="Search" />
+			</view>
+			<scroll-view direction="horizontal" class="user-list">
+				<view class="user-item" v-for="user in userList" :key="user.id" @click="toggleSelect(user)">
+					<view class="avatar-container">
+						<FrAvatar :size="48" :url="user.avatarUrl"></FrAvatar>
+						<image v-if="user.isVerified" class="verified-badge" src="/static/icons/v_small@2x.png"></image>
+					</view>
+					<text class="username">{{ user.name }}</text>
+					<view class="checkbox" :class="{ selected: user.selected }">
+						<IconFont v-if="user.selected" name="ok" :size="8" color="#FF23B8"></IconFont>
+					</view>
+				</view>
+			</scroll-view> -->
+			<view>
+				<!-- <view v-if="isAnyUserSelected" class="message-area" >
+					<input class="message-input" type="text" placeholder="Write a message..." />
+					<button class="send-button" @click="handleSend">Send</button>
+				</view>
+				<view v-else class="action-grid"> -->
+				<view class="action-grid">
+					<!-- <view class="action-item">
+						<view class="action-icon">
+							<IconFont name="share" :size="18"></IconFont>
+						</view>
+						<text class="action-label">Share</text>
+					</view>
+					<view class="action-item">
+						<view class="action-icon">
+							<IconFont name="whatsapp" :size="18"></IconFont>
+						</view>
+						<text class="action-label">WhatsApp</text>
+					</view> -->
+					<view class="action-item" @click="handleCopyLink">
+						<view class="action-icon">
+						<IconFont name="link" :size="18"></IconFont>
+					</view>
+					<text class="action-label">{{ $i18n_t('shareSheet.copyLink') }}</text>
+					</view>
+					<view class="action-item">
+						<view class="action-icon" @click="handleDownload">
+							<IconFont name="download" :size="18"></IconFont>
+						</view>
+						<text class="action-label">{{ $i18n_t('shareSheet.download') }}</text>
+					</view>
+					<view class="action-item" v-if="isMyId(props.authorId)" @click="handleDelete">
+						<view class="action-icon delete-icon">
+							<IconFont name="del" :size="18"></IconFont>
+						</view>
+						<text class="action-label">{{ $i18n_t('shareSheet.delete') }}</text>
+					</view>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import type {
+		Ref
+	} from 'vue'
+	import { FrAvatar } from "@/components/widgets";
+	import IconFont from '../IconFont/IconFont.uvue'
+	import { config } from '@/api/request.uts';
+	import { delPostByid } from '../../api/file.uts';
+	import { isMyId } from '../../store/user.uts';
+	import { $i18n_t } from '../../locale/index.uts';
+
+	type User = {
+		id : number;
+		name : string;
+		avatarUrl : string;
+		selected : boolean;
+		isVerified: boolean;
+	}
+
+	const props = defineProps<{
+		postId?: string;
+		authorId?: string;
+	}>();
+
+	const emit = defineEmits(['close', 'download', 'deleteSuccess'])
+
+	const avatars = [];
+	const userList : Ref<User[]> = ref([] as User[]);
+
+	const isAnyUserSelected = computed(() : boolean => {
+		for (const user of userList.value) {
+			if (user.selected) {
+				return true
+			}
+		}
+		return false
+	})
+
+	const toggleSelect = (user : User) => {
+		const index = userList.value.findIndex(item => item.id == user.id)
+		if (index > -1) {
+			// 在App端，必须创建一个新对象来修改数组中的数据，才能触发视图更新
+			const updatedUser: User = {
+				id: user.id,
+				name: user.name,
+				avatarUrl: user.avatarUrl,
+				selected: !user.selected,
+				isVerified: user.isVerified,
+			};
+			userList.value[index] = updatedUser
+		}
+	}
+
+	const handleOverlayClick = (event : UniPointerEvent) => {
+		// 只有点击蒙版区域才响应关闭事件
+		if (event.target == event.currentTarget) {
+			emit('close')
+		}
+	}
+
+	const handleSend = () => {
+		// 这里可以添加发送逻辑
+		emit('close')
+	}
+
+	const handleDownload = () => {
+		emit('download');
+		emit('close');
+	}
+
+	const handleDelete = async () => {
+		if (props.postId) {
+			const res = await delPostByid(props.postId);
+			if (res != null && res.success) {
+				uni.showToast({
+					title: $i18n_t('shareSheet.postDeletedSuccessfully'),
+					icon: "success",
+					duration: 3500,
+				});
+				//跳转回到个人页面
+				uni.redirectTo({
+					url: '/pages/index/index?tabbar=profile'
+				})
+			} else {
+				uni.showToast({
+					title: $i18n_t('shareSheet.failedToDeletePost'),
+					icon: "none",
+					duration: 2000,
+				});
+				console.error("Failed to delete post:", res?.error?.message);
+			}
+		} else {
+			uni.showToast({
+					title: $i18n_t('shareSheet.noPostIdToDelete'),
+					icon: "none",
+					duration: 2000,
+				});
+		}
+	};
+
+	const handleCopyLink = () => {
+		if (props.postId) {
+			let baseUrl = '';
+			// #ifdef H5
+			baseUrl = window.location.origin;
+			// #endif
+			// #ifndef H5
+			baseUrl = config.baseUrl;
+			if (baseUrl.endsWith('/api/')) {
+				baseUrl = baseUrl.slice(0, -5); // Remove '/api/'
+			}
+			// #endif
+
+			const shareUrl = `${baseUrl}/pages/index/index?tabbar=video&id=${props.postId}`;
+			uni.setClipboardData({
+				data: shareUrl,
+				success: () => {
+					uni.showToast({
+						title: $i18n_t('shareSheet.linkCopied'),
+						icon: "success",
+						duration: 2000,
+					});
+					emit('close');
+				},
+				fail: (err) => {
+					uni.showToast({
+						title: $i18n_t('shareSheet.failedToCopyLink'),
+						icon: "none",
+						duration: 2000,
+					});
+					console.error("Failed to copy link:", err);
+				}
+			});
+		} else {
+			uni.showToast({
+				title: $i18n_t('shareSheet.noPostIdToCopyLink'),
+				icon: "none",
+				duration: 2000,
+			});
+		}
+	};
+</script>
+
+<style scoped>
+	.share-sheet-overlay {
+		position: absolute;;
+		/* 确保覆盖整个视口 */
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: transparent;
+		display: flex;
+		justify-content: center;
+		align-items: flex-end;
+		/* 让弹窗从底部弹出 */
+		z-index: 300;
+		/* 确保在最上层 */
+		height: 100%;
+	}
+
+	.container {
+		position: absolute;
+		background-color: #1F1F1F;
+		border-top-left-radius: 20px;
+		border-top-right-radius: 20px;
+		padding: 20px;
+		width: 100%;
+		height: auto; /* Changed to auto to accommodate more content */
+		min-height: 100px; /* Set a minimum height */
+		bottom: 0;
+	}
+
+	.search-bar {
+		margin-bottom: 20px;
+	}
+
+	.search-input {
+		background-color: #444;
+		border-radius: 20px;
+		color: white;
+		height: 40px;
+		padding: 0 20px;
+	}
+
+	.user-list {
+		display: flex;
+		flex-direction: row;
+		margin-bottom: 20px;
+	}
+
+	.user-item {
+		align-items: center;
+		display: flex;
+		flex-direction: column;
+		margin-right: 15px;
+		position: relative;
+	}
+
+	
+
+	.online-indicator {
+		position: absolute;
+		top: 0px;
+		right: 0px;
+		width: 12px;
+		height: 12px;
+		background-color: #34C759;
+		border-radius: 6px;
+		border-width: 2px;
+		border-color: #2c2c2c;
+		/* 与container背景色一致 */
+	}
+
+	.verified-badge {
+		position: absolute;
+		bottom: 0px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 12px;
+		height: 12px;
+	}
+
+	.username {
+		color: white;
+		font-size: 14px;
+		margin-top: 5px;
+	}
+
+	.checkbox {
+		background-color: #fff;
+		border-radius: 6px;
+		height: 12px;
+		position: absolute;
+		right: 0;
+		top: 0px;
+		width: 12px;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+
+	.action-grid {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap; /* Allow items to wrap to the next line */
+		justify-content: flex-start; /* Align items to the start */
+		margin-bottom: 20px;
+	}
+
+	.action-item {
+		align-items: center;
+		display: flex;
+		flex-direction: column;
+		width: 33.33%; /* Make each item take up 1/3 of the width */
+		margin-right: 0; /* Remove right margin */
+		padding: 10px 0; /* Add some padding */
+	}
+
+	.action-icon {
+		align-items: center;
+		background-color: rgba(255, 255, 255, 0.05);
+		border-radius: 24px;
+		display: flex;
+		height: 48px;
+		justify-content: center;
+		width: 48px;
+	}
+
+	.action-icon {
+		margin-bottom: 5px; /* Add some space between icon and label */
+	}
+
+	.action-icon.delete-icon {
+		background-color: rgba(255, 0, 0, 0.1); /* Red background for delete icon */
+	}
+
+	.action-label {
+		color: white;
+		font-size: 12px;
+		margin-top: 5px;
+		text-align: center; /* Center the text */
+	}
+
+	.message-area {
+		margin-bottom: 20px;
+		border-top: 1px solid #444;
+	}
+
+	.message-input {
+		background-color: transparent;
+		border-width: 0;
+		color: white;
+		height: 40px;
+		padding: 0 20px;
+		margin: 8px 0;
+	}
+
+	.send-button {
+		background: linear-gradient(to right, #ff00ff, #ffff00);
+		border-radius: 20px;
+		color: white;
+		height: 40px;
+		line-height: 40px;
+	}
+</style>

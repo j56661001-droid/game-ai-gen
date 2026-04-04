@@ -1,0 +1,38 @@
+/**
+ * @params {s} number 秒
+ */
+export function fmtTimeStr(s: number): string {
+  if (typeof s != "number") {
+    return "00:00";
+  }
+
+  const min = s / 60;
+  const remainS = s % 60;
+
+  const remainSF = Math.floor(remainS);
+  const remainSFStr = Math.floor(remainSF) > 9 ? remainSF : `0${remainSF}`;
+
+  if (min < 60) {
+    const minF = Math.floor(min);
+    return `${minF > 9 ? minF : `0${minF}`}:${remainSFStr}`;
+  }
+
+  const h = min / 60;
+  const remainMin = min % 60;
+
+  const remainMinF = Math.floor(remainMin);
+  const hF = Math.floor(h);
+
+  return `${hF > 9 ? hF : `0${hF}`}:${remainMinF > 9 ? remainMinF : `0${remainMinF}`}:${remainSFStr}`;
+}
+
+/**
+ * 获取当前日期的字符串，格式为 YYYY-MM-DD
+ */
+export function getTodayDateString(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0'); // 月份从0开始，所以+1
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

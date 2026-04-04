@@ -1,0 +1,234 @@
+<!-- 活动入口组件 -->
+<script setup lang="uts">
+
+// 预设的背景颜色
+const bgColorOptions = {
+  yellow: "255,224,22",
+  red: "255,69,67",
+  purple: "147,0,255",
+  "purple-red": "255,35,184",
+  pink: "253,154,81"
+};
+
+// 预设宽高
+const sizeOptions = {
+  medium: {
+    width: 103,
+    height: 89,
+    offset: 28,  // 偏移量
+  },
+  small: {
+    width: 80,
+    height: 70,
+    offset: 22,  // 偏移量
+  },
+};
+
+type Props = {
+  title: string; // 标题
+  icon: string; // 图标
+  size: keyof typeof sizeOptions; // 大小
+  description?: string; // 描述
+  bgColor?: keyof typeof bgColorOptions; // 背景颜色
+  time?: string; // 时间
+};
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  (e: 'click'): void;
+}>();
+
+const handleClick = () => {
+  emit('click');
+};
+
+// 倒计时
+const countdown = ref<string>("");
+
+// 定时器ID
+let timerId: any = null;
+
+// 补零函数
+const padZero = (num: number): string => {
+  return num < 10 ? `0${num}` : `${num}`;
+};
+
+//* 转换格式为：剩余 日:时:分:秒
+const formatTime = (time: string | null): string => {
+  if (time == null || time == "") {
+    return "";
+  }
+  
+  const now = new Date();
+  const target = new Date(time);
+  const diff = target.getTime() - now.getTime();
+  
+  // 如果时间已过，返回空字符串或提示
+  if (diff <= 0) {
+    return "00:00:00:00";
+  }
+  
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return `${padZero(days)}:${padZero(hours)}:${padZero(minutes)}:${padZero(seconds)}`;
+};
+
+// 更新倒计时
+const updateCountdown = () => {
+  if (props.time != null && props.time != "") {
+    countdown.value = formatTime(props.time);
+  } else {
+    countdown.value = "";
+  }
+};
+
+// 启动定时器
+const startTimer = () => {
+  // 先立即更新一次
+  updateCountdown();
+  
+  // 清除已有定时器
+  if (timerId != null) {
+    clearInterval(timerId);
+    timerId = null;
+  }
+  
+  // 如果传入了时间，启动定时器
+  if (props.time != null && props.time != "") {
+    timerId = setInterval(() => {
+      updateCountdown();
+    }, 1000);
+  }
+};
+
+// 停止定时器
+const stopTimer = () => {
+  if (timerId != null) {
+    clearInterval(timerId);
+    timerId = null;
+  }
+};
+
+// 监听 time 变化
+watch(() => props.time, () => {
+  startTimer();
+}, { immediate: false });
+
+// 组件挂载时启动定时器
+onMounted(() => {
+  startTimer();
+});
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  stopTimer();
+});
+
+</script>
+<template>
+  <view 
+    class="activity-entrance-container" 
+    @click="handleClick" 
+    :style="{ '--width': sizeOptions[size].width + 'px', '--height': sizeOptions[size].height + 'px', '--offset': sizeOptions[size].offset + 'px' }"
+  >
+    <view class="text-container" :style="{ '--color': bgColorOptions[bgColor] }">
+      <image :src="icon" class="icon" />
+      
+      <view class="medium-content" v-if="size === 'medium'">
+        <!-- 占位容器，用于适配不同长度的语言 -->
+        <view style="height: 46px; width: 100%; flex-shrink: 0;"></view>
+        <text class="title">{{ title }}</text>
+        <!-- <text ref="descriptionRef" v-if="!countdown" class="description">{{ description }}</text> -->
+      </view>
+      <view class="small-content" v-if="size === 'small'">
+        <!-- 占位容器，用于适配不同长度的语言 -->
+        <view style="height: 37px; flex-shrink: 0;"></view>
+        <text class="title">{{ title }}</text>
+        <text v-if="countdown" class="time">{{ countdown }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<style scoped>
+.activity-entrance-container {
+  display: flex;
+  flex-direction: column;
+  /* align-items: center; */
+  justify-content: end;
+  width: var(--width);
+  height: calc(var(--height) + var(--offset));
+  overflow: visible;
+  transition: transform 0.1s ease;
+}
+
+.activity-entrance-container:active {
+  transform: scale(0.99);
+}
+
+.text-container {
+  --color: 255,224,22;
+  height: var(--height);
+  display: flex;
+  /* justify-content: end; */
+  background: linear-gradient( 180deg, rgba(var(--color), 0.35), rgba(var(--color), 0) 90%);
+  border-radius: 22px;
+  position: relative;
+  overflow: visible;
+}
+
+.icon {
+  width: 67%;
+  height: 76%;
+  position: absolute;
+  top: calc(var(--offset) * -1);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+
+.medium-content {
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  /* justify-content: end; */
+}
+
+.small-content {
+  display: flex;
+  height: 30px;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.description {
+  height: 26px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.time {
+  margin-top: 5px;
+  font-size: 12px;
+  color: rgba(255, 195, 0, 1);
+}
+</style>

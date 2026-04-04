@@ -1,0 +1,1155 @@
+<template>
+  <!-- #ifdef APP -->
+  <view class="app-container">
+    <uni-page-body class="page-body"></uni-page-body>
+  </view>
+  <!-- #endif -->
+  <!-- #ifndef APP -->
+  <uni-page-body></uni-page-body>
+  <!-- #endif -->
+
+  <view v-if="showTgLoginMask" class="tg-login-mask">
+    <view class="tg-login-content">
+      <text class="tg-login-text">{{ $i18n_t("common.loggingIn") }}</text>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { user, tokenStorage, userInited, creditsBalance } from "@/store/user.uts";
+import { getMe, setUserInfo } from "@/api/user.uts";
+import { logoutAigf } from "@/api/index.uts";
+import { NavigatorInterceptor } from "@/utils";
+import { initLocale, getLocale } from "@/locale/index.uts";
+import { storage, appStore, setTopUpSuccessModalData } from "@/store/index.uts"; // Import appStore
+import { getFingerprintParams, guestAutoAuth, type GuestAutoAuthParams } from "@/api/fingerprint.uts";
+import { config } from "@/api/request.uts";
+import { getDomainFromUrl, isTelegramMiniApp } from "@/utils/platform.uts";
+import { generateDeviceFingerprint } from "@/utils/fingerprint.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { getCreditsHistory } from "@/api/user.uts"; // Import getCreditsHistory
+import { parseNumToThousands } from "@/utils/parse.uts";
+
+type Data = {
+  loginPage: UniPage | null;
+  bottomHeight: number;
+  isCapacitor: boolean;
+  eventCount: number;
+  lastUpdateTime: string;
+  debugElement: any | null;
+  showDebug: boolean;
+  fingerprintResult: string; // 更改：存储指纹相关的返回结果
+  debugLogs: string[]; // 存储调试日志
+  maxLogLines: number; // 最大日志行数
+  deviceFingerprint: string; // 生成的设备指纹
+  clipboardFingerprint: string; // 剪切板中的指纹
+  promotionalCode: string; // 推广码
+  utmCampaign: string; // UTM活动参数
+  fingerprintApiData: any | null; // 指纹API返回的完整数据
+  lastApiCallTime: string; // 最后API调用时间
+  showTgLoginMask: boolean; // 新增：控制 Telegram 登录蒙版的显示
+  topUpSuccessModalPage: UniPage | null; // New: store UniPage instance for top-up success modal
+};
+
+let firstBackTime = 0;
+
+export default {
+  data() {
+    return {
+      bottomHeight: 0,
+      isCapacitor: false,
+      eventCount: 0,
+      lastUpdateTime: "",
+      debugElement: null,
+      showDebug: false, // 控制调试信息显示，在 WEB 环境下默认显示
+      fingerprintResult: "Not yet initialized", // 默认值
+      debugLogs: [], // 初始化空日志数组
+      maxLogLines: 50, // 最多保持50行日志
+      deviceFingerprint: "Not generated", // 生成的设备指纹
+      clipboardFingerprint: "Not read", // 剪切板中的指纹
+      promotionalCode: "Not available", // 推广码
+      utmCampaign: "Not available", // UTM活动参数
+      fingerprintApiData: null, // 指纹API返回的完整数据
+      lastApiCallTime: "Not called", // 最后API调用时间
+      showTgLoginMask: false, // 初始化为 false
+      topUpSuccessModalPage: null, // Initialize to null
+    } as Data;
+  },
+
+  onLaunch: function () {
+    uni.$on("login:show", this.openLoginHandler);
+    uni.$on("login:close", this.closeLoginHandler);
+    // 添加全局日志事件监听
+    uni.$on("debug:log", this.addDebugLog);
+    NavigatorInterceptor.on();
+
+    // 解析初始查询参数
+    this.parseInitialQueryParams();
+
+    // 检测是否在 Capacitor 环境中
+    this.detectCapacitorEnvironment();
+
+    // #ifdef WEB
+    document.body.style.overflow = "hidden";
+    document.addEventListener(
+      "touchmove",
+      (e) => {
+        e.preventDefault();
+      },
+      { passive: false },
+    );
+
+    // 添加键盘快捷键监听 (Ctrl+Shift+D 来切换调试模式)
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        this.toggleDebug();
+        this.addDebugLog("Debug mode toggled via keyboard shortcut");
+      }
+    });
+    // #endif
+
+    // Add visibilitychange listener for top-up success check
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+
+    // 初始化指纹参数
+    this.initFingerprintParams();
+
+    // 添加启动日志
+    this.addDebugLog("Application launched successfully");
+    this.addDebugLog(`Platform: ${uni.getSystemInfoSync().platform}`);
+    this.addDebugLog("Debug mode: Press Ctrl+Shift+D to toggle debug panel");
+
+    initLocale();
+
+    this.addDebugLog(`onLaunch: Checking if it's Telegram Mini App. isTelegramMiniApp(): ${isTelegramMiniApp()}`);
+    if (isTelegramMiniApp()) {
+      this.addDebugLog("onLaunch: Initializing Telegram Mini App.");
+      this.initTgMiniApp();
+      this.addDebugLog("onLaunch: Telegram Mini App initialization complete.");
+    } else {
+      this.addDebugLog("onLaunch: Not a Telegram Mini App. Checking for existing token.");
+      const token = tokenStorage.get<string>("token");
+      if (token != null && token.length > 0) {
+        userInited.value = false;
+        this.initUserProfileInfo();
+      } else {
+        userInited.value = true;
+      }
+      // 在应用启动时检查充值成功（非Telegram Mini App）
+      this.checkTopUpSuccess(true);
+      this.addDebugLog("onLaunch: Token check complete.");
+    }
+
+    // console.log("App Launch");
+  },
+
+  onExit: function () {
+    uni.$off("login:show", this.openLoginHandler);
+    uni.$off("login:close", this.closeLoginHandler);
+    // 移除日志事件监听
+    uni.$off("debug:log", this.addDebugLog);
+    NavigatorInterceptor.off();
+
+    // #ifdef WEB
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    // #endif
+
+    this.closeLoginHandler();
+
+    // 停止底部高度监听
+    this.cleanupBottomHeightDetection();
+
+    // console.log("App Exit");
+  },
+
+  methods: {
+    // 处理页面可见性变化
+    async handleVisibilityChange() {
+      // #ifdef WEB
+      if (document.visibilityState === "visible") {
+        this.addDebugLog("App became visible, checking for top-up success via handleVisibilityChange.");
+        await this.checkTopUpSuccess(false); // 不是应用启动
+      }
+      // #endif
+    },
+
+    // 检查充值是否成功
+    async checkTopUpSuccess(isAppLaunch: boolean) {
+      // #ifdef WEB
+      const preTopUpBalanceStr = storage.get("preTopUpBalance");
+      const preTopUpTimestampStr = storage.get("preTopUpTimestamp");
+
+      if (preTopUpBalanceStr && preTopUpTimestampStr) {
+        const preTopUpTimestamp = parseInt(preTopUpTimestampStr, 10);
+        const fifteenMinutes = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+        if (Date.now() - preTopUpTimestamp <= fifteenMinutes) {
+          this.addDebugLog(`Checking top-up success (isAppLaunch: ${isAppLaunch})`);
+
+          // 等待 userInited 变为 true
+          await new Promise<void>((resolve) => {
+            if (userInited.value) {
+              resolve();
+            } else {
+              const unwatch = this.$watch(
+                () => userInited.value,
+                (newValue) => {
+                  if (newValue) {
+                    unwatch();
+                    resolve();
+                  }
+                },
+              );
+            }
+          });
+
+          if(user.value.accountType == "guest") {
+            const creditsHistory = await getCreditsHistory(user.value.id, 1, 10, "RECHARGE"); // Fetch recent 10 records
+            if (creditsHistory?.data) {
+              const allRechargeRecords = creditsHistory.data.filter((record) => record.type === "RECHARGE");
+             
+              if (allRechargeRecords.length > 1 || (creditsHistory.data.length == 10 &&  creditsHistory.meta.pagination.has_next)) {
+                const latestTopUp = allRechargeRecords[0];
+                storage.remove("preTopUpBalance");
+                storage.remove("preTopUpTimestamp");
+                setTopUpSuccessModalData({
+                  modalTitle: $i18n_t("account.topUpSuccessModal.title"),
+                  mainMessage: $i18n_t("account.topUpSuccessModal.mainMessage", { amount: parseNumToThousands(latestTopUp.amount) }),
+                  subMessage: $i18n_t("account.topUpSuccessModal.subMessage"),
+                  confirmText: $i18n_t("account.topUpSuccessModal.confirmText"),
+                  onConfirm: () => {
+                    uni.$emit("login:show", { page: "register" });
+                    this.closeTopUpSuccessModal(); // Close modal after confirm
+                  },
+                  cancelText: $i18n_t("common.cancel"), // Added cancelText
+                  onCancel: () => {
+                    this.closeTopUpSuccessModal(); // Close modal on cancel
+                  },
+                });
+                this.topUpSuccessModalPage = uni.openDialogPage({
+                  url: `/pages/modals/generic-modal`,
+                  animationType: "fade-in",
+                });
+                this.addDebugLog(`Top-up success detected: ${latestTopUp.amount} credits. Opening dialog for guest user.`);
+              } else {
+                this.addDebugLog("No new RECHARGE record found after preTopUpTimestamp.");
+              }
+            } else {
+              this.addDebugLog("Failed to fetch credits history.");
+            }
+          } else {
+            this.addDebugLog("User not logged in, cannot check top-up history.");
+          }
+        } else {
+          // 15 minutes window expired, clear storage
+          storage.remove("preTopUpBalance");
+          storage.remove("preTopUpTimestamp");
+          this.addDebugLog("Top-up check window expired, clearing storage.");
+        }
+      } else {
+        this.addDebugLog("No pre-top-up balance or timestamp found in storage.");
+      }
+      // #endif
+    },
+
+    // 解析初始查询参数
+    parseInitialQueryParams() {
+      // #ifdef WEB
+      if (typeof window !== "undefined") {
+        // 获取原始查询字符串
+        let queryString = window.location.search;
+        this.addDebugLog(`parseInitialQueryParams: Initial queryString: ${queryString}`);
+
+        // 尝试修复可能存在的 &amp; 实体编码问题
+        if (queryString.includes("&amp;")) {
+          console.warn("检测到 URL 参数格式错误，正在自动修复...");
+          this.addDebugLog('parseInitialQueryParams: Detected "&amp;", attempting to fix.');
+          queryString = queryString.replace(/&amp;/g, "&");
+          this.addDebugLog(`parseInitialQueryParams: Fixed queryString: ${queryString}`);
+        }
+
+        const urlParams = new URLSearchParams(queryString);
+        let bot = null;
+        let app = null;
+
+        const ctxParam = urlParams.get("ctx"); // 尝试获取合并后的参数
+        if (ctxParam) {
+          try {
+            // 使用 '_bot_' 作为新的分隔符来解析 bot 和 app
+            const fixedSeparator = "_bot_";
+            const separatorIndex = ctxParam.indexOf(fixedSeparator);
+
+            if (separatorIndex !== -1) {
+              // 'mybot_bot' 部分作为 bot
+              bot = ctxParam.substring(0, separatorIndex + 4); // _bot_ 中 _bot 的长度为4
+              // 'appname' 部分作为 app
+              app = ctxParam.substring(separatorIndex + 5); // _bot_ 的长度为5
+              this.addDebugLog(`parseInitialQueryParams: Extracted from ctx (fixed _bot_ separator) - bot: ${bot}, app: ${app}`);
+            } else {
+              this.addDebugLog(`parseInitialQueryParams: ctx parameter (fixed _bot_ separator) has incorrect format: ${ctxParam}`);
+            }
+          } catch (e) {
+            console.error("Error parsing ctx parameter:", e);
+            this.addDebugLog(`parseInitialQueryParams: Error parsing ctx parameter: ${e.message}`);
+          }
+        } else {
+          // 如果没有 ctx 参数，则尝试解析旧的 bot 和 app 参数，用于兼容
+          bot = urlParams.get("bot");
+          app = urlParams.get("app");
+          this.addDebugLog(`parseInitialQueryParams: Extracted legacy bot: ${bot}, app: ${app}`);
+        }
+
+        if (bot) {
+          appStore.value.botUsername = bot;
+          this.addDebugLog(`Bot Username set: ${bot}`);
+        }
+        if (app) {
+          appStore.value.appName = app;
+          this.addDebugLog(`App Name set: ${app}`);
+        }
+      }
+      // #endif
+    },
+
+    // 检测是否在 Capacitor 环境中
+    detectCapacitorEnvironment() {
+      // 检查是否存在 Capacitor 对象
+      if (typeof window !== "undefined" && window.Capacitor) {
+        this.isCapacitor = true;
+        console.log("Capacitor Plugins (early check):", window.Capacitor.Plugins); // 早期调试日志
+        if (this.showDebug) {
+          this.createDebugDisplay();
+        }
+        this.initBottomHeightDetection();
+      } else {
+        if (this.showDebug) {
+          this.createDebugDisplay(); // 即使不是 Capacitor 也显示调试信息
+        }
+      }
+    },
+
+    // 创建调试显示
+    createDebugDisplay() {
+      // #ifdef WEB
+      try {
+        // 移除已存在的调试元素
+        const existingDebug = document.getElementById("capacitor-debug");
+        if (existingDebug) {
+          existingDebug.remove();
+        }
+
+        const debugDiv = document.createElement("div");
+        debugDiv.id = "capacitor-debug";
+        debugDiv.style.cssText = `
+          position: fixed;
+          top: 100px;
+          right: 10px;
+          width: 300px;
+          max-height: 400px;
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          font-family: monospace;
+          font-size: 10px;
+          z-index: 10000;
+          border-radius: 5px;
+          padding: 10px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          word-wrap: break-word;
+          white-space: pre-wrap;
+          pointer-events: none;
+        `;
+
+        // 添加按钮容器
+        const buttonContainer = document.createElement("div");
+        buttonContainer.style.cssText = `margin-bottom: 10px; pointer-events: auto;`;
+
+        // 添加清除日志按钮
+        const clearButton = document.createElement("button");
+        clearButton.textContent = "Clear Logs";
+        clearButton.style.cssText = `
+          background: #ff4444;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          font-size: 10px;
+          border-radius: 3px;
+          cursor: pointer;
+          margin-right: 5px;
+        `;
+        clearButton.onclick = () => {
+          this.debugLogs = [];
+          this.updateDebugDisplay();
+        };
+
+        // 添加刷新指纹按钮
+        const refreshFingerprintButton = document.createElement("button");
+        refreshFingerprintButton.textContent = "Refresh Fingerprint";
+        refreshFingerprintButton.style.cssText = `
+          background: #4444ff;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          font-size: 10px;
+          border-radius: 3px;
+          cursor: pointer;
+          margin-right: 5px;
+        `;
+        refreshFingerprintButton.onclick = () => {
+          this.addDebugLog("Manual fingerprint refresh triggered");
+          this.initFingerprintParams();
+        };
+
+        // 添加刷新显示按钮
+        const refreshDisplayButton = document.createElement("button");
+        refreshDisplayButton.textContent = "Refresh Display";
+        refreshDisplayButton.style.cssText = `
+          background: #44ff44;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          font-size: 10px;
+          border-radius: 3px;
+          cursor: pointer;
+          margin-right: 5px;
+        `;
+        refreshDisplayButton.onclick = () => {
+          this.updateDebugDisplay();
+        };
+
+        // 添加测试剪切板按钮
+        const testClipboardButton = document.createElement("button");
+        testClipboardButton.textContent = "Test Clipboard";
+        testClipboardButton.style.cssText = `
+          background: #ff8844;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          font-size: 10px;
+          border-radius: 3px;
+          cursor: pointer;
+          margin-right: 5px;
+        `;
+        testClipboardButton.onclick = () => {
+          this.testClipboardRead();
+        };
+
+        // 添加检查存储按钮
+        const checkStorageButton = document.createElement("button");
+        checkStorageButton.textContent = "Check Storage";
+        checkStorageButton.style.cssText = `
+          background: #8844ff;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          font-size: 10px;
+          border-radius: 3px;
+          cursor: pointer;
+        `;
+        checkStorageButton.onclick = () => {
+          this.checkStorageData();
+        };
+
+        buttonContainer.appendChild(clearButton);
+        buttonContainer.appendChild(refreshFingerprintButton);
+        buttonContainer.appendChild(refreshDisplayButton);
+        buttonContainer.appendChild(testClipboardButton);
+        buttonContainer.appendChild(checkStorageButton);
+        debugDiv.appendChild(buttonContainer);
+
+        // 添加日志内容容器
+        const logContainer = document.createElement("div");
+        logContainer.id = "debug-log-container";
+        logContainer.style.cssText = `pointer-events: auto;`;
+        debugDiv.appendChild(logContainer);
+
+        document.body.appendChild(debugDiv);
+        this.debugElement = debugDiv;
+        this.updateDebugDisplay();
+        // 将需要的日志添加到调试面板
+        this.addDebugLog(`safe-area-inset-bottom: ${getComputedStyle(document.body).getPropertyValue('padding-bottom')}`);
+        this.addDebugLog(`window.inner width, height: ${window.innerWidth}, ${window.innerHeight}`);
+        this.addDebugLog(`document.documentElement.clientHeight: ${document.documentElement.clientHeight}`);
+
+      } catch (error) {
+        console.error("Failed to create debug display:", error);
+      }
+      // #endif
+    },
+
+    // 更新调试显示
+    updateDebugDisplay() {
+      // #ifdef WEB
+      if (this.debugElement && this.showDebug) {
+        const hasCapacitor = !!window.Capacitor;
+        const hasPlugins = hasCapacitor && !!window.Capacitor.Plugins;
+        const hasBottomHeightPlugin = hasPlugins && !!window.Capacitor.Plugins.BottomHeightPlugin;
+        const systemInfo = uni.getSystemInfoSync(); // Get system info here
+
+        // 列出所有可用的插件
+        let availablePlugins = "None";
+        if (hasPlugins) {
+          const pluginNames = Object.keys(window.Capacitor.Plugins);
+          availablePlugins = pluginNames.length > 0 ? pluginNames.join(", ") : "Empty";
+        }
+
+        const logContainer = this.debugElement.querySelector("#debug-log-container");
+        if (logContainer) {
+          // 构建系统信息
+          const systemInfo_content = `
+Platform: ${systemInfo.platform}
+Capacitor: ${this.isCapacitor ? "Yes" : "No"}
+Bottom Height: ${this.bottomHeight}px
+Events: ${this.eventCount}
+Last Update: ${this.lastUpdateTime}
+Window.Capacitor: ${hasCapacitor ? "Yes" : "No"}
+Plugins: ${hasPlugins ? "Yes" : "No"}
+BottomHeightPlugin: ${hasBottomHeightPlugin ? "Yes" : "No"}
+Available Plugins: ${availablePlugins}
+
+=== FINGERPRINT INFO ===
+Device Fingerprint: ${this.deviceFingerprint}
+Clipboard Fingerprint: ${this.clipboardFingerprint}
+Promotional Code: ${this.promotionalCode}
+UTM Campaign: ${this.utmCampaign}
+Last API Call: ${this.lastApiCallTime}
+
+=== API RESPONSE ===
+${this.fingerprintApiData ? JSON.stringify(this.fingerprintApiData, null, 2) : "No API data available"}
+
+APP_SOURCE: ${import.meta.env.VITE_APP_SOURCE || "Not available"}
+=== STORAGE DATA ===
+Stored Promo Code: ${storage.get("promotional_code") || "Not stored"}
+Stored UTM Campaign: ${storage.get("utm_campaign") || "Not stored"}
+
+--- Debug Logs ---
+${this.debugLogs.join("\n")}`;
+
+          logContainer.textContent = systemInfo_content;
+
+          // 自动滚动到底部
+          this.debugElement.scrollTop = this.debugElement.scrollHeight;
+        }
+      }
+      // #endif
+    },
+
+    // 添加调试日志
+    addDebugLog(message: string) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = `[${timestamp}] ${message}`;
+
+      this.debugLogs.push(logEntry);
+
+      // 限制日志条数，防止内存溢出
+      if (this.debugLogs.length > this.maxLogLines) {
+        this.debugLogs.shift(); // 移除最早的日志
+      }
+
+      // 更新显示
+      this.updateDebugDisplay();
+
+      // 同时输出到控制台
+      console.log(`[DEBUG] ${message}`);
+    },
+
+    // 初始化底部高度检测
+    async initBottomHeightDetection() {
+      if (!this.isCapacitor) {
+        this.updateDebugDisplay();
+        return;
+      }
+
+      try {
+        console.log("Starting bottom height detection initialization...");
+
+        // Java 插件应该已经注册到 Capacitor.Plugins 中
+        let BottomHeight = null;
+
+        if (window.Capacitor && window.Capacitor.Plugins) {
+          console.log("Capacitor Plugins:", window.Capacitor.Plugins); // 添加的调试日志
+          console.log("Trying to get BottomHeightPlugin from Capacitor.Plugins...");
+          BottomHeight = window.Capacitor.Plugins.BottomHeightPlugin;
+          console.log("BottomHeightPlugin from plugins:", BottomHeight);
+        }
+
+        this.updateDebugDisplay();
+
+        if (BottomHeight) {
+          console.log("BottomHeightPlugin available, starting initialization...");
+
+          try {
+            // 获取初始底部高度
+            console.log("Getting current bottom height...");
+            const result = await BottomHeight.getCurrentBottomHeight();
+            console.log("getCurrentBottomHeight result:", result);
+
+            this.bottomHeight = result.height || 0;
+            this.lastUpdateTime = new Date().toLocaleTimeString();
+            this.updateAppStyle(this.bottomHeight);
+            if (this.showDebug) {
+              this.updateDebugDisplay();
+            }
+
+            // 监听高度变化事件
+            console.log("Adding height change listener...");
+            const listener = await BottomHeight.addListener("bottomHeightChanged", (data) => {
+              console.log("bottomHeightChanged event received:", data);
+              this.bottomHeight = data.height || 0;
+              this.eventCount++;
+              this.lastUpdateTime = new Date().toLocaleTimeString();
+              this.updateAppStyle(this.bottomHeight);
+              if (this.showDebug) {
+                this.updateDebugDisplay();
+              }
+
+              // 触发全局事件，方便其他页面监听
+              uni.$emit("capacitor:bottomHeightChanged", { height: this.bottomHeight });
+            });
+            console.log("Listener added:", listener);
+
+            // 开始监听
+            console.log("Starting listening...");
+            await BottomHeight.startListening();
+            console.log("Bottom height detection initialized successfully");
+          } catch (initError) {
+            console.error("Error during plugin initialization:", initError);
+          }
+        } else {
+          console.error("BottomHeightPlugin not available in Capacitor.Plugins");
+        }
+
+        this.updateDebugDisplay();
+      } catch (error) {
+        console.error("Failed to initialize bottom height detection:", error);
+        this.updateDebugDisplay();
+      }
+    },
+
+    // 更新应用样式
+    updateAppStyle(height: number) {
+      // #ifdef WEB
+      try {
+        const appElement = document.getElementById("app");
+        if (appElement) {
+          if (height > 0) {
+            appElement.style.height = `calc(100% - ${height}px)`;
+            console.log("Updated app height:", `calc(100% - ${height}px)`);
+          } else {
+            appElement.style.height = "100%";
+            console.log("Reset app height to 100%");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to update app style:", error);
+      }
+      // #endif
+    },
+
+    // 清理底部高度检测
+    async cleanupBottomHeightDetection() {
+      if (!this.isCapacitor) return;
+
+      try {
+        // #ifdef WEB
+        // 重置应用样式
+        this.updateAppStyle(0);
+
+        // 移除调试显示
+        if (this.debugElement) {
+          this.debugElement.remove();
+          this.debugElement = null;
+        }
+
+        BottomHeight = window.Capacitor.Plugins.BottomHeightPlugin;
+
+        if (BottomHeight) {
+          // 停止监听
+          await BottomHeight.stopListening();
+          // 移除所有监听器
+          await BottomHeight.removeAllListeners();
+          console.log("Bottom height detection cleanup completed");
+        }
+        // #endif
+      } catch (error) {
+        console.error("Failed to cleanup bottom height detection:", error);
+      }
+    },
+
+    initUserProfileInfo: async function () {
+      try {
+        let res = await getMe(() => {
+          // console.log("no login");
+        });
+        if (res != null && res.success) {
+          user.value = res.data;
+
+          tokenStorage.set("discountRate_" + res.data.id, res.data.discountRate);
+          if (user.value.preferredLanguage) {
+            storage.set("user_language", user.value.preferredLanguage);
+            initLocale();
+          } else {
+            const locale = getLocale();
+            user.value.preferredLanguage = locale;
+            setUserInfo(user.value.id, {
+              preferredLanguage: locale,
+            });
+          }
+          // 如果当前页面不是 webview 页面，才执行 logoutAigf
+          if (!window.location.pathname.startsWith("/pages/webview/")) {
+            let res = await logoutAigf();
+            if (res.success) {
+              execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "enterApp" } as AnyObject);
+            }
+          }
+        }
+      } catch (error) {
+      } finally {
+        userInited.value = true; // 无论成功或失败，都标记为已初始化
+      }
+    },
+
+    openLoginHandler(options: any) {
+      if (isTelegramMiniApp()) {
+        this.showTgLoginMask = true;
+        this.initTgMiniApp().finally(() => {
+          this.showTgLoginMask = false;
+        });
+        return;
+      }
+
+      if (this.loginPage != null) {
+        return;
+      }
+
+      let searchStr = "";
+      if (options != null) {
+        for (let field in options) {
+          const val = options[field];
+          if (val != null && val !== "") {
+            searchStr += !searchStr ? `?${field}=${encodeURIComponent(val)}` : `&${field}=${encodeURIComponent(val)}`;
+          }
+        }
+      }
+
+      const page = options?.page === "login" ? "login" : "register";
+
+      this.loginPage = uni.openDialogPage({
+        url: `/pages/account/${page}${searchStr}`,
+        animationType: "slide-in-right",
+      });
+    },
+    closeLoginHandler(options?: any) {
+      if (!this.loginPage) {
+        return;
+      }
+
+      const self = this;
+      uni.closeDialogPage({
+        dialogPage: self.loginPage,
+        complete() {
+          self.loginPage = null;
+          if (!!options?.from) {
+            self.navigate(options);
+          }
+        },
+      });
+    },
+
+    closeTopUpSuccessModal() {
+      if (!this.topUpSuccessModalPage) {
+        return;
+      }
+      const self = this;
+      uni.closeDialogPage({
+        dialogPage: self.topUpSuccessModalPage,
+        complete() {
+          self.topUpSuccessModalPage = null;
+        },
+      });
+    },
+
+    navigate(options: any) {
+      if (!options?.from) return;
+
+      const action = options.action || "navigateTo";
+      const navOptions = { url: options.from };
+
+      switch (action) {
+        case "href":
+          window.location.href = options.url;
+          break;
+        case "navigateTo":
+          uni.navigateTo(navOptions);
+          break;
+        case "redirectTo":
+          uni.redirectTo(navOptions);
+          break;
+        case "reLaunch":
+          uni.reLaunch(navOptions);
+          break;
+        case "switchTab":
+          uni.switchTab(navOptions);
+          break;
+        default:
+          uni.navigateTo(navOptions);
+          break;
+      }
+    },
+
+    // 切换调试显示
+    toggleDebug() {
+      this.showDebug = !this.showDebug;
+      if (this.showDebug && !this.debugElement) {
+        this.createDebugDisplay();
+      } else if (!this.showDebug && this.debugElement) {
+        this.debugElement.style.display = "none";
+      } else if (this.showDebug && this.debugElement) {
+        this.debugElement.style.display = "block";
+        this.updateDebugDisplay();
+      }
+    },
+
+    // 从剪切板读取数据
+    async readFromClipboard() {
+      // #ifdef WEB
+      if (typeof window !== "undefined" && window.Capacitor) {
+        try {
+          const { Clipboard } = window.Capacitor.Plugins;
+          if (Clipboard) {
+            const result = await Clipboard.read();
+            if (result && result.value) {
+              // 假设剪切板中直接是指纹ID
+              const clipboardFingerprint = result.value.trim();
+              if (clipboardFingerprint.length > 10) {
+                // 简单验证指纹长度
+                console.log("Read fingerprint from clipboard:", clipboardFingerprint);
+                return clipboardFingerprint;
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to read from clipboard:", error);
+        }
+      }
+      // #endif
+      return null;
+    },
+
+    // 初始化指纹参数
+    async initFingerprintParams() {
+      // #ifdef WEB
+      if (typeof window !== "undefined" && window.Capacitor) {
+        try {
+          this.addDebugLog("Starting fingerprint initialization...");
+
+          // 1. 生成设备指纹
+          const deviceFingerprint = await generateDeviceFingerprint();
+          this.deviceFingerprint = deviceFingerprint || "Failed to generate";
+          this.addDebugLog(`Device fingerprint generated: ${this.deviceFingerprint}`);
+
+          // 2. 尝试从剪切板读取指纹
+          const clipboardFingerprint = await this.readFromClipboard();
+          this.clipboardFingerprint = clipboardFingerprint || "Not found in clipboard";
+          this.addDebugLog(`Clipboard fingerprint: ${this.clipboardFingerprint}`);
+
+          console.log("Generated fingerprint:", deviceFingerprint);
+          console.log("Clipboard fingerprint:", clipboardFingerprint);
+
+          if (!deviceFingerprint && !clipboardFingerprint) {
+            this.addDebugLog("No fingerprints available, skipping API call");
+            return;
+          }
+
+          // 记录API调用时间
+          this.lastApiCallTime = new Date().toLocaleTimeString();
+          this.addDebugLog(`Making API call at ${this.lastApiCallTime}`);
+
+          // 3. 从服务器获取参数，同时提供两个指纹
+          const result = await getFingerprintParams({
+            fingerprint: deviceFingerprint, // 生成的指纹
+            randomcode: clipboardFingerprint, // 剪切板读取的指纹，作为randomcode
+          });
+
+          // 保存完整的API响应数据
+          this.fingerprintApiData = result;
+          this.fingerprintResult = `Success: ${JSON.stringify(result)}`;
+          this.addDebugLog(`API response received: ${result?.success ? "Success" : "Failed"}`);
+
+          if (result != null && result.success && result.data != null && result.data.value != null) {
+            let fingerprintData = result.data.value;
+
+            // 更新推广码信息
+            if (fingerprintData.promotional_code != null) {
+              this.promotionalCode = fingerprintData.promotional_code;
+              storage.set("promotional_code", fingerprintData.promotional_code);
+              this.addDebugLog(`Promotional code stored: ${fingerprintData.promotional_code}`);
+              console.log("Promotional code stored from fingerprint:", fingerprintData.promotional_code);
+            }
+
+            // 更新UTM活动信息
+            if (fingerprintData.utm_campaign != null) {
+              this.utmCampaign = fingerprintData.utm_campaign;
+              storage.set("utm_campaign", fingerprintData.utm_campaign);
+              this.addDebugLog(`UTM campaign stored: ${fingerprintData.utm_campaign}`);
+              console.log("UTM campaign stored from fingerprint:", fingerprintData.utm_campaign);
+            }
+
+            // 记录其他可能的数据字段
+            if (fingerprintData) {
+              this.addDebugLog(`Additional API data fields: ${Object.keys(fingerprintData).join(", ")}`);
+            }
+          } else {
+            this.addDebugLog("API call failed or returned empty data");
+            console.warn("Fingerprint: result or data is null/empty.");
+          }
+        } catch (error: any) {
+          this.fingerprintResult = `Error: ${error.message}`;
+          this.addDebugLog(`Error in fingerprint initialization: ${error.message}`);
+          console.error("Error getting fingerprint parameters:", error);
+        }
+      } else {
+        this.fingerprintResult = "Capacitor environment not available.";
+        this.addDebugLog("Capacitor environment not detected");
+      }
+      // #endif
+    },
+
+    // 检查本地存储中的数据
+    checkStorageData() {
+      const storedData = {
+        promotional_code: storage.get("promotional_code"),
+        utm_campaign: storage.get("utm_campaign"),
+        user_language: storage.get("user_language"),
+        baseUrl: storage.get("baseUrl"),
+        affiliate_params: storage.get("affiliate_params"),
+      };
+
+      this.addDebugLog(`Storage data checked: ${JSON.stringify(storedData, null, 2)}`);
+      return storedData;
+    },
+
+    // 手动测试剪切板读取
+    async testClipboardRead() {
+      this.addDebugLog("Testing clipboard read...");
+      const clipboardData = await this.readFromClipboard();
+      this.clipboardFingerprint = clipboardData || "Failed to read";
+      this.addDebugLog(`Clipboard test result: ${this.clipboardFingerprint}`);
+      this.updateDebugDisplay();
+    },
+
+    // 手动测试指纹生成
+    async testFingerprintGeneration() {
+      this.addDebugLog("Testing fingerprint generation...");
+      const fingerprint = await generateDeviceFingerprint();
+      this.deviceFingerprint = fingerprint || "Failed to generate";
+      this.addDebugLog(`Fingerprint test result: ${this.deviceFingerprint}`);
+      this.updateDebugDisplay();
+    },
+    parseQueryParams(queryString: string | null): any {
+      // Allow queryString to be null
+      const params: any = {};
+      if (queryString == null || queryString.length == 0) {
+        // Use == for null check
+        return params;
+      }
+      const pairs = queryString.split("&");
+      for (let i = 0; i < pairs.length; i++) {
+        const pair = pairs[i].split("=");
+        if (pair.length == 2) {
+          // Use == for length check
+          const key = decodeURIComponent(pair[0]);
+          const value = decodeURIComponent(pair[1] || ""); // Ensure value is not null
+          if (key != null) {
+            // Explicitly check for null
+            params[key] = value;
+          }
+        }
+      }
+      return params;
+    },
+    async initTgMiniApp() {
+      this.addDebugLog("initTgMiniApp: Function called.");
+      if (isTelegramMiniApp()) {
+        this.addDebugLog("initTgMiniApp: Confirmed as Telegram Mini App.");
+        this.addDebugLog(`initTgMiniApp: window.Telegram.WebApp.initData available: ${!!window.Telegram?.WebApp?.initData}`);
+        const tgData = window.Telegram.WebApp.initData;
+        let promotionalCodeFromInitData: string | undefined;
+
+        // Parse initData for start_param (which corresponds to startapp)
+        try {
+          this.addDebugLog("initTgMiniApp: Attempting to parse initData for start_param.");
+          const initDataParams = new URLSearchParams(tgData);
+          promotionalCodeFromInitData = initDataParams.get("start_param") || undefined;
+          if (promotionalCodeFromInitData) {
+            this.addDebugLog(`Telegram Mini App: start_param from initData found: ${promotionalCodeFromInitData}`);
+          } else {
+            this.addDebugLog("Telegram Mini App: No start_param found in initData.");
+          }
+        } catch (error) {
+          console.error("Failed to parse Telegram WebApp.initData:", error);
+          this.addDebugLog(`Telegram Mini App: Error parsing initData: ${error}`);
+        }
+
+        try {
+          this.addDebugLog("initTgMiniApp: Generating device fingerprint.");
+          const deviceFingerprint = await generateDeviceFingerprint();
+          this.addDebugLog(`initTgMiniApp: Device fingerprint generated: ${deviceFingerprint}`);
+
+          // Prefer promotionalCode from initData, fallback to URL search params if initData doesn't have it
+          let finalPromotionalCode = promotionalCodeFromInitData;
+          this.addDebugLog(`initTgMiniApp: Initial finalPromotionalCode (from initData): ${finalPromotionalCode}`);
+
+          if (!finalPromotionalCode) {
+            this.addDebugLog("initTgMiniApp: No promotionalCode from initData, checking URL search params for 'startapp'.");
+            const urlParams = new URLSearchParams(window.location.search);
+            const startAppParam = urlParams.get("startapp");
+            if (startAppParam) {
+              finalPromotionalCode = startAppParam;
+              this.addDebugLog(`Telegram Mini App: startapp parameter from URL found: ${startAppParam}`);
+            } else {
+              this.addDebugLog("Telegram Mini App: No 'startapp' parameter found in URL.");
+            }
+          }
+          this.addDebugLog(`initTgMiniApp: Final promotional code to use: ${finalPromotionalCode || "None"}`);
+
+          const authParams: GuestAutoAuthParams = {
+            // Use imported type
+            deviceFingerprint: deviceFingerprint,
+            tg_token: tgData,
+          };
+
+          if (finalPromotionalCode) {
+            authParams.promotional_code = finalPromotionalCode;
+          }
+          this.addDebugLog(`initTgMiniApp: Calling guestAutoAuth with params: ${JSON.stringify(authParams)}`);
+          const res = await guestAutoAuth(authParams);
+          this.addDebugLog(`initTgMiniApp: guestAutoAuth response: ${JSON.stringify(res)}`);
+
+          if (res.success) {
+            tokenStorage.set("token", res.data.accessToken);
+            user.value = res.data.user;
+            this.addDebugLog("Telegram Mini App: User authenticated successfully.");
+            this.addDebugLog(`Telegram Mini App: User ID: ${user.value?.id}, Username: ${user.value?.username}`);
+          } else {
+            this.addDebugLog(`Telegram Mini App: Authentication failed: ${res.error?.message || "Unknown error"}`);
+          }
+        } catch (e: any) {
+          this.addDebugLog(`Telegram Mini App: Error during authentication: ${e.message || "Unknown error"}`);
+          // ignore
+        } finally {
+          this.addDebugLog("initTgMiniApp: Setting userInited to true.");
+          userInited.value = true;
+        }
+      } else {
+        this.addDebugLog("initTgMiniApp: Not a Telegram Mini App environment. Skipping.");
+      }
+    },
+  },
+};
+</script>
+
+<style>
+@import "/static/css/iconfont.css";
+/*每个页面公共css */
+.uni-row {
+  flex-direction: row;
+}
+
+.uni-column {
+  flex-direction: column;
+}
+
+/* #ifdef APP */
+.app-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* 添加这行，确保占据整个屏幕高度 */
+}
+
+.page-body {
+  flex: 1;
+}
+/* #endif */
+
+/* #ifdef WEB */
+#app {
+  position: relative;
+  /* max-width: 750px; */
+  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+  padding-bottom: env(safe-area-inset-bottom); /* 添加这一行 */
+}
+/* 全局滚动条样式 */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888; /* 可以根据需要调整滚动条颜色 */
+  border-radius: 1.5px; /* 宽度的一半 */
+}
+/* #endif */
+
+/** 登录 dialog */
+uni-page[data-type="dialog"][data-page^="pages/account/login"] {
+  z-index: 9999 !important;
+}
+uni-page[data-type="dialog"][data-page^="pages/account/register"] {
+  z-index: 9999 !important;
+}
+</style>
+
+<style>
+/* ... existing styles */
+.debug-app-source {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: yellow;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 10001;
+  padding: 5px;
+  border-radius: 3px;
+}
+
+.tg-login-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100000; /* Ensure it's on top of everything */
+}
+
+.tg-login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 10px;
+}
+
+.tg-login-text {
+  color: #ffffff;
+  font-size: 16px;
+  margin-top: 10px;
+}
+</style>

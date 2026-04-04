@@ -1,0 +1,20 @@
+export type TagItemData = {
+  id: string; //	标签ID
+  name: string; //标签名称
+  displayName: DisplayName; // 多语言
+  scope: string; // 标签范围
+  postsCount: number; //使用此标签的帖子数
+  totalViews: number; //总浏览数
+  trendingScore: number; //趋势评分
+};
+
+// 多语言
+export type DisplayName = {
+  en: string;
+  hi: string;
+  jp: string;
+  "pt-BR": string;
+  "pt-PT": string;
+  "zh-Hans": string;
+  "zh-Hant": string;
+};

@@ -1,0 +1,164 @@
+<script setup lang="uts">
+import { IconType } from "@/types/daily-checkin.uts";
+import { DailyCheckinItem } from "@/types/daily-checkin.uts";
+import { $i18n_t } from "@/locale/index.uts";
+
+// 接收传参
+const props = defineProps<{
+  days: number;
+  points: number;
+  icon?: IconType;
+  locked?: boolean;
+  active?: boolean;
+  today?: boolean;
+  selected?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'click'): void;
+}>();
+
+const handleClick = () => {
+  emit('click', {
+    days: props.days,
+    points: props.points,
+    icon: props.icon,
+    locked: props.locked,
+    active: props.active,
+    today: props.today,
+    selected: props.selected,
+  });
+};
+
+</script>
+
+<template>
+  <view class="daily-item-container">
+    <view class="item-content" :class="{ active, selected, today: today && !active }" @click="handleClick">
+      <image src="/static/icons/flash_gray@2x.png" class="item-icon" mode="widthFix" />
+      <view class="text-container">
+        <text class="text-points">{{points || 5}}</text>
+        <text class="text-unit">{{ $i18n_t("dailyCheckin.points") }}</text>
+      </view>
+
+      <!-- 礼物icon -->
+      <image v-if="icon === IconType.GIFT" src="/static/icons/gift_checkin@2x.png" class="gift-icon" mode="widthFix" />
+      <image v-if="icon === IconType.TROPHY" src="/static/icons/trophy@2x.png" class="gift-icon" mode="widthFix" />
+
+      <!-- 小锁icon -->
+      <image v-if="locked && icon && icon !== IconType.NONE" src="/static/icons/locked@2x.png" class="locked-icon" mode="widthFix" />
+    </view>
+    <text class="text-days">{{today ? $i18n_t("dailyCheckin.today") : days || 1}}{{today ? '' : $i18n_t("dailyCheckin.days") }}</text>
+  </view>
+</template>
+
+<style scoped>
+.daily-item-container {
+  width: fit-content;
+  /* #ifndef APP */
+  max-width: 40px;
+  /* #endif */
+  height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  overflow: visible;
+  flex-shrink: 0; /* 防止收缩 */
+}
+
+.item-content {
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  background-color: #383838;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: visible;
+  color: #7c7c7c;
+}
+
+/* 激活样式 */
+.active {
+  background-color: #ffe016;
+  color: #000;
+}
+
+/* 选中样式 */
+.selected {
+  color: #000;
+  background: #FFFFFF;
+  box-shadow: 0px 0px 10px 1px #FFE016;
+  border: 1px solid #FFE016;
+}
+
+/* 今天样式 */
+.today {
+  background-color: #FF23B8;
+  color: #fff;
+}
+
+/* 今天 并且选中 */
+.today.selected {
+  border-color: #fff;
+  box-shadow: none;
+}
+
+.item-icon {
+  width: 28px;
+  height: 28px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.text-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.text-points {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.text-unit {
+  font-weight: normal;
+  font-size: 8px;
+  color: #7c7c7c;
+}
+/* 激活时 text-unit 样式 */
+.active .text-unit {
+  color: rgba(0, 0, 0, 0.6);
+}
+/* 今天时 text-unit 样式 */
+.today .text-unit {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.text-days {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.gift-icon {
+  width: 32px;
+  height: 32px;
+  position: absolute;
+  right: -12px;
+  top: -16px;
+}
+
+.locked-icon {
+  width: 12px;
+  height: 12px;
+  position: absolute;
+  top: 4px;
+  right: -12px;
+}
+</style>

@@ -1,0 +1,139 @@
+<template>
+  <view class="container">
+    <fr-page-navbar disabled-back style="margin-bottom: 16px; margin-top: 32px">
+      <template #title>
+        <text class="title">{{ $i18n_t("publish.creativeSpace") }}</text>
+      </template>
+      <template #actions>
+        <view class="icon-actions">
+          <credits-balance-icon></credits-balance-icon>
+          <processing-generations-icon></processing-generations-icon>
+        </view>
+      </template>
+    </fr-page-navbar>
+    <fr-section-tabs :showTabs="showTabsCondition" :tabs="publishTabList" :active-tab-key="publishActiveTabKey" @change:tab="onNavTabChange">
+      <template #tab-label="{ tab, selected }: { tab: UTSJSONObject, selected: boolean }">
+        <view class="tab-label">
+          <image class="new-icon" src="/static/new2.png" :style="{ visibility: tab.isNew ? 'visible' : 'hidden' }"></image>
+          <text class="fr-tabs-item-title" :class="selected ? 'fr-tabs-item-selected' : 'fr-tabs-item-unselected'">{{ tab.title }}</text>
+        </view>
+      </template>
+      <template #default="{ tab }">
+        <publish-tools :categoryId="tab.id"></publish-tools>
+      </template>
+    </fr-section-tabs>
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "../IconFont/IconFont.uvue";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import { FrBadge, FrSectionTabs, FrPageNavbar } from "@/components/widgets/index.uts";
+import PublishTools from "./panels/publish-tools.uvue";
+
+import CreditsBalanceIcon from "@/pages/publish/panel/credits-balance-icon.uvue";
+import ProcessingGenerationsIcon from "@/pages/publish/panel/processing-generations-icon.uvue";
+import { publishTabList, publishActiveTabKey, publishActiveTabKeyChanged, sidebarCollapsed } from "@/store/menu.uts";
+
+// 添加屏幕宽度判断
+const screenWidth = ref(0);
+
+const getScreenWidth = () => {
+  screenWidth.value = window.innerWidth;
+};
+
+const showTabsCondition = computed(() => screenWidth.value < 900 || !sidebarCollapsed.value); // 计算属性：当屏幕宽度 >= 900px 时显示 tabs
+
+let tabNameToActivate = ref<string | undefined>(undefined); // 用于存储 URL 中的 name 参数
+
+onLoad((options: any) => {
+  // 获取 URL 中的 name 参数
+  if (options && options.catecategory) {
+    tabNameToActivate.value = options.catecategory;
+  }
+  // 初始化时获取屏幕宽度
+  getScreenWidth();
+  // H5端监听窗口变化
+  if (uni.onWindowResize) {
+    uni.onWindowResize((res) => {
+      screenWidth.value = res.size.windowWidth;
+    });
+  }
+});
+
+onUnmounted(() => {
+  tabNameToActivate = "";
+  if (screenWidth.value < 900) {
+    publishActiveTabKey.value = publishTabList.value[0]?.key;
+  }
+});
+
+watch(
+  () => [publishTabList.value, tabNameToActivate.value],
+  ([newTabList, newTabNameToActivate]) => {
+    if (newTabList && newTabList.length > 0) {
+      if (newTabNameToActivate) {
+        const targetTab = newTabList.find(tab => tab.name === newTabNameToActivate);
+        if (targetTab) {
+          publishActiveTabKey.value = targetTab.key;
+          return; // 找到并设置后就返回
+        }
+      }
+      // 如果没有 name 参数，或者 name 参数没有找到匹配的 tab，则回退到原有逻辑
+      if (!publishActiveTabKey.value) {
+        publishActiveTabKey.value = newTabList[0]?.key;
+      }
+    }
+  },
+  { immediate: true },
+);
+
+const onNavTabChange = (key: string) => {
+  publishActiveTabKey.value = key;
+  publishActiveTabKeyChanged.value = Date.now();
+};
+</script>
+
+<style scoped>
+.container {
+  flex: 1;
+  padding-bottom: 65px;
+}
+
+.title {
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.icon-actions {
+  flex-direction: row;
+  align-items: center;
+}
+
+.tab-label {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-icon {
+  width: 36px;
+  height: 26px;
+  margin-bottom: -3px;
+}
+
+.fr-tabs-item-selected {
+  color: #fff;
+}
+
+.fr-tabs-item-unselected {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.fr-tabs-item-title {
+  font-size: 14px;
+  font-weight: bold;
+}
+</style>

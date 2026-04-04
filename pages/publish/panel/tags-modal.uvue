@@ -1,0 +1,548 @@
+<template>
+  <view class="tags-modal">
+    <scroll-view class="tags-modal-scroll" direction="vertical">
+      <view class="tags-modal-content">
+        <view class="tags-header">
+          <text class="tags-title">{{ $i18n_t("publish.publish_new") }}</text>
+          <view class="close-button-wrapper" @click="() => emit('close')">
+            <icon-font name="close" :size="8" color="#ddd" />
+          </view>
+        </view>
+        <text class="tags-share">{{ $i18n_t("publish.share_idea") }}</text>
+        <view class="tags-share-wrapper">
+          <textarea
+            class="tags-share-input"
+            placeholder-class="tags-share-input-placeholder"
+            :placeholder="$i18n_t('publish.please_enter')"
+            v-model="publishDescription"
+          />
+          <view class="tags-share-tag">
+            <text class="tags-share-tag-item" v-for="tag in renderSelectedTagList">#{{ tag }}</text>
+          </view>
+        </view>
+        <view class="tags-add-wrapper">
+          <text class="tags-add-title">{{ $i18n_t("publish.add_tags") }}</text>
+          <text class="tags-add-subtitle" v-if="selectedTagList.length">{{ $i18n_t("publish.had_add_tags", { num: selectedTagList.length }) }}</text>
+          <text class="tags-add-subtitle" v-else>{{ $i18n_t("publish.can_add_tags") }}</text>
+        </view>
+        <text class="tags-recommended">{{ $i18n_t("publish.recommended_tags") }}</text>
+        <view class="tags-recommended-list">
+          <text
+            :class="['tags-recommended-item', { active: selectedTagList.includes(tag.id) }]"
+            v-for="tag in recommendedTagList"
+            @click="() => handleTagItemClick(tag)"
+          >
+            {{ tag.displayName[i18n.global.locale.value] }}
+          </text>
+        </view>
+        <text class="tags-custom">{{ $i18n_t("publish.custom_tags") }}</text>
+        <view class="tags-custom-list">
+          <text class="tags-custom-base" @click="createCustomTag" v-if="customTagList.length < 10">
+            + {{ $i18n_t("publish.custom_tags") }}
+            <FrSpin class="tags-custom-base-loading" type="primary" v-if="addTagLoading" />
+          </text>
+          <view :class="['tags-custom-item', { active: selectedTagList.includes(tag.id) }]" v-for="tag in customTagList" @click="() => handleTagItemClick(tag)">
+            {{ tag.displayName[i18n.global.locale.value] || tag.name }}
+            <FrSpin class="tags-custom-close-loading" type="primary" v-if="tag.isLoading" />
+            <view class="tags-custom-close" @click="deleteCustomTag($event, tag)" v-else>
+              <icon-font name="close" :size="6" color="#ddd" />
+            </view>
+          </view>
+        </view>
+        <view class="tags-btn-wrapper">
+          <text class="tags-btn-cancel" @click="() => emit('close')">{{ $i18n_t("common.cancel") }}</text>
+          <fr-button class="tags-btn-publish" :loading="isPublishing" @click="() => handlePublish()">{{ $i18n_t("publish.publish_now") }}</fr-button>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted } from "vue";
+import { user } from "@/store/user.uts";
+import { FrButton, FrSpin } from "@/components/widgets";
+import i18n, { $i18n_t } from "@/locale";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { getTagsList, addTag, removeTag } from "@/api/home.uts";
+import { TagItemData } from "@/types";
+
+const props = defineProps<{
+  toolID: string;
+  isPublishing: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: "close"): void;
+  (
+    e: "onConfirmPublish",
+    params: {
+      selectedTagList: string[];
+      description: string;
+    },
+  ): void;
+}>();
+
+const recommendedTagList = ref<TagItemData[]>([]); // 推荐标签
+const customTagList = ref<TagItemData[]>([]); // 自定义标签
+const selectedTagList = ref<string[]>([]); // 已选标签
+const publishDescription = ref("");
+const addTagLoading = ref(false);
+
+const renderSelectedTagList = computed(() => {
+  return selectedTagList.value.map((item) => {
+    const tag = customTagList.value.find((tag) => tag.id === item) || recommendedTagList.value.find((tag) => tag.id === item);
+    return tag.displayName[i18n.global.locale.value] || tag.name;
+  });
+});
+
+const handleTagItemClick = (tag) => {
+  // 如果已选中，则移除
+  if (selectedTagList.value.includes(tag.id)) {
+    selectedTagList.value = selectedTagList.value.filter((item) => item !== tag.id);
+    return
+  }
+  // 最多只能选择8个
+  if (selectedTagList.value.length >= 8) {
+    return uni.showToast({
+      title: $i18n_t("publish.tag_limit"),
+      icon: "error",
+    });
+  }
+  // 添加标签
+  selectedTagList.value.push(tag.id);
+};
+const deleteCustomTag = async (event, tag) => {
+  // 阻止事件冒泡
+  event.stopPropagation();
+  event.preventDefault();
+  try {
+    tag.isLoading = true;
+    await removeTag(user.value?.id, [tag.id]);
+    tag.isLoading = false;
+    selectedTagList.value = selectedTagList.value.filter((item) => item !== tag.id);
+    customTagList.value = customTagList.value.filter((item) => item.id !== tag.id);
+  } catch (error) {
+    tag.isLoading = false;
+    console.error("Failed to delete tag:", error);
+  }
+};
+const createCustomTag = () => {
+  if (addTagLoading.value) return;
+  uni.showModal({
+    title: `+ ${$i18n_t("publish.custom_tags")}`,
+    confirmText: $i18n_t("common.confirm"),
+    cancelText: $i18n_t("common.cancel"),
+    editable: true,
+    placeholderText: $i18n_t("publish.please_enter"),
+    success: async (res) => {
+      if (res.confirm) {
+        if (!res.content) {
+          return uni.showToast({
+            title: $i18n_t("publish.tag_empty"),
+            icon: "error",
+          });
+        }
+        if (customTagList.value.includes(res.content)) {
+          return uni.showToast({
+            title: $i18n_t("publish.tag_exists"),
+            icon: "error",
+          });
+        }
+        if (res.content.length > 10) {
+          return uni.showToast({
+            title: $i18n_t("publish.tag_too_long"),
+            icon: "error",
+          });
+        }
+        try {
+          addTagLoading.value = true;
+          const addRes = await addTag(user.value?.id, res.content);
+          addTagLoading.value = false;
+          customTagList.value.push(addRes.data);
+          // 不超过8个就自动选中
+          if (selectedTagList.value.length < 8) {
+            selectedTagList.value.push(addRes.data.id);
+          }
+          uni.showToast({
+            title: $i18n_t("publish.create_success"),
+            icon: "none",
+          });
+        } catch (error) {
+          addTagLoading.value = false;
+          console.error("Failed to add tag:", error);
+        }
+      }
+    },
+  });
+};
+const handlePublish = () => {
+  const publishData = {
+    description: publishDescription.value,
+    selectedTagList: selectedTagList.value,
+  };
+  emit("onConfirmPublish", publishData);
+};
+const initializeData = async () => {
+  try {
+    const res = await getTagsList(user.value?.id, props.toolID);
+    const arr = res.data || [];
+    recommendedTagList.value = arr.filter((item) => item.scope === "tool");
+    customTagList.value = arr.filter((item) => item.scope === "user");
+  } catch (error) {
+    console.error("Failed to load data:", error);
+  }
+};
+onMounted(() => {
+  initializeData();
+});
+</script>
+
+<style lang="scss" scoped>
+.tags-modal {
+  max-width: 1400px;
+  width: 100%;
+  background: #272727;
+  border-radius: 20px 20px 0px 0px;
+  position: fixed;
+  bottom: 0;
+  height: 65vh;
+  padding-top: 24px;
+}
+
+@media (min-width: 750px) {
+  .tags-modal {
+    bottom: 0;
+    right: 0;
+    left: auto;
+    transform: none;
+    height: 100%;
+    width: 50vw;
+    border-radius: 20px 0 0 20px;
+  }
+}
+
+.tags-modal-scroll {
+  height: 100%;
+}
+
+.tags-modal-content {
+  padding: 0 24px 30px 24px;
+}
+
+.tags-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  .tags-title {
+    height: 20px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 14px;
+    color: #ffffff;
+    line-height: 20px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+  .close-button-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background-color: #404040;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+}
+
+.tags-share {
+  margin-top: 16px;
+  margin-bottom: 10px;
+  height: 17px;
+  font-family:
+    PingFang SC,
+    PingFang SC;
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+  line-height: 17px;
+  text-align: left;
+  font-style: normal;
+  text-transform: none;
+}
+
+.tags-share-wrapper {
+  position: relative;
+  background: #333333;
+  border-radius: 5px 5px 5px 5px;
+  padding: 12px 16px;
+
+  .tags-share-input {
+    height: 91px;
+    border-radius: 5px 5px 5px 5px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 12px;
+    color: #ffffff;
+    line-height: 17px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+
+  .tags-share-tag {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+    .tags-share-tag-item {
+      height: 17px;
+      font-family:
+        PingFang SC,
+        PingFang SC;
+      font-weight: 400;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      line-height: 17px;
+      text-align: left;
+      font-style: normal;
+      text-transform: none;
+    }
+  }
+
+  .tags-share-input-placeholder {
+    height: 17px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 17px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+}
+
+.tags-add-wrapper {
+  margin-top: 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  .tags-add-title {
+    height: 17px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 12px;
+    color: #ffffff;
+    line-height: 17px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+  .tags-add-subtitle {
+    height: 17px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 17px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+  }
+}
+
+.tags-recommended {
+  margin-bottom: 13px;
+  height: 17px;
+  font-family:
+    PingFang SC,
+    PingFang SC;
+  font-weight: 400;
+  font-size: 12px;
+  color: #ffffff;
+  line-height: 17px;
+  text-align: left;
+  font-style: normal;
+  text-transform: none;
+}
+
+.tags-recommended-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 13px;
+  .tags-recommended-item {
+    background: #333333;
+    border-radius: 17px 17px 17px 17px;
+    padding: 7px 16px 6px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 13px;
+    color: #ffffff;
+    line-height: 18px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+    cursor: pointer;
+    &.active {
+      background: #ff23b8;
+    }
+  }
+}
+
+.tags-custom {
+  margin-top: 17px;
+  margin-bottom: 13px;
+  height: 17px;
+  font-family:
+    PingFang SC,
+    PingFang SC;
+  font-weight: 400;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 17px;
+  text-align: left;
+  font-style: normal;
+  text-transform: none;
+}
+
+.tags-custom-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 12px;
+  padding-bottom: 56px;
+
+  .tags-custom-base,
+  .tags-custom-item {
+    background: #333333;
+    border-radius: 17px 17px 17px 17px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 13px;
+    color: #ffffff;
+    line-height: 18px;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+    cursor: pointer;
+  }
+  .tags-custom-base {
+    padding: 7px 16px 6px;
+    .tags-custom-base-loading {
+      position: absolute;
+      left: 42%;
+      top: 21%;
+    }
+  }
+  .tags-custom-item {
+    padding: 7px 32px 6px 16px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    &.active {
+      background: #ff23b8;
+    }
+    .tags-custom-close {
+      width: 16px;
+      height: 16px;
+      padding-top: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #000;
+      border-radius: 50%;
+      position: absolute;
+      right: 8px;
+      cursor: pointer;
+    }
+    .tags-custom-close-loading {
+      position: absolute;
+      right: 8px;
+    }
+  }
+}
+
+.tags-btn-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-width: 1400px;
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-bottom: 30px;
+  padding-top: 10px;
+  background: #272727;
+  .tags-btn-cancel {
+    width: 106px;
+    height: 40px;
+    background: #000000;
+    border-radius: 25px 25px 25px 25px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 16px;
+    color: #ffffff;
+    line-height: 40px;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    cursor: pointer;
+  }
+  .tags-btn-publish {
+    width: 218px;
+    height: 40px;
+    background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+    border-radius: 25px 25px 25px 25px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 16px;
+    color: #ffffff;
+    line-height: 40px;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    cursor: pointer;
+  }
+}
+
+@media (min-width: 750px) {
+  .tags-btn-wrapper {
+    right: 0;
+    left: auto;
+    width: 50vw;
+    border-radius: 0 0 0 20px;
+  }
+}
+</style>

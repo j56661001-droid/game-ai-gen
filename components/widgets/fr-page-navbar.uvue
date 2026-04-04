@@ -1,0 +1,98 @@
+<template>
+  <view class="fr-page-navbar">
+    <view v-if="!props.disabledBack" style="height: 100%; width: 60px; flex-direction: row; align-items: center" @click="onBack">
+      <icon-font name="arrowleft" :size="16" class="page-navbar-back-icon" />
+    </view>
+    <view class="page-navbar-title">
+      <slot name="title">
+        <view style="flex-direction: row; align-items: center; justify-content: center">
+          <text class="page-navbar-text" style="color: #fff; font-size: 17px; font-weight: 700">{{ props.title }}</text>
+        </view>
+      </slot>
+    </view>
+    <view class="page-navbar-actions">
+      <slot name="actions"></slot>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "../IconFont/IconFont.uvue";
+import { goBack } from "../../utils/page";
+
+type Props = {
+  title?: string;
+  disabledBack?: boolean;
+};
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  (e: "back"): void;
+}>();
+
+const onBack = () => {
+  const inst = getCurrentInstance();
+  const nodeProps = inst?.vnode?.props;
+  if (nodeProps != null && typeof nodeProps["onBack"] == "function") {
+    emit("back");
+  } else {
+    goBack(null);
+  }
+};
+</script>
+
+<style scoped>
+.fr-page-navbar {
+  margin: 12px 0;
+  /* min-height: 58px; */
+  padding: 0 16px;
+  flex-direction: row;
+  align-items: center;
+  height: 40px;
+}
+
+.fr-page-navbar uni-view {
+  overflow: unset;
+}
+
+.fr-page-navbar :deep(uni-view) {
+  overflow: unset;
+}
+
+/* 覆盖特定子元素 */
+.fr-page-navbar :deep(.avatar-wrapper) {
+  overflow: hidden;
+}
+
+.page-navbar-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-navbar-text {
+  flex: 1;
+
+  /* #ifdef APP */
+  lines: 1;
+  /* #endif */
+
+  /* #ifdef WEB */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+
+.page-navbar-actions {
+  flex-direction: row;
+  align-items: center;
+  min-width: 40px;
+}
+
+.page-navbar-back-icon {
+  color: #fff;
+  min-width: 40px;
+  cursor: pointer;
+}
+</style>

@@ -1,0 +1,81 @@
+import { dayjs } from "@/uni_modules/kux-dayjs";
+import { $i18n_t } from "@/locale/index.uts";
+
+export function fmtTimeDisplay(date: string, format: string): string {
+  if (!date) {
+    return "";
+  }
+
+  const time = new Date(date).getTime() + "";
+  const current = dayjs(time, true);
+
+  return current.format(format);
+}
+
+export function fmtDateDisplay(time: string): string {
+  if (!time) {
+    return "";
+  }
+
+  const fmtTime = new Date(time).getTime() + "";
+
+  const current = dayjs(fmtTime, true);
+  const today = dayjs();
+  const secondDiff = current.diff(today, "second");
+
+  /** 小于 60s, Just now */
+  if (secondDiff <= 60) {
+    return $i18n_t("time.justNow");
+  }
+
+  const minuteDiff = current.diff(today, "minute");
+  /** 小于 60min */
+  if (minuteDiff < 60) {
+    if (minuteDiff == 1) {
+      return $i18n_t("time.minuteAgo");
+    } else {
+      return $i18n_t("time.minutesAgo", { count: minuteDiff });
+    }
+  }
+
+  const hourDiff = current.diff(today, "hour");
+  /** 24小时内 */
+  if (hourDiff < 24) {
+    if (hourDiff == 1) {
+      return $i18n_t("time.hourAgo");
+    } else {
+      return $i18n_t("time.hoursAgo", { count: hourDiff });
+    }
+  } else if (hourDiff >= 24 && hourDiff < 48) {
+    /** 48小时内 */
+    return $i18n_t("time.yesterday", { time: current.format("HH:mm") });
+  }
+
+  return current.format("YYYY/MM/DD HH:mm");
+}
+
+/**
+ * 根据字符串后缀判断文件格式是图片还是视频，返回 'video' | 'image'
+ * @param fileName 文件名或文件路径
+ * @returns 'video' | 'image'
+ */
+export function getFileTypeBySuffix(fileName: string): "video" | "image" | "text" {
+  if (!fileName) {
+    return "image"; // Default to image if no file name is provided
+  }
+
+  const videoExtensions = ["mp4", "mov", "avi", "mkv", "flv", "wmv", "webm"];
+  const imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
+
+  const parts = fileName.split(".");
+  const suffix = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+  if (suffix == "txt") {
+    return "text";
+  } else if (videoExtensions.includes(suffix)) {
+    return "video";
+  } else if (imageExtensions.includes(suffix)) {
+    return "image";
+  } else {
+    return "image"; // Default to image for unknown extensions
+  }
+}

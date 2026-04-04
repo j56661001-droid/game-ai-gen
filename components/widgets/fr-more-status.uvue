@@ -1,0 +1,50 @@
+<template>
+  <view class="fr-more-status">
+    <view v-if="props.loading" style="flex-direction: row; align-items: center; padding: 8px 0">
+      <view class="fr-more-status-divider"></view>
+      <fr-spin :size="20"></fr-spin>
+      <text class="fr-more-status-text" style="color: #fff; margin-left: 8px">{{ loadMoreText }}</text>
+      <view class="fr-more-status-divider"></view>
+    </view>
+    <view v-else-if="!props.hasMore" style="flex-direction: row; align-items: center; padding: 8px 0">
+      <view class="fr-more-status-divider"></view>
+      <text class="fr-more-status-text">{{ noMoreText }}</text>
+      <view class="fr-more-status-divider"></view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+import FrSpin from "./fr-spin.uvue";
+
+type Props = {
+  loading?: boolean;
+  hasMore?: boolean;
+  noMoreText?: string;
+  loadMoreText?: string;
+};
+
+const props = withDefaults(defineProps<Props>(), { loading: false, hasMore: false });
+
+const loadMoreText = computed((): string => (props.loadMoreText != null ? props.loadMoreText : $i18n_t("common.loadMore")));
+const noMoreText = computed((): string => (props.noMoreText != null ? props.noMoreText : $i18n_t("common.noMore")));
+</script>
+
+<style scoped>
+.fr-more-status {
+  padding: 0 50px;
+}
+
+.fr-more-status-divider {
+  flex: 1;
+  border-top: 1px dashed #707070;
+  margin: 0 16px;
+}
+
+.fr-more-status-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #707070;
+}
+</style>

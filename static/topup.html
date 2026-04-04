@@ -1,0 +1,1455 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title id="page-title">Top-up</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Google tag (gtag.js) -->
+    <script>
+      const DEFAULT_GID = "G-938FRNGZ27";
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+
+      async function initGoogleAnalytics() {
+        let gid = DEFAULT_GID;
+        try {
+          // Fetch G-ID from backend API
+          // Extract subdomain as code
+          const hostname = window.location.hostname;
+          const domainParts = hostname.split(".");
+          const code = domainParts.length > 2 ? domainParts[0] : "";
+          const payment = JSON.parse(window.localStorage.getItem("fr.baseUrl")) || window.location.origin + "/api/";
+          const response = await fetch(payment + `settings/public/gaid${code ? "." + code : ""}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              gid = data.data.value;
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to fetch Google Analytics ID, using default:", error);
+          // 使用默认 GID，不抛出错误
+        }
+
+        // Load Google Analytics script with the determined GID
+        const script = document.createElement("script");
+        script.async = true;
+        script.src = `https://www.googletagmanager.com/gtag/js?id=${gid}`;
+        document.head.appendChild(script);
+
+        // Execute Google Analytics initialization after script loads successfully
+        script.onload = function () {
+          window.dataLayer = window.dataLayer || [];
+          gtag("js", new Date());
+          gtag("config", gid);
+        };
+      }
+      // Initialize Google Analytics
+      initGoogleAnalytics();
+    </script>
+    <style>
+      /* --- CSS Reset & Global Styles --- */
+      :root {
+        --bg-color: #0d0d0d;
+        --card-bg-color: #1c1c1c;
+        --text-color: #ffffff;
+        --text-secondary-color: #8e8e93;
+        --accent-pink: #f95786;
+        --accent-purple: #9c67f8;
+        --accent-yellow: #ecf806;
+        --gradient-start: #ff00d8;
+        --gradient-end: #fff500;
+        --border-color: #333;
+        --input-bg-color: rgba(44, 44, 46, 0.7);
+        --selected-method-border: #ff23b8;
+        --selected-method-bg: rgba(255, 35, 184, 0.2);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--text-color);
+        font-size: 16px;
+        display: flex;
+        justify-content: center;
+        background-color: #000;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+
+      /* --- Back Button --- */
+      .back-button {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+        transition: opacity 0.2s ease;
+        margin-right: 16px;
+      }
+
+      .back-button:hover {
+        opacity: 1;
+      }
+
+      .back-button svg {
+        width: 20px;
+        height: 20px;
+        fill: var(--text-color);
+      }
+
+      /* --- Main Container & Header --- */
+      .container {
+        max-width: 750px;
+        width: 100%;
+        padding: 20px 16px 120px;
+        background-color: #000;
+        background-image: url("/static/icons/pay/transfer_bg.webp");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        margin: 14px;
+      }
+
+      header h1 {
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      /* Discount info styling for plus sign and numbers */
+      /* Discount info styling for plus sign and numbers */
+      #discount-info {
+        font-size: 14px;
+        color: #f3f3f3;
+        margin-left: 12px;
+      }
+
+      .yellow-text {
+        color: var(--accent-yellow);
+      }
+
+      /* Total points info styling */
+      #total-points-text {
+        font-size: 18px;
+        color: var(--text-color);
+      }
+
+      #total-points-number {
+        font-size: 32px;
+        color: var(--accent-yellow);
+        font-weight: bold;
+      }
+
+      .balance {
+        display: flex;
+        align-items: center;
+        background-color: var(--card-bg-color);
+        padding: 6px 12px;
+        border-radius: 20px;
+      }
+
+      .balance img {
+        width: 16px;
+        height: 16px;
+        margin-right: 6px;
+      }
+
+      .balance span {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      /* --- Points Input Section --- */
+      .points-input-section {
+        margin-bottom: 32px;
+      }
+
+      .points-input-section h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 16px;
+      }
+
+      /* Amount Cards */
+      .amount-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px 12px;
+        margin-top: 16px;
+      }
+
+      .amount-card {
+        background-color: var(--card-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+      }
+
+      .amount-card.selected {
+        border-color: var(--selected-method-border);
+        background-color: var(--selected-method-bg);
+      }
+
+      .amount-card .amount-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: var(--text-color);
+      }
+
+      .amount-card .card-info-footer {
+        position: absolute;
+        bottom: -12px;
+        left: 5px;
+        width: calc(100% - 10px);
+        background-color: var(--gradient-start); /* #ff00d8 */
+        color: white;
+        font-size: 12px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 5px 0;
+        border-radius: 4px;
+        overflow: hidden;
+        line-height: 1;
+      }
+
+      .marquee-content-wrapper {
+        display: inline-block;
+        white-space: nowrap; /* Important: prevent text wrapping */
+        animation: marquee-scroll linear infinite alternate; /* Apply animation */
+        animation-play-state: paused; /* Initially paused */
+        will-change: transform; /* Hint for browser optimization */
+      }
+
+      /* Animation Keyframes: scroll from left to right to expose the end, then reset */
+      @keyframes marquee-scroll {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(var(--scroll-offset)); }
+      }
+
+      /* --- Payment Methods --- */
+      .payment-methods {
+        margin-bottom: 24px;
+        height: auto;
+      }
+
+      .payment-methods h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 16px;
+      }
+
+      .payment-methods::after {
+        content: "";
+        display: block;
+        height: 1px;
+        background-color: var(--border-color);
+        margin: 16px 0;
+      }
+
+      .methods-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+
+      .method-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .method-item .icon-wrapper {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background-color: var(--card-bg-color);
+        border-radius: 12px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 15%;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+      }
+
+      .method-item .icon-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .method-item span {
+        font-size: 12px;
+        color: var(--text-secondary-color);
+      }
+
+      .method-item.selected .icon-wrapper {
+        border: 1px solid var(--selected-method-border);
+        background-color: var(--selected-method-bg);
+      }
+
+      /* --- Footer / Pay Bar --- */
+      footer {
+        position: fixed;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 750px;
+        width: 100%;
+        border-top: 1px solid var(--border-color);
+        padding: 16px;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
+        background-color: #000;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .pay-button {
+        background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+        border: none;
+        color: white;
+        width: 100%;
+        font-size: 18px;
+        font-weight: bold;
+        padding: 14px 40px;
+        border-radius: 25px;
+        cursor: pointer;
+        text-align: center;
+        transition: opacity 0.2s ease;
+      }
+
+      .pay-button:hover {
+        opacity: 0.9;
+      }
+
+      .pay-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* Loading Overlay */
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        flex-direction: column;
+        color: white;
+      }
+
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid var(--gradient-start);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header>
+        <button class="back-button" id="back-button" aria-label="go back">
+          <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="11" height="15" viewBox="0 0 11 15">
+            <g class="b" transform="translate(10.563 15.455) rotate(180)">
+              <path d="M5.449,7.31,0,1.861,1.861,0l7.31,7.31-7.31,7.31L0,12.759Z" transform="translate(0.477 0.971)" />
+            </g>
+          </svg>
+        </button>
+        <h1 id="header-title">Top-up</h1>
+        <!-- <div class="balance">
+                <img src="icons/pay/flash@2x.png" alt="Flash Icon">
+                <span>1,245</span>
+            </div> -->
+      </header>
+
+      <!-- Payment Methods -->
+      <section class="payment-methods">
+        <h2 id="payment-method-title">Payment method</h2>
+        <div class="methods-grid"></div>
+      </section>
+
+      <!-- Points Input Section -->
+      <section class="points-input-section">
+        <!-- Payment Amount Section -->
+        <div class="payment-amount-section">
+          <h2 id="payment-amount-title" style="display: flex; align-items: center">支付金额 <span id="discount-info" class="discount-info-text"></span></h2>
+          <div class="amount-cards-grid" id="amount-cards-grid">
+            <!-- Amount cards will be dynamically inserted here -->
+          </div>
+        </div>
+
+        <div class="total-points-container" style="margin-top: 8px; text-align: center">
+          <span id="total-points-info">
+            <span id="total-points-text" class="total-points-text-style"></span>
+            <span id="total-points-number" class="total-points-number-style"></span>
+            <span id="bonus-points-display" style="margin-left: 8px"></span>
+          </span>
+        </div>
+      </section>
+    </div>
+
+    <!-- Footer Pay Bar -->
+    <footer>
+      <button class="pay-button" id="pay-now-button">Pay now</button>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none">
+      <div class="loading-spinner"></div>
+      <p id="loading-text">正在创建订单，请稍候...</p>
+    </div>
+
+    <script>
+      const version = "20260212-1043";
+      // Capacitor 底部高度检测相关变量
+      let isCapacitor = false;
+      let bottomHeight = 0;
+
+      // 检测 Capacitor 环境并初始化底部高度检测
+      function detectAndInitCapacitor() {
+        // 检查是否存在 Capacitor 对象
+        if (typeof window !== "undefined" && window.Capacitor) {
+          isCapacitor = true;
+          // 为body添加Capacitor环境标识类
+          document.body.classList.add("capacitor-env");
+          initBottomHeightDetection();
+        }
+        initBackButton();
+      }
+
+      // 初始化返回按钮功能
+      function initBackButton() {
+        const backButton = document.getElementById("back-button");
+        if (backButton) {
+          backButton.addEventListener("click", () => {
+            // 优先使用浏览器历史记录
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              // 如果没有历史记录，尝试关闭当前窗口或返回根目录
+              try {
+                window.location.href = "/";
+              } catch (e) {}
+            }
+          });
+        }
+      }
+
+      // 初始化底部高度检测
+      async function initBottomHeightDetection() {
+        if (!isCapacitor) return;
+
+        try {
+          console.log("Starting bottom height detection for topup page...");
+
+          // 获取 BottomHeightPlugin
+          let BottomHeight = null;
+          if (window.Capacitor && window.Capacitor.Plugins) {
+            BottomHeight = window.Capacitor.Plugins.BottomHeightPlugin;
+          }
+
+          if (BottomHeight) {
+            console.log("BottomHeightPlugin available, initializing...");
+
+            try {
+              // 获取初始底部高度
+              const result = await BottomHeight.getCurrentBottomHeight();
+              console.log("Initial bottom height:", result);
+
+              bottomHeight = result.height || 0;
+              updatePageStyle(bottomHeight);
+
+              // 监听高度变化事件
+              const listener = await BottomHeight.addListener("bottomHeightChanged", (data) => {
+                console.log("Bottom height changed:", data);
+                bottomHeight = data.height || 0;
+                updatePageStyle(bottomHeight);
+              });
+
+              // 开始监听
+              await BottomHeight.startListening();
+              console.log("Bottom height detection initialized successfully for topup page");
+            } catch (initError) {
+              console.error("Error during bottom height plugin initialization:", initError);
+            }
+          } else {
+            console.log("BottomHeightPlugin not available");
+          }
+        } catch (error) {
+          console.error("Failed to initialize bottom height detection:", error);
+        }
+      }
+
+      // 更新页面样式
+      function updatePageStyle(height) {
+        try {
+          const container = document.querySelector(".container");
+          if (container) {
+            if (height > 0) {
+              container.style.paddingBottom = `${height + 20}px`;
+              console.log("Updated container padding-bottom:", `${height + 20}px`);
+            } else {
+              container.style.paddingBottom = "120px"; // 恢复默认值
+              console.log("Reset container padding-bottom to default");
+            }
+          }
+        } catch (error) {
+          console.error("Failed to update page style:", error);
+        }
+      }
+
+      const translations = {
+        en: {
+          pageTitle: "Top-up",
+          headerTitle: "Top-up",
+          paymentMethodTitle: "Payment method",
+          payNowButton: "Pay now",
+          alertAccountError: "Account information error.",
+          alertSetCorrectAmount: "Please set the correct payment amount.",
+          alertAmountMustBeInteger: "Amount must be an integer.",
+          loadingMessage: "Creating order, please wait...",
+          orderCreateFailed: "Order creation failed: ",
+          priceTag: "Amount to pay",
+          paymentAmountTitle: "Payment amount",
+          amountRangeInfo: "Select payment amount",
+          amountBelowMin: "Amount cannot be less than {min}",
+          amountExceedMax: "Amount cannot exceed {max}",
+          discountInfo: "bonus",
+          totalPointsInfo: "Total points: ",
+          adjustmentNotice: "Adjusted due to exchange rate precision: ",
+          pointsText: "Points",
+          maxImagesText: "About {num} images, or {num_videos} videos",
+        },
+        "zh-hans": {
+          pageTitle: "充值",
+          headerTitle: "充值",
+          paymentMethodTitle: "支付方式",
+          payNowButton: "立即支付",
+          alertAccountError: "账户信息错误.",
+          alertSetCorrectAmount: "请选择正确的支付金额.",
+          alertAmountMustBeInteger: "金额必须是整数.",
+          loadingMessage: "正在创建订单，请稍候...",
+          orderCreateFailed: "订单创建失败: ",
+          priceTag: "需支付",
+          paymentAmountTitle: "支付金额",
+          amountRangeInfo: "选择支付金额",
+          amountBelowMin: "金额不可小于 {min}",
+          amountExceedMax: "金额不可超过 {max}",
+          discountInfo: "赠送",
+          rechargeInfo: "充值",
+          totalPointsInfo: "总积分: ",
+          adjustmentNotice: "已根据汇率换算精度调整到：",
+          pointsText: "积分",
+          maxImagesText: "约{num}张图片,或{num_videos}个视频",
+        },
+        "zh-hant": {
+          pageTitle: "儲值",
+          headerTitle: "儲值",
+          paymentMethodTitle: "支付方式",
+          payNowButton: "立即支付",
+          alertAccountError: "帳戶信息錯誤.",
+          alertSetCorrectAmount: "請選擇正確的支付金額.",
+          alertAmountMustBeInteger: "金額必須是整數.",
+          loadingMessage: "正在創建訂單，請稍候...",
+          orderCreateFailed: "訂單創建失敗: ",
+          priceTag: "需支付",
+          paymentAmountTitle: "支付金額",
+          amountRangeInfo: "選擇支付金額",
+          amountBelowMin: "金額不可小於 {min}",
+          amountExceedMax: "金額不可超過 {max}",
+          discountInfo: "贈送",
+          rechargeInfo: "儲值",
+          totalPointsInfo: "總積分: ",
+          adjustmentNotice: "已根據匯率換算精度調整到：",
+          pointsText: "積分",
+          maxImagesText: "約{num}張圖片,或{num_videos}個視頻",
+        },
+        jp: {
+          pageTitle: "チャージ",
+          headerTitle: "チャージ",
+          paymentMethodTitle: "支払い方法",
+          payNowButton: "今すぐ支払う",
+          alertAccountError: "アカウント情報エラー",
+          alertSetCorrectAmount: "正しい支払い金額を選択してください",
+          alertAmountMustBeInteger: "金額は整数でなければなりません",
+          loadingMessage: "注文を作成中、しばらくお待ちください...",
+          orderCreateFailed: "注文作成失敗: ",
+          priceTag: "支払い金額",
+          paymentAmountTitle: "支払い金額",
+          amountRangeInfo: "支払い金額を選択",
+          amountBelowMin: "金額は {min} 以上でなければなりません",
+          amountExceedMax: "金額は {max} を超えることはできません",
+          discountInfo: "ボーナス",
+          rechargeInfo: "チャージ",
+          totalPointsInfo: "合計ポイント: ",
+          adjustmentNotice: "為替レートの計算精度により調整されました：",
+          pointsText: "ポイント",
+          maxImagesText: "約{num}枚の画像、または{num_videos}個のビデオ",
+        },
+        hi: {
+          pageTitle: "टॉप-अप",
+          headerTitle: "टॉप-अप",
+          paymentMethodTitle: "भुगतान विधि",
+          payNowButton: "अभी भुगतान करें",
+          alertAccountError: "खाता जानकारी त्रुटि।",
+          alertSetCorrectAmount: "कृपया सही भुगतान राशि निर्धारित करें।",
+          alertAmountMustBeInteger: "राशि एक पूर्णांक होनी चाहिए।",
+          loadingMessage: "ऑर्डर बनाया जा रहा है, कृपया प्रतीक्षा करें...",
+          orderCreateFailed: "ऑर्डर बनाने में विफल: ",
+          priceTag: "भुगतान करने की राशि",
+          paymentAmountTitle: "भुगतान राशि",
+          amountRangeInfo: "भुगतान राशि दर्ज करें ({min}-{max})",
+          amountBelowMin: "राशि {min} से कम नहीं हो सकती",
+          amountExceedMax: "राशि {max} से अधिक नहीं हो सकती",
+          discountInfo: "बोनस",
+          rechargeInfo: "रिचार्ज",
+          totalPointsInfo: "कुल अंक: ",
+          adjustmentNotice: "विनिमय दर सटीकता के कारण समायोजित: ",
+          pointsText: "अंक",
+          maxImagesText: "लगभग{num} चित्र, या {num_videos} वीडियो",
+        },
+        "pt-br": {
+          pageTitle: "Recarga",
+          headerTitle: "Recarga",
+          paymentMethodTitle: "Método de pagamento",
+          payNowButton: "Pagar agora",
+          alertAccountError: "Erro nas informações da conta.",
+          alertSetCorrectAmount: "Por favor, defina o valor de pagamento correto.",
+          alertAmountMustBeInteger: "O valor deve ser um número inteiro.",
+          loadingMessage: "Criando pedido, por favor aguarde...",
+          orderCreateFailed: "Falha ao criar o pedido: ",
+          priceTag: "Valor a pagar",
+          paymentAmountTitle: "Valor do pagamento",
+          amountRangeInfo: "Selecione o valor do pagamento",
+          amountBelowMin: "O valor não pode ser inferior a {min}",
+          amountExceedMax: "O valor não pode exceder {max}",
+          discountInfo: "bônus",
+          rechargeInfo: "Recarregar",
+          totalPointsInfo: "Pontos totais: ",
+          adjustmentNotice: "Ajustado devido à precisão da taxa de câmbio: ",
+          pointsText: "Pontos",
+          maxImagesText: "Cerca de {num} imagens, ou {num_videos} vídeos",
+        },
+        "pt-pt": {
+          pageTitle: "Recarregar",
+          headerTitle: "Recarregar",
+          paymentMethodTitle: "Método de pagamento",
+          payNowButton: "Pagar agora",
+          alertAccountError: "Erro nas informações da conta.",
+          alertSetCorrectAmount: "Por favor, defina o valor de pagamento correto.",
+          alertAmountMustBeInteger: "O valor deve ser um número inteiro.",
+          loadingMessage: "A criar pedido, por favor aguarde...",
+          orderCreateFailed: "Falha ao criar o pedido: ",
+          priceTag: "Valor a pagar",
+          paymentAmountTitle: "Valor do pagamento",
+          amountRangeInfo: "Selecione o valor do pagamento",
+          amountBelowMin: "O valor não pode ser inferior a {min}",
+          amountExceedMax: "O valor não pode exceder {max}",
+          discountInfo: "bónus",
+          rechargeInfo: "Recarregar",
+          totalPointsInfo: "Pontos totais: ",
+          adjustmentNotice: "Ajustado devido à precisão da taxa de câmbio: ",
+          pointsText: "Pontos",
+          maxImagesText: "Cerca de {num} imagens, ou {num_videos} vídeos",
+        },
+      };
+
+      const IMAGE_COST = 100;
+      const VIDEO_COST = 280;
+
+      // Global variable to store points ratios
+      let pointsRatios = {};
+
+      // Global variable to store payment providers, containing methods and amounts
+      let paymentProviders = {};
+
+      // Global variable to store selected amount
+      let selectedAmount = 0;
+      // Global variable to store the currently selected payment provider (e.g., 'shark_pay', 'wallets_pay')
+      let selectedProvider = null;
+      // Global variable to store the currently selected method within a provider (e.g., 'alipay', 'USDT')
+      let selectedMethod = null;
+
+      // Global variable to store discount rate
+      let discountRate = 0;
+
+      let totalPoints = 0;
+
+      // Currency precision definitions (minimum currency unit values)
+      const currencyPrecision = {
+        usdt: 1,
+        cny: 1,
+        eth: 0.0001,
+        trx: 0.01,
+      };
+
+      // Mapping for hardcoded frontend icons to backend types and providers
+      const paymentMethodsMapping = [
+        { name: "Alipay", icon: `icons/pay/alipay@2x.png?t=${version}`, frontendType: "ALIPAY", backendTypes: ["fixedAlipay", "alipay"], providerAlias: "shark_pay" },
+        { name: "WeChat", icon: `icons/pay/wechat@2x.png?t=${version}`, frontendType: "WECHAT", backendTypes: ["fixedWechat", "wechat"], providerAlias: "shark_pay" },
+        {
+          name: "USD-Bagelpay",
+          icon: `icons/pay/bagelpay.png?t=${version}`,
+          frontendType: "Bagelpay",
+          backendTypes: [],
+          providerAlias: "pig_pay",
+          name_i18n: {
+            "zh-hans": "美金支付",
+            "zh-hant": "美金支付",
+            en: "USD Payment",
+            jp: "米ドル支払い",
+            hi: "अमेरिकी डॉलर भुगतान",
+            "pt-br": "Pagamento em Dólar",
+            "pt-pt": "Pagamento em Dólar",
+          },
+        },
+        { name: "USDT-TRC20", icon: `icons/pay/usdt@2x.png?t=${version}`, frontendType: "usdt", backendTypes: ["USDT"], providerAlias: "wallets_pay" },
+        // You can add more mappings here for other payment methods if needed
+      ];
+
+      // This array will be dynamically populated based on backend data and paymentMethodsMapping
+      let paymentMethodsData = [];
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        // 初始化 Capacitor 底部高度检测
+        detectAndInitCapacitor();
+
+        // Get payment API configuration from localStorage
+        const payment = JSON.parse(window.localStorage.getItem("fr.baseUrl")) || window.location.origin + "/api/";
+        const frtoken = JSON.parse(window.localStorage.getItem("fr.token"));
+
+        const htmlElement = document.documentElement;
+        const pageTitleEl = document.getElementById("page-title");
+        const headerTitleEl = document.getElementById("header-title");
+        const paymentMethodTitleEl = document.getElementById("payment-method-title");
+        const payNowButton = document.getElementById("pay-now-button");
+
+        const methodsGrid = document.querySelector(".methods-grid");
+
+        // Payment amount elements
+        const amountCardsGrid = document.getElementById("amount-cards-grid");
+        const paymentAmountTitle = document.getElementById("payment-amount-title");
+
+        // Utility functions
+        const getUrlParameter = (name) => {
+          name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+          const regex = new RegExp("[\\?&]" + name + "=([^&#]*)");
+          const results = regex.exec(location.search);
+          return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+        };
+
+        const lang = getUrlParameter("lang") || "zh-CN";
+        const cid = getUrlParameter("cid");
+        const uid = getUrlParameter("uid");
+        const from = getUrlParameter("from"); // Add this line to get the 'from' parameter
+        const from_url = getUrlParameter("from_url");
+
+        // Set HTML lang attribute
+        htmlElement.lang = lang;
+
+        // Apply translations
+        const applyTranslations = (currentLang) => {
+          const t = translations[currentLang];
+          if (t) {
+            pageTitleEl.textContent = t.pageTitle;
+            headerTitleEl.textContent = t.headerTitle;
+            paymentMethodTitleEl.textContent = t.paymentMethodTitle;
+            payNowButton.textContent = t.payNowButton;
+            const discountInfoEl = document.getElementById("discount-info");
+            if (discountInfoEl && t.discountInfo) {
+              discountInfoEl.textContent = `(${t.discountInfo}: 0%)`; // Initial text, will be updated by updateDiscountInfo
+            }
+            // Set adjustment notice text
+            const adjustmentNoticeText = document.getElementById("adjustment-notice-text");
+            if (adjustmentNoticeText && t.adjustmentNotice) {
+              adjustmentNoticeText.textContent = t.adjustmentNotice;
+            }
+
+            const totalPointsText = document.getElementById("total-points-text");
+            if (totalPointsText && t.totalPointsInfo) {
+              totalPointsText.textContent = t.totalPointsInfo;
+            }
+          }
+        };
+
+        applyTranslations(lang);
+
+        // Add gtag event for 'recharge_enter'
+        if (typeof gtag === "function") {
+          gtag("event", "recharge_enter", { from: from || "unknown" }); // Use 'unknown' if from is not present
+        }
+
+        // Function to update discount info and total points
+        const updateDiscountInfo = () => {
+          const t = translations[lang] || translations.en;
+          const discountInfoEl = document.getElementById("discount-info");
+          const totalPointsTextEl = document.getElementById("total-points-text");
+          const totalPointsNumberEl = document.getElementById("total-points-number");
+          const bonusPointsDisplayEl = document.getElementById("bonus-points-display");
+          const maxImagesInfoEl = document.getElementById("max-images-info");
+          const maxVideosInfoEl = document.getElementById("max-videos-info");
+
+          if (discountRate > 0) {
+            const discountPercentage = (discountRate * 100).toFixed(2);
+            if (discountInfoEl) {
+              discountInfoEl.innerHTML = `(${t.discountInfo}:  <span class="yellow-text">+${discountPercentage}%</span>)`;
+            }
+          } else {
+            if (discountInfoEl) {
+              discountInfoEl.textContent = "";
+            }
+          }
+
+          // Update total points info
+          if (totalPointsTextEl && totalPointsNumberEl && bonusPointsDisplayEl) {
+            if (discountRate > 0 && totalPoints > 0) {
+              const directPoints = Math.round(selectedAmount * getPaymentMethodRatioAndPrecision().ratio);
+              const bonusPoints = totalPoints - directPoints;
+              totalPointsTextEl.textContent = t.totalPointsInfo;
+              totalPointsNumberEl.textContent = totalPoints.toLocaleString();
+              bonusPointsDisplayEl.innerHTML = `(${t.rechargeInfo}${directPoints} + <span class="yellow-text">${t.discountInfo}${bonusPoints}</span>)`;
+            } else {
+              totalPointsTextEl.textContent = "";
+              totalPointsNumberEl.textContent = "";
+              bonusPointsDisplayEl.textContent = "";
+            }
+          }
+
+          // Calculate and display max images and videos
+          const maxImages = Math.floor(totalPoints / IMAGE_COST);
+          const maxVideos = Math.floor(totalPoints / VIDEO_COST);
+        };
+
+        // Function to render amount cards
+        const renderAmountCards = () => {
+          // This function will now use selectedProvider and selectedMethod
+          // to get the amounts from the paymentProviders global variable.
+          let amounts = [];
+          let currency = "USDT"; // Default currency
+
+          if (selectedProvider && selectedMethod && paymentProviders[selectedProvider]) {
+            const providerData = paymentProviders[selectedProvider];
+            const methodData = providerData.methods.find((m) => m.type === selectedMethod);
+            if (methodData && methodData.money) {
+              amounts = methodData.money.map(parseFloat);
+            }
+          }
+
+          const config = getPaymentMethodConfig(); // Get config based on selected values
+          currency = config.currency;
+
+          amountCardsGrid.innerHTML = ""; // Clear existing cards
+
+          if (amounts.length === 0) {
+            amountCardsGrid.innerHTML = `<p style="color: var(--text-secondary-color); text-align: center;">No amounts available for this payment method.</p>`;
+            selectedAmount = 0; // Reset selected amount
+            return;
+          }
+
+          amounts.forEach((amount) => {
+            const amountCardDiv = document.createElement("div");
+            amountCardDiv.classList.add("amount-card");
+            amountCardDiv.dataset.amount = amount;
+            const { ratio } = getPaymentMethodRatioAndPrecision();
+            const directPoints = Math.round(amount * ratio);
+            const t = translations[lang] || translations.en; // Get current language translations
+            let pointsDisplay = `${directPoints} ${t.pointsText}`;
+            let totalPointsForCard = directPoints;
+
+            if (discountRate > 0) {
+              const bonusPoints = Math.round(directPoints * discountRate);
+              totalPointsForCard += bonusPoints;
+              pointsDisplay += ` (<span class="yellow-text">+${bonusPoints}</span>)`;
+            }
+
+            amountCardDiv.innerHTML = `
+              <span class="amount-value">${amount} ${currency}</span>
+              <span class="amount-currency">${pointsDisplay}</span>
+            `;
+            amountCardDiv.addEventListener("click", () => {
+              document.querySelectorAll(".amount-card").forEach((card) => {
+                card.classList.remove("selected");
+                // Remove existing card-info-footer
+                const existingFooter = card.querySelector(".card-info-footer");
+                if (existingFooter) {
+                  existingFooter.remove();
+                }
+              });
+              amountCardDiv.classList.add("selected");
+              selectedAmount = parseFloat(amountCardDiv.dataset.amount);
+              totalPoints = totalPointsForCard; // Update global totalPoints
+              updateDiscountInfo(); // Call to update discount info
+
+              // Calculate and display max images and videos for the selected card
+              const maxImages = Math.floor(totalPoints / IMAGE_COST);
+              const maxVideos = Math.floor(totalPoints / VIDEO_COST);
+
+              const cardInfoFooter = document.createElement("div");
+              cardInfoFooter.classList.add("card-info-footer");
+
+              const marqueeContentWrapper = document.createElement("span");
+              marqueeContentWrapper.classList.add("marquee-content-wrapper");
+              marqueeContentWrapper.textContent = t.maxImagesText.replace("{num}", maxImages.toLocaleString()).replace("{num_videos}", maxVideos.toLocaleString());
+
+              cardInfoFooter.appendChild(marqueeContentWrapper);
+              amountCardDiv.appendChild(cardInfoFooter);
+
+              // After appending and rendering, check for overflow and apply animation
+              setTimeout(() => {
+                const containerWidth = cardInfoFooter.clientWidth;
+                const contentWidth = marqueeContentWrapper.scrollWidth;
+
+                if (contentWidth > containerWidth) {
+                  cardInfoFooter.style.justifyContent = 'flex-start'; // Align left for scrolling
+                  const scrollOffset = containerWidth - contentWidth - 5; // Subtract 5px for a small margin
+                  marqueeContentWrapper.style.setProperty('--scroll-offset', `${scrollOffset}px`);
+                  marqueeContentWrapper.style.animationPlayState = 'running';
+                  const animationDuration = contentWidth / 80; // Adjust speed as needed
+                  marqueeContentWrapper.style.animationDuration = `${animationDuration}s`;
+                } else {
+                  cardInfoFooter.style.justifyContent = 'center'; // Center if not scrolling
+                  marqueeContentWrapper.style.animationPlayState = 'paused';
+                  marqueeContentWrapper.style.transform = 'translateX(0)';
+                }
+              }, 0);
+            });
+            amountCardsGrid.appendChild(amountCardDiv);
+          });
+
+          // Automatically select the first amount card if none is selected, or re-select if available
+          let cardToSelect = null;
+          if (selectedAmount !== 0) {
+            // Try to re-select the previously selected amount
+            cardToSelect = amountCardsGrid.querySelector(`.amount-card[data-amount="${selectedAmount}"]`);
+          }
+          if (!cardToSelect && amounts.length > 0) {
+            // If no previous selection or not found, select the first one
+            cardToSelect = amountCardsGrid.querySelector(".amount-card");
+          }
+
+          if (cardToSelect) {
+            cardToSelect.click(); // Simulate a click to select it and trigger the info footer
+          } else {
+            selectedAmount = 0; // Reset if no card was selected
+            totalPoints = 0;
+            updateDiscountInfo(); // Ensure discount info is cleared if no selection
+          }
+        };
+
+        const createMethodItemElement = (method) => {
+          const methodItemDiv = document.createElement("div");
+          methodItemDiv.classList.add("method-item");
+          methodItemDiv.dataset.provider = method.provider;
+          methodItemDiv.dataset.type = method.type;
+          methodItemDiv.dataset.frontendType = method.frontendType; // Store original frontend type for config lookup
+          
+          // Use translated name if available, otherwise fallback to default name
+          const displayName = method.name_i18n && translations[lang] && method.name_i18n[lang.toLowerCase()] ? method.name_i18n[lang.toLowerCase()] : method.name;
+
+          methodItemDiv.innerHTML = `
+                    <div class="icon-wrapper"><img src="${method.icon}" alt="${displayName}"></div>
+                    <span>${displayName}</span>
+                `;
+          return methodItemDiv;
+        };
+
+        // Function to validate selected amount (returns true if valid, false if invalid)
+        const validatePaymentValues = () => {
+          if (!selectedProvider || !selectedMethod) {
+            return false;
+          }
+
+          const providerData = paymentProviders[selectedProvider];
+          if (!providerData) return false;
+
+          const methodData = providerData.methods.find((m) => m.type === selectedMethod);
+          if (!methodData || !methodData.money) return false;
+
+          const amounts = methodData.money.map(parseFloat);
+          if (selectedAmount <= 0 || !amounts.includes(selectedAmount)) {
+            const config = getPaymentMethodConfig();
+            alert(`${translations[lang].alertSetCorrectAmount} (${amounts.join(", ")} ${config.currency})`);
+            return false;
+          }
+          return true;
+        };
+
+        // Function to get current payment method config (now uses selectedProvider and selectedMethod)
+        const getPaymentMethodConfig = () => {
+          if (!selectedProvider || !selectedMethod) {
+            return { currency: "USDT", precision: currencyPrecision.usdt, ratioKey: "usdt" }; // Default
+          }
+
+          const providerData = paymentProviders[selectedProvider];
+          const methodData = providerData?.methods.find((m) => m.type === selectedMethod);
+
+          if (methodData) {
+            // New logic: Prioritize 'payMent' field if it looks like a currency string (e.g., "USD", "USDT")
+            if (methodData.payMent && /^[a-zA-Z]+$/.test(methodData.payMent)) {
+              const paymentCurrency = methodData.payMent.toLowerCase();
+              // pointsRatios uses 'rmb' for Chinese currency
+              const ratioKey = paymentCurrency === "cny" ? "rmb" : paymentCurrency;
+              if (pointsRatios[ratioKey] !== undefined) {
+                return {
+                  currency: paymentCurrency.toUpperCase(),
+                  precision: currencyPrecision[ratioKey] || 1,
+                  ratioKey: ratioKey,
+                };
+              }
+            }
+
+            // Fallback to original logic for cases like alipay/wechat where 'payMent' is a code
+            if (methodData.type.toLowerCase().includes("alipay") || methodData.type.toLowerCase().includes("wechat")) {
+              return { currency: "CNY", precision: currencyPrecision.cny, ratioKey: "rmb" };
+            }
+          }
+          // Fallback if no specific logic matches
+          return { currency: "USDT", precision: currencyPrecision.usdt, ratioKey: "usdt" };
+        };
+
+        // Function to get payment method ratio and precision
+        const getPaymentMethodRatioAndPrecision = () => {
+          const config = getPaymentMethodConfig();
+
+          let ratio = 10; // Default ratio
+          let precision = config.precision;
+
+          // Get ratio based on payment method
+          if (pointsRatios[config.ratioKey]) {
+            ratio = pointsRatios[config.ratioKey];
+          }
+
+          return { ratio, precision, currency: config.currency };
+        };
+
+        // Update currency symbol and sync amount when payment method changes
+        // This event listener will be attached after paymentMethodsData is populated and rendered
+        methodsGrid.addEventListener("click", (event) => {
+          const clickedItem = event.target.closest(".method-item");
+          if (!clickedItem) return;
+
+          // Remove 'selected' class from all items
+          document.querySelectorAll(".method-item").forEach((item) => {
+            item.classList.remove("selected");
+          });
+          // Add 'selected' class to the clicked item
+          clickedItem.classList.add("selected");
+
+          // Update global selectedProvider and selectedMethod
+          selectedProvider = clickedItem.dataset.provider;
+          selectedMethod = clickedItem.dataset.type;
+
+          // Render amount cards for the new payment method
+          renderAmountCards();
+        });
+
+        // Function to get discount rate from backend API (user info endpoint)
+        const fetchDiscountRate = async () => {
+          try {
+            if (uid && frtoken) {
+              const response = await fetch(`${payment}user-profiles/me`, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${frtoken}`,
+                },
+              });
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data && data.data.discountRate !== undefined) {
+                  discountRate = parseFloat(data.data.discountRate);
+                  return isNaN(discountRate) ? 0 : discountRate;
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Error getting discount rate:", error);
+          }
+          return 0;
+        };
+
+        // Function to get points ratio and channel values for different payment methods
+        const getPaymentSettings = async () => {
+          try {
+            const response = await fetch(`${payment}payment-orders/settings`, {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${frtoken}`,
+              },
+            });
+
+            const data = await response.json();
+
+            if (data.data && data.data.pointsRatios && data.data.paymentProviders) {
+              const result = {
+                ratios: data.data.pointsRatios || [],
+                paymentProviders: data.data.paymentProviders || {},
+              };
+
+              // 将数组转换为以 currency 为键、ratio 为值的映射
+              result.ratios = result.ratios.reduce((map, item) => {
+                const key = item.currency.toLowerCase();
+                const value = parseFloat(item.ratio);
+                map[key] = isNaN(value) ? item.ratio : value;
+                return map;
+              }, {});
+
+              return result;
+            } else {
+              throw new Error("Failed to get payment settings");
+            }
+          } catch (error) {
+            console.error("Error getting payment settings:", error);
+            return {
+              ratios: { usdt: 33, trx: 3, eth: 222, rmb: 15 }, // Default ratios
+              paymentProviders: {
+                // Default payment providers
+                shark_pay: {
+                  provider: "shark_pay",
+                  status: "active",
+                  methods: [{ money: ["30", "50", "100"], payMent: "1001", name: "支付宝", type: "fixedAlipay", display_name: "支付宝" }],
+                },
+                wallets_pay: {
+                  provider: "wallets_pay",
+                  status: "active",
+                  methods: [{ money: ["30", "50", "100"], payMent: "USDT", name: "USDT", type: "USDT", display_name: "USDT" }],
+                },
+              },
+            }; // Default values on error
+          }
+        };
+
+        // Key for storing the selected payment method in localStorage
+        const LOCAL_STORAGE_PAYMENT_METHOD_KEY = "selectedPaymentMethod";
+
+        // Function to save selected payment method to localStorage
+        const saveSelectedPaymentMethod = () => {
+          if (selectedProvider && selectedMethod) {
+            const methodToStore = {
+              provider: selectedProvider,
+              type: selectedMethod,
+            };
+            window.localStorage.setItem(LOCAL_STORAGE_PAYMENT_METHOD_KEY, JSON.stringify(methodToStore));
+          }
+        };
+
+        // Function to load selected payment method from localStorage and apply
+        const loadAndSelectPaymentMethod = () => {
+          const storedMethod = window.localStorage.getItem(LOCAL_STORAGE_PAYMENT_METHOD_KEY);
+          if (storedMethod) {
+            try {
+              const { provider, type } = JSON.parse(storedMethod);
+              const targetMethodElement = methodsGrid.querySelector(`[data-provider="${provider}"][data-type="${type}"]`);
+              if (targetMethodElement) {
+                targetMethodElement.click(); // Simulate a click to select it
+              }
+            } catch (e) {
+              console.error("Failed to parse stored payment method from localStorage:", e);
+              window.localStorage.removeItem(LOCAL_STORAGE_PAYMENT_METHOD_KEY); // Clear invalid data
+            }
+          }
+        };
+
+        try {
+          showLoading("loading...");
+          const response = await getPaymentSettings();
+          pointsRatios = response.ratios || {};
+          paymentProviders = response.paymentProviders || {};
+
+          // Dynamically populate paymentMethodsData and render methods grid
+          methodsGrid.innerHTML = ""; // Clear existing methods
+          paymentMethodsData = []; // Clear dynamic data
+
+          paymentMethodsMapping.forEach((mapItem) => {
+            const providerKey = mapItem.providerAlias;
+            if (paymentProviders[providerKey] && paymentProviders[providerKey].status === "active") {
+              paymentProviders[providerKey].methods.forEach((backendMethod) => {
+                // If backendTypes is not configured (empty or undefined), directly match based on providerAlias.
+                // Otherwise, use the backendTypes matching logic.
+                const backendTypesNotConfigured = !mapItem.backendTypes || mapItem.backendTypes.length === 0;
+                const matchesBackendType = mapItem.backendTypes.some((type) => backendMethod.type.toLowerCase().includes(type.toLowerCase()));
+
+                if (backendTypesNotConfigured || matchesBackendType) {
+                  // Only add if the backend method is active and matches a frontend mapping
+                  const methodItem = {
+                    name: mapItem.name,
+                    icon: mapItem.icon,
+                    frontendType: mapItem.frontendType, // Keep frontend type for compatibility with getPaymentMethodConfig
+                    provider: providerKey, // Backend provider key
+                    type: backendMethod.type, // Backend method type
+                    name_i18n: mapItem.name_i18n || null, // Include name_i18n if it exists
+                  };
+                  paymentMethodsData.push(methodItem);
+                }
+              });
+            }
+          });
+
+          paymentMethodsData.sort((a, b) => {
+            const order_zh = ["ALIPAY", "WECHAT", "Bagelpay", "usdt"];
+            const order_other = ["Bagelpay", "ALIPAY", "WECHAT", "usdt"];
+
+            const currentOrder = lang === "zh-hans" || lang === "zh-hant" ? order_zh : order_other;
+
+            const indexA = currentOrder.indexOf(a.frontendType);
+            const indexB = currentOrder.indexOf(b.frontendType);
+
+            // If a method is not in the defined order, place it at the end
+            const finalIndexA = indexA === -1 ? currentOrder.length : indexA;
+            const finalIndexB = indexB === -1 ? currentOrder.length : indexB;
+
+            return finalIndexA - finalIndexB;
+          });
+
+          paymentMethodsData.forEach((method) => {
+            const methodElement = createMethodItemElement(method);
+            methodsGrid.appendChild(methodElement);
+          });
+
+          // Set USDT (or first available method) as initially selected
+          if (paymentMethodsData.length > 0) {
+            const firstMethod = paymentMethodsData[0];
+            const firstMethodElement = methodsGrid.querySelector(`[data-provider="${firstMethod.provider}"][data-type="${firstMethod.type}"]`);
+            if (firstMethodElement) {
+              firstMethodElement.classList.add("selected");
+              selectedProvider = firstMethod.provider;
+              selectedMethod = firstMethod.type;
+            }
+          }
+
+          // Initial render of amount cards
+          renderAmountCards();
+
+          // After initial rendering, load and apply stored payment method if any
+          loadAndSelectPaymentMethod();
+
+          hideLoading();
+        } catch (error) {
+          console.error("Error getting payment settings on page load:", error);
+          hideLoading();
+        }
+
+        // Fetch discount rate on page load
+        try {
+          await fetchDiscountRate();
+          // After fetching discount rate, re-render cards and update info
+          renderAmountCards();
+          updateDiscountInfo();
+        } catch (error) {
+          console.error("Error fetching discount rate on page load:", error);
+        }
+
+        // Function to show loading overlay
+        function showLoading(message) {
+          const loadingOverlay = document.getElementById("loading-overlay");
+          const loadingText = document.getElementById("loading-text");
+          loadingText.textContent = message;
+          loadingOverlay.style.display = "flex";
+        }
+
+        // Function to hide loading overlay
+        function hideLoading() {
+          const loadingOverlay = document.getElementById("loading-overlay");
+          loadingOverlay.style.display = "none";
+        }
+
+        // Function to create order
+        async function createOrder(totalPrice, paymentMethod) {
+          try {
+            const apiUrl = `${payment}payment-orders`;
+
+            let requestBody;
+            requestBody = {
+              amount: totalPrice,
+              payment_method: selectedMethod,
+              provider: selectedProvider,
+            };
+            if (selectedMethod == "USDT") {
+              requestBody.network = "TRON";
+            }
+            if (from_url) {
+              requestBody.success_url = from_url;
+            } else {
+              requestBody.success_url = window.location.href;
+            }
+            const headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${frtoken}`,
+            };
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const res = await response.json();
+
+            if (res.success) {
+              return res.data;
+            } else {
+              throw new Error(res.message || "Order creation failed");
+            }
+          } catch (error) {
+            console.error("Error creating order:", error);
+            throw error;
+          }
+        }
+
+        // Handle Pay now button click
+        payNowButton.addEventListener("click", async () => {
+          // Get the amount from the selected card
+          const totalPrice = selectedAmount;
+          // paymentMethod is now derived from selectedProvider and selectedMethod implicitly
+
+          if (!uid) {
+            alert(translations[lang].alertAccountError);
+            return;
+          }
+          if (totalPrice <= 0) {
+            alert(translations[lang].alertSetCorrectAmount);
+            return;
+          }
+
+          // Validate payment values before proceeding
+          if (!validatePaymentValues()) {
+            return;
+          }
+
+          if (typeof gtag === "function" && selectedMethod && selectedAmount) {
+            gtag("event", "recharge_confirm", {
+              type: selectedMethod,
+              amount: selectedAmount.toString(),
+            });
+          }
+
+          // Show loading overlay
+          showLoading(translations[lang].loadingMessage);
+
+          try {
+            // Save the selected payment method before proceeding
+            saveSelectedPaymentMethod();
+
+            if (selectedMethod.toLowerCase().includes("alipay") || selectedMethod.toLowerCase().includes("wechat") || selectedProvider === "pig_pay") {
+              const orderData = await createOrder(totalPrice, selectedMethod);
+
+              // Hide loading overlay before redirecting
+              hideLoading();
+
+              if (orderData.address) {
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+                  window.Telegram.WebApp.openLink(orderData.address);
+                } else {
+                  // window.open(orderData.address, '_blank');
+                  window.location.href = orderData.address;
+                }
+              } else {
+                throw new Error("No payment URL received");
+              }
+            } else if (selectedMethod === "USDT") {
+              // For USDT payment, use the original logic
+              const orderData = await createOrder(totalPrice, selectedMethod);
+
+              // Hide loading overlay before redirecting
+              hideLoading();
+
+              // Construct the payment URL with order data and points
+              const paymentUrl =
+                `/static/transfer.html?uid=${uid}&price=${totalPrice}&lang=${lang}&cid=${cid}` +
+                `&order_uuid=${encodeURIComponent(orderData.order_uuid)}` +
+                `&address=${encodeURIComponent(orderData.address)}` +
+                `&token=${encodeURIComponent(orderData.token)}` +
+                `&created_at=${Math.floor(new Date(orderData.createdAt).getTime() / 1000)}` +
+                `&network=${encodeURIComponent(orderData.network)}` +
+                `&points=${totalPoints}` +
+                `${from_url ? `&from_url=${encodeURIComponent(from_url)}` : ''}`;
+
+              // Redirect to transfer page
+              window.location.href = paymentUrl;
+            } else {
+              throw new Error("Unsupported payment method selected.");
+            }
+          } catch (error) {
+            // Hide loading overlay on error
+            hideLoading();
+
+            // Show error message
+            alert(translations[lang].orderCreateFailed + error.message);
+          }
+        });
+      });
+    </script>
+    <!-- GA Events -->
+    <script>
+      window.addEventListener("beforeunload", function () {
+        if (typeof gtag === "function") {
+          gtag("event", "recharge_exit");
+        }
+      });
+    </script>
+  </body>
+</html>

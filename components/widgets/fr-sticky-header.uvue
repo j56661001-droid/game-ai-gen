@@ -1,0 +1,56 @@
+<template>
+  <sticky-header ref="stickyHeaderRef" :padding="props.padding">
+    <slot :is-top="isTop"></slot>
+  </sticky-header>
+</template>
+
+<script setup lang="uts">
+type Props = {
+  padding?: any;
+};
+
+const props = defineProps<Props>();
+
+const stickyHeaderRef = ref<UniStickyHeaderElement | null>(null);
+const isTop = ref<boolean>(false);
+
+function getScrollParent(element: UniElement | null, level = 1): UniElement | null {
+  if (!element) {
+    return null;
+  }
+
+  // 最多查询 5层 父节点
+  if (level > 5) {
+    return null;
+  }
+
+  const classNames = element.getAttribute("class")?.split(" ");
+  if (classNames != null && classNames.includes("uni-scroll-view")) {
+    return element;
+  }
+
+  return getScrollParent(element.parentElement as UniElement, level + 1);
+}
+
+const parentScrollHandler = () => {
+  const rect = stickyHeaderRef.value?.getBoundingClientRect();
+
+  isTop.value = rect?.top == 0;
+};
+
+onMounted(() => {
+  const parentScroll = getScrollParent(stickyHeaderRef.value);
+  if (parentScroll != null) {
+    parentScroll.addEventListener("scroll", parentScrollHandler);
+  }
+});
+
+onUnmounted(() => {
+  const parentScroll = getScrollParent(stickyHeaderRef.value);
+  if (parentScroll != null) {
+    parentScroll.removeEventListener("scroll", parentScrollHandler);
+  }
+});
+</script>
+
+<style scoped></style>

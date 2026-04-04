@@ -1,0 +1,43 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="page-container">
+      <fr-page-navbar :title="props.title">
+        <template #title>
+          <slot name="navbar-title"></slot>
+        </template>
+        <template #actions>
+          <slot name="navbar-actions"></slot>
+        </template>
+      </fr-page-navbar>
+      <view v-if="!props.enabledScrollY" class="page-body">
+        <slot></slot>
+      </view>
+      <scroll-view v-else :direction="props.scrollDirection" class="page-body">
+        <slot></slot>
+      </scroll-view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import FrPageNavbar from "./fr-page-navbar.uvue";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+
+type Props = {
+  title?: string;
+  enabledScrollY?: boolean;
+  scrollDirection?: "none" | "all" | "horizontal" | "vertical";
+};
+
+const props = withDefaults(defineProps<Props>(), { enabledScrollY: false });
+</script>
+
+<style scoped>
+.page-container {
+  flex: 1;
+}
+
+.page-body {
+  flex: 1;
+}
+</style>

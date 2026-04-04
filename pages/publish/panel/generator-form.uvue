@@ -1,0 +1,391 @@
+<template>
+  <view class="generator-form-root">
+  <scroll-view class="config-container" :show-scrollbar="false" @scrolltolower="onScrollViewScrollToLower">
+    <view v-for="item in (formItems as ComponentInfo[])" :key="item.key" class="form-item">
+      <template v-if="shouldShowComponent(item)">
+        <text class="title">{{ fmtBackendLang(item.label) }}</text>
+        <view v-if="item.type == 'textarea'" style="position: relative">
+          <textarea
+            class="prompt-textarea"
+            :placeholder="fmtBackendLang(item.placeholder) || $i18n_t('publish.imagePlaceholder')"
+            :maxlength="500"
+            :value="config[item.key]"
+            @input="onConfigChange(item.key, $event.detail?.value)"
+          ></textarea>
+          <!-- <text class="textarea-length"> {{ promptSize }}/{{ PROMPT_SIZE }}</text> -->
+        </view>
+        <card-case v-else-if="item.type == 'case'" :options="parseSelectOptions(item.options!)">
+          <template #default="p:CardSelectorSlot">
+            <text class="video-quality-title" :class="{ 'video-quality-title-with-margin': p.option?.image != null && p.option?.isCorrect != null }">{{
+              p.option?.title
+            }}</text>
+            <text class="video-quality-text">{{ p.option?.label }}</text>
+          </template>
+        </card-case>
+        <card-selector
+          v-else-if="item.type == 'select'"
+          :options="parseSelectOptions(item.options!)"
+          :value="config[item.key]"
+          @change="onConfigChange(item.key, $event)"
+        >
+          <template #default="p:CardSelectorSlot">
+            <text class="video-quality-title">{{ p.option?.title }}</text>
+            <text class="video-quality-text">{{ p.option?.label }}</text>
+          </template>
+        </card-selector>
+        <fr-image-uploader
+          v-else-if="item.type == 'image'"
+          :value="config[item.key]"
+          @change="onConfigChange(item.key, $event)"
+          customUploader
+          @customUploader="onShowDrawer(item.key, 'image')"
+        ></fr-image-uploader>
+        <fr-video-uploader
+          v-else-if="item.type == 'video'"
+          :value="config[item.key]"
+          @change="onConfigChange(item.key, $event)"
+          customUploader
+          @customUploader="onShowDrawer(item.key, 'video')"
+        ></fr-video-uploader>
+        <fr-input
+          v-else-if="item.type == 'input'"
+          :placeholder="fmtBackendLang(item.placeholder) || $i18n_t('publish.imagePlaceholder')"
+          :value="config[item.key]"
+          :max-length="item.maxLength"
+          @input="onConfigChange(item.key, $event)"
+        ></fr-input>
+        <fr-input
+          v-else-if="item.type == 'number'"
+          :placeholder="fmtBackendLang(item.placeholder) || $i18n_t('publish.imagePlaceholder')"
+          type="number"
+          :value="config[item.key]"
+          :min-value="item.minValue"
+          :max-value="item.maxValue"
+          @input="onConfigChange(item.key, $event)"
+        ></fr-input>
+        <text v-if="errorInfo[item.key] != null" style="color: red; font-size: 12px; margin-top: 6px">{{ errorInfo[item.key] }}</text>
+      </template>
+    </view>
+    <view style="height: 60px"></view>
+    <!-- 探索同类列表 -->
+    <view v-if="relatedItems.length > 0" class="explore-related-container">
+      <text class="explore-related-title">{{ $i18n_t('publish.exploreRelated') }}</text>
+      <adaptive-web-waterfall-n
+        :items="relatedItems"
+      >
+        <template #default="{ item, onItemReady }">
+          <view class="waterfall-item">
+            <bp-media-display
+              class="item-image"
+              :type="item.contentType"
+              :src="item.mediaMetadata[0]?.fileURL"
+              :cover="item.mediaMetadata[0]?.cover?.fileURL"
+              :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+              @click="handleItemClick(item)"
+              @load="() => onItemReady(item.id)"
+            ></bp-media-display>
+          </view>
+        </template>
+      </adaptive-web-waterfall-n>
+      <fr-more-status v-if="relatedItems.length > 0" :loading="relatedLoading" :has-more="relatedHasMore"></fr-more-status>
+    </view>
+  </scroll-view>
+
+
+
+  <!-- 上传资产弹窗 -->
+  <uploader-resources :show="!!showDrawerKey" @close="onDrawerClose" @change="onDrawerChange" :resourceType="resourceType"></uploader-resources>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { CardSelectorOption, CardSelectorSlot, ComponentInfo, CardSelectorValue } from "./type.uts";
+import CardSelector from "./card-selector.uvue";
+import CardCase from "./card-case.uvue";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import FrImageUploader from "@/components/widgets/fr-image-uploader.uvue";
+import FrInput from "@/components/widgets/fr-input.uvue";
+import FrVideoUploader from "@/components/widgets/fr-video-uploader.uvue";
+import UploaderResources from "./uploader-resources.uvue";
+import AdaptiveWebWaterfallN from "@/components/WebWaterfall/AdaptiveWebWaterfallN.uvue"; // 导入瀑布流组件
+import { getPosts } from "@/api/home.uts"; // 导入 API
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import { setVideoResourceList, setVideoInitialIndex } from "@/store/index.uts"; // 新增导入
+import { PostItem } from "@/types"; // 导入 PostItem 类型
+
+type ResourceType = 'image' | 'video' | null;
+
+// 上传资产抽屉是否打开，key用于记录是哪个组件打开的
+const showDrawerKey = ref<string | null>(null);
+const resourceType = ref<ResourceType>(null);
+
+const onShowDrawer = (key: string, type: ResourceType) => {
+  showDrawerKey.value = key;
+  resourceType.value = type;
+};
+const onDrawerClose = () => {
+  showDrawerKey.value = null;
+  // resourceType.value = null;
+};
+
+const onDrawerChange = (value: string) => {
+  onConfigChange(showDrawerKey.value, value)
+  showDrawerKey.value = null;
+};
+
+const parseSelectOptions = (options: CardSelectorOption[]): CardSelectorOption[] => {
+  if (options != null) {
+    return options.map(
+      (opt): CardSelectorOption => ({
+        ...opt,
+        title: fmtBackendLang(opt.label),
+        label: fmtBackendLang(opt.description),
+      }),
+    );
+  }
+
+  return [];
+};
+
+const PROMPT_SIZE = 500;
+
+const props = withDefaults(defineProps<{ fields?: ComponentInfo[], toolId?: string | null }>(), { fields: [], toolId: null });
+
+const config = ref<UTSJSONObject>({});
+const errorInfo = ref<UTSJSONObject>({});
+
+const formItems = computed((): ComponentInfo[] => {
+  return props.fields != null ? props.fields : [];
+});
+
+const onConfigChange = (name: string, value: any) => {
+  /** 提示词长度不能超过500 */
+  if (name == "prompt" && value?.length > PROMPT_SIZE) {
+    return;
+  }
+
+  config.value[name] = value;
+};
+
+const shouldShowComponent = (item: ComponentInfo): boolean => {
+  if (!item.dependsOn) {
+    return true;
+  }
+
+  const dependentValue: CardSelectorValue = config.value[item.dependsOn.key];
+  return item.dependsOn.values.includes(dependentValue);
+};
+
+const validateConfig = (): boolean => {
+  let pass = true;
+  errorInfo.value = {};
+  props.fields?.forEach((f) => {
+    if (f.type == "case") {
+      return;
+    }
+
+    // Only validate required fields that are currently visible
+    if (shouldShowComponent(f)) {
+      if (f.required == true && (config.value[f.key] == null || config.value[f.key] === "")) {
+        pass = false;
+        errorInfo.value[f.key] = $i18n_t("common.regexp.required", { field: fmtBackendLang(f.label) });
+      } else if (
+        (f.type === "input" || f.type === "textarea") &&
+        f.minLength != null &&
+        config.value[f.key] != null &&
+        config.value[f.key].length < f.minLength
+      ) {
+        pass = false;
+        errorInfo.value[f.key] = $i18n_t("common.regexp.minLength", { field: fmtBackendLang(f.label), minLength: f.minLength });
+      }
+    }
+  });
+
+  return pass;
+};
+
+const submitForm = (cb: (c: UTSJSONObject) => void) => {
+  const pass = validateConfig();
+  if (!pass) {
+    return;
+  }
+
+  cb(config.value);
+};
+
+const resetForm = () => {
+  config.value = {};
+};
+
+// 瀑布流相关状态
+const relatedItems = ref<any[]>([]);
+const relatedPage = ref(1);
+const relatedPageSize = 10;
+const relatedHasMore = ref(true);
+const relatedLoading = ref(false); // 控制加载状态，避免重复请求
+const currentToolId = ref<string | null>(null);
+
+// 加载相关列表数据
+const loadRelatedItems = async (aiToolID: string | null) => {
+  if (aiToolID == null || relatedLoading.value || !relatedHasMore.value) {
+    return;
+  }
+  relatedLoading.value = true;
+  try {
+    const res = await getPosts(relatedPage.value, relatedPageSize, { aiToolID });
+    if (res?.data) {
+      relatedItems.value = [...relatedItems.value, ...res.data];
+      if (res.data.length < relatedPageSize) {
+        relatedHasMore.value = false;
+      } else {
+        relatedPage.value++;
+      }
+    } else {
+      relatedHasMore.value = false;
+    }
+  } catch (error) {
+    console.error("Failed to load related items:", error);
+    relatedHasMore.value = false;
+  } finally {
+    relatedLoading.value = false;
+  }
+};
+
+// for you item
+const handleItemClick = (item: PostItem) => {
+  setVideoResourceList([item]);
+  setVideoInitialIndex(0);
+  uni.navigateTo({ url: "/pages/video?source=foryou" });
+};
+
+const loadRelated = (toolId: string) => {
+  currentToolId.value = toolId;
+  relatedItems.value = []; // 清空列表，重新加载
+  relatedPage.value = 1;
+  relatedHasMore.value = true; // 重置hasMore状态
+  loadRelatedItems(toolId);
+}
+
+const onScrollViewScrollToLower = () => {
+  loadRelatedItems(currentToolId.value);
+}
+
+watch(
+  () => props.toolId,
+  (newToolId) => {
+    if (newToolId != null) {
+      loadRelated(newToolId);
+    }
+  },
+  { immediate: true }
+);
+
+defineExpose({
+  submit: submitForm,
+  reset: resetForm,
+  setValues: (data: UTSJSONObject) => {
+    config.value = data != null ? data : {};
+  },
+});
+</script>
+
+<style scoped>
+.generator-form-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-container {
+  flex: 1;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.form-item {
+  max-width: 900px;
+  width: 100%;
+}
+
+.section-card {
+  margin: 12px 0;
+}
+
+.prompt-textarea {
+  height: 130px;
+  width: 100%;
+  padding: 16px;
+  font-size: 12px;
+  background-color: #1a1a1a;
+  color: #fff;
+  border-radius: 4px;
+}
+
+.title {
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-weight: 700;
+  font-size: 14px;
+  color: #ffffff;
+  line-height: 22px;
+  margin: 12px 0;
+}
+
+.textarea-length {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  color: #707070;
+  z-index: 10;
+  font-size: 12px;
+}
+
+.video-quality-title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.video-quality-text {
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.video-quality-title-with-margin {
+  margin-top: 20px;
+}
+.explore-related-container {
+  margin-top: 20px;
+  padding: 0 15px;
+  padding-bottom: 80px; /* 留出底部按钮的空间 */
+  width: 100%;
+}
+
+.explore-related-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 15px;
+  text-align: center;
+  display: block;
+}
+
+.waterfall-item-placeholder {
+  background-color: #333; /* 占位背景色 */
+  color: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.no-more-data {
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  margin-top: 20px;
+  display: block;
+}
+</style>

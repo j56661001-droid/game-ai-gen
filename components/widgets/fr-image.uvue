@@ -1,0 +1,28 @@
+<template>
+  <image class="fr-image" :src="sourceUrl" :mode="props.mode" @error="onError"></image>
+</template>
+
+<script setup lang="uts">
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+type Props = {
+  src: string.ImageURIString;
+  mode?: string;
+  fallback?: string.ImageURIString;
+};
+
+const props = defineProps<Props>();
+
+const sourceUrl = computed((): string.ImageURIString => (props.src != null ? getAbsoluteMediaUrl(props.src) : props.fallback));
+
+const onError = (e: UniImageErrorEvent) => {
+  console.error("Image load error: ", e);
+  // TODO:  fallback
+};
+</script>
+ß
+<style scoped>
+.fr-image {
+  background-color: #1a1a1a;
+  border-radius: 4px;
+}
+</style>

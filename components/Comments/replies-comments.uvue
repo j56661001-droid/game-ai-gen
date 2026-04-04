@@ -1,0 +1,196 @@
+<template>
+  <view class="replies-list">
+    <view v-for="(reply, replyIndex) in replies" :key="reply.id" class="comment-item reply-item">
+      <fr-avatar class="avatar" :url="reply.author.avatar" />
+      <view class="comment-content">
+        <view style="flex-direction: row; align-items: center">
+          <text class="username">{{ reply.author.username }}</text>
+          <template v-if="reply.mentions?.[0] != null">
+            <icon-font name="forward_outlined" :size="8" color="#707070" style="margin: 0 12px; margin-bottom: 5px"></icon-font>
+            <text class="username">{{ reply.mentions?.[0]?.username }}</text>
+          </template>
+        </view>
+        <fr-typography-paragraph class="text">{{ reply.content }}</fr-typography-paragraph>
+        <view class="comment-actions">
+          <view class="comment-info">
+            <text class="time">{{ fmtDateDisplay(reply.createdAt) }}</text>
+            <text class="reply-button" @click="replyToReply(reply)">{{ $i18n_t("account.reply") }}</text>
+          </view>
+          <IconFont name="like" class="like-button" :color="reply.isLiked ? '#FF23B8' : '#ffffff'" @click="toggleReplyLike(reply)" />
+        </view>
+      </view>
+    </view>
+    <view
+      v-if="pagination.page < pagination.pages"
+      style="flex-direction: row; align-items: center; justify-content: center; padding: 8px 0"
+      @click="onViewMore"
+    >
+      <view style="flex: 1; margin: 0 16px; border-top: 1px dashed #66b3ff"></view>
+      <text style="font-size: 12px; color: #66b3ff">{{ $i18n_t("common.viewMore") }}</text>
+      <view style="flex: 1; margin: 0 16px; border-top: 1px dashed #66b3ff"></view>
+    </view>
+    <!-- ADDED: Hide replies button -->
+    <view class="view-replies" @click="toggleReplies">
+      <text class="view-replies-text">{{ $i18n_t("account.hideReplies") }}</text>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { useLoadListRequest } from "@/hooks/index.uts";
+import { Comment } from "@/types/index.uts";
+import { fmtDateDisplay } from "@/utils/index.uts";
+import { FrTypographyParagraph, FrAvatar } from "@/components/widgets/index.uts";
+import IconFont from "../IconFont/IconFont.uvue";
+
+const props = defineProps<{ comment: UTSJSONObject }>();
+
+const emit = defineEmits<{
+  (e: "reply", topParent: Comment, info: Comment): void;
+  (e: "toggle:replies", comment: Comment): void;
+  (e: "toggle:like", info: Comment): void;
+}>();
+
+const { loadListRequest, reloadListRequest, loading, result } = useLoadListRequest({
+  url: `posts/${props.comment.postID}/comments`,
+  pageSize: 100,
+  shallow: false,
+  defaultParams: {
+    sortBy: "createdAt",
+    sortOrder: "asc",
+  },
+});
+
+const { records: replies, pagination } = toRefs<any>(result);
+
+const onViewMore = () => {
+  const nextPage = pagination.page + 1;
+  if (nextPage >= pagination.pages) {
+    return;
+  }
+
+  loadListRequest({ page: pagination.page + 1, parentCommentID: props.comment.id });
+};
+
+const pushRepliesHandler = (commentId: string, replyComment: Comment) => {
+  if (commentId == props.comment.id) {
+    result.records.push(replyComment);
+  }
+};
+
+onMounted(() => {
+  uni.$on("push:replies", pushRepliesHandler);
+
+  if (props.comment?.id) {
+    loadListRequest({ page: 1, parentCommentID: props.comment.id });
+  }
+});
+
+onUnmounted(() => {
+  uni.$off("push:replies", pushRepliesHandler);
+});
+
+const replyToReply = (c: Comment) => {
+  emit("reply", props.comment, c);
+};
+
+const toggleReplyLike = (c: Comment) => {
+  emit("toggle:like", c);
+};
+
+const toggleReplies = () => {
+  emit("toggle:replies", props.comment);
+};
+</script>
+
+<style scoped>
+.replies-list {
+  margin-top: 15px;
+  padding-left: 0px;
+  /* Indent replies */
+  /* border-left: 2px solid #333; */
+}
+
+.reply-item {
+  margin-bottom: 15px;
+  padding-right: 0;
+}
+
+.comment-item {
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 20px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  margin-right: 10px;
+}
+
+.comment-content {
+  flex: 1;
+}
+
+.comment-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: row;
+}
+
+.comment-info {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+}
+
+.time {
+  color: #888;
+  font-size: 13px;
+  margin-right: 15px;
+}
+
+.reply-button {
+  color: #aaa;
+  font-size: 13px;
+}
+
+.like-button {
+  font-size: 18px;
+}
+
+.view-replies {
+  margin-top: 8px;
+}
+
+.view-replies-text {
+  color: #66b3ff;
+  font-size: 13px;
+}
+
+.username {
+  color: #707070;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.text {
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  margin-bottom: 5px;
+}
+
+.reply-input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background-color: #fff;
+  height: 50px;
+}
+</style>

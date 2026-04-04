@@ -1,0 +1,128 @@
+
+export enum IconType {
+  GIFT = 'gift',
+  TROPHY = 'trophy',
+  NONE = 'none',
+}
+
+export type DailyCheckinItem = {
+  days: number; // 天数
+  date: string; // 日期 (YYYY-MM-DD)
+  points: number; // 积分
+  icon?: IconType; // 图标
+  locked?: boolean; // 是否被锁定
+  today?: boolean; // 是否是今天
+  active?: boolean; // 是否获得奖励
+};
+
+// 签到活动规则类型
+export type DailyCheckinDays = {
+  date: string; // 签到日期，格式为"YYYY-MM-DD"
+  is_signed_in: boolean; // 今日是否已签到
+  reward_points: number; // 普通签到获得的积分
+  has_special_reward: boolean; // 是否获得特殊奖励
+  milestone_reward: number; // 里程碑奖励积分
+}
+
+// 签到活动响应类型
+export type DailyCheckinResponse = {
+  days: DailyCheckinDays[];
+  summary: string; // 签到摘要信息，例如"Signed in 7 out of 30 days"
+  total_days: number; // 本次签到周期总天数
+  signed_days: number; // 已签到天数
+  continuous_days: number; // 连续签到天数
+  total_makeup_count: number; // 补签总次数
+  remaining_makeup_count: number; // 剩余补签次数
+  current_cycle_rewards_points: number; // 当前周期获得的总积分
+}
+
+// 签到响应类型
+// 签到奖励详情类型
+export type CheckinRewardDetail = {
+  rule_id: number; // 规则ID
+  rule_type: string; // 规则类型，例如"daily"
+  reward_type: string; // 奖励类型，例如"points"
+  reward_amount: number; // 奖励数额
+  is_extra: boolean; // 是否额外奖励
+  description: string; // 奖励描述
+};
+
+// 签到返回 record 字段类型
+export type CheckinRecord = {
+  id: string; // 签到记录ID
+  user_id: string; // 用户ID
+  activity_id: number; // 活动ID
+  sign_date: string; // 签到日期（YYYY-MM-DD）
+  sign_type: number; // 签到类型：1-正常签到，2-补签
+  continuous_days: number; // 连续签到天数
+  cycle_start_date: string; // 本周期开始日期
+  cycle_end_date: string; // 本周期结束日期
+  cycle_days: number; // 本周期总天数
+  base_reward_points: number; // 基础奖励积分
+  extra_reward_points: number; // 额外奖励积分
+  total_reward_points: number; // 本次获得的总积分
+  reward_details: CheckinRewardDetail[]; // 奖励详情列表
+  is_makeup: number; // 是否补签(0-否,1-是)
+  remaining_makeup_count: number; // 剩余补签次数
+  is_special_day: number; // 是否特殊日(0-否,1-是)
+  sign_in_time: string; // 签到时间（ISO字符串）
+};
+
+// 签到返回 stats 字段类型
+export type CheckinStats = {
+  id: string; // 签到统计ID
+  user_id: string; // 用户ID
+  activity_id: number; // 活动ID
+  total_sign_days: number; // 累计签到天数
+  continuous_days: number; // 当前连续签到天数
+  max_continuous_days: number; // 最大连续签到天数
+  current_cycle_start_date: string; // 当前周期开始日期
+  current_cycle_end_date: string; // 当前周期结束日期
+  current_cycle_sign_days: number; // 当前周期已签到天数
+  current_cycle_makeup_total: number; // 当前周期总补签次数
+  current_cycle_makeup_used: number; // 当前周期补签已使用次数
+  current_cycle_makeup_remaining: number; // 当前周期剩余补签次数
+  first_sign_date: string; // 首次签到日期
+  last_sign_date: string; // 最近一次签到日期
+  total_rewards_points: number; // 总奖励积分
+  current_cycle_rewards_points: number; // 本周期奖励积分
+};
+
+// 签到/补签 响应类型 
+export type CheckinResponse = {
+  success: boolean; // 签到是否成功
+  message: string; // 返回消息
+  record: CheckinRecord; // 签到记录
+  stats: CheckinStats; // 签到统计
+  points_awarded: number; // 本次奖励的积分
+  continuous_days: number; // 连续签到天数
+  remaining_makeups: number; // 剩余补签次数
+}
+
+export type CheckinRule = {
+  id: number; // 规则ID
+  activity_id: number; // 活动ID
+  rule_type: string; // 规则类型，例如"daily"
+  days: number; // 达成天数（如每日签到为0，连续签到为N）
+  reward_type: string; // 奖励类型，例如"points"
+  reward_amount: number; // 奖励数额
+  reward_item_id: number|null; // 奖励物品ID，若无则为null
+  is_extra_reward: number; // 是否为额外奖励(0-否,1-是)
+  is_special: number; // 是否为特殊奖励(0-否,1-是)
+  priority: number; // 优先级
+  is_active: number; // 是否启用(0-否,1-是)
+  description: string; // 规则描述
+  created_at: string; // 创建时间（ISO字符串）
+  updated_at: string; // 更新时间（ISO字符串）
+} 
+
+export type CheckinRulesResponse = {
+  activity_id: number; // 活动ID
+  activity_name: string; // 活动名称
+  activity_code: string; // 活动编码
+  activity_type: string; // 活动类型
+  cycle_days: number; // 周期天数
+  cycle_makeup_count: number; // 每周期补签次数
+  description: string; // 活动描述
+  rules: CheckinRule[]; // 签到规则列表
+}

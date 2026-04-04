@@ -1,0 +1,103 @@
+<template>
+  <scroll-view class="card-btns" direction="horizontal" :scroll-with-animation="true" :show-scrollbar="false">
+    <view
+      v-for="(opt, index) in props.options"
+      :id="`id_${index}`"
+      :key="opt.label"
+      class="card-btn"
+      :class="{
+        'card-btn-gap': index != 0,
+      }"
+    >
+      <image mode="widthFix" v-if="opt.image != null" class="card-img" :src="getAbsoluteMediaUrl(opt.image)"></image>
+      <view
+        v-if="opt.image != null && opt.isCorrect != null"
+        class="correct-icon-wrapper"
+        :class="{ 'correct-bg': opt.isCorrect, 'incorrect-bg': !opt.isCorrect }"
+      >
+        <IconFont
+          :name="opt.isCorrect ? 'ok' : 'close'"
+          :size="14"
+          color="#000"
+        />
+      </view>
+      <slot :option="opt">
+        <text class="card-text" :class="{ 'card-text-with-margin': opt.image != null && opt.isCorrect != null }">{{ opt.label }}</text>
+      </slot>
+    </view>
+  </scroll-view>
+</template>
+
+<script setup lang="uts">
+import { CardSelectorValue, CardSelectorOption, CardSelectorProps, CardSelectorSlot } from "./type.uts";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+
+defineSlots<{
+  default(props: CardSelectorSlot): any;
+}>();
+
+const props = withDefaults(defineProps<CardSelectorProps>(), { options: [] as  CardSelectorOption[]});
+
+</script>
+
+<style scoped>
+.card-btns {
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 48px;
+  width: 100%;
+}
+
+.card-btn {
+  flex: 1;
+  padding: 4px 4px;
+  align-items: center;
+  justify-content: flex-start;
+  position: relative;
+  min-width: 0;
+}
+
+.card-img {
+  width: 100%;
+  border-radius: 4px;
+  z-index: 0;
+}
+
+.card-btn-gap {
+  margin-left: 8px;
+}
+
+
+.card-text {
+  color: #fff;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.card-text-with-margin {
+  margin-top: 20px;
+}
+
+.correct-icon-wrapper {
+  position: absolute;
+  bottom: 35px; /* Half of 30px height */
+  left: 50%;
+  transform: translateX(-50%); /* Center horizontally */
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.correct-bg {
+  background-color: #0f0; /* Green for correct */
+}
+
+.incorrect-bg {
+  background-color: #f00; /* Red for incorrect */
+}
+</style>

@@ -1,0 +1,87 @@
+<template>
+  <view class="input-wrapper">
+    <input
+      class="input-container"
+      :password="props.type == 'password' && !state.showPWD"
+      :placeholder="props.placeholder"
+      :value="props.value"
+      @input="onChange"
+      :style="{ color: props.color || '#fff' }"
+    />
+    <icon-font
+      v-if="!!props.value"
+      class="input-icon"
+      name="close_filled"
+      :size="20"
+      color="#6f6f6f"
+      @click="onClearValue"
+    ></icon-font>
+    <template v-if="props.type == 'password'">
+      <icon-font
+        class="input-icon"
+        v-if="!state.showPWD"
+        name="eye_outlined"
+        :size="20"
+        color="#6f6f6f"
+        @click="onPasswordShowChange(true)"
+      ></icon-font>
+      <icon-font
+        class="input-icon"
+        v-else
+        name="eye_invisible_outlined"
+        :size="20"
+        color="#6f6f6f"
+        @click="onPasswordShowChange(false)"
+      ></icon-font>
+    </template>
+    <slot></slot>
+  </view>
+</template>
+
+<script setup lang="uts">
+import IconFont from "@/components/IconFont/IconFont.uvue";
+
+const props = defineProps<{ type: "password" | "email" | "text"; value?: string; placeholder?: string; color?: string }>();
+
+const state = shallowReactive<{ showPWD: boolean }>({ showPWD: false });
+
+const emit = defineEmits<{
+  (e: "change", v: string): void;
+}>();
+
+const onChange = (e) => {
+  emit("change", e.detail.value);
+};
+
+const onClearValue = () => {
+  emit("change", "");
+};
+
+const onPasswordShowChange = (show: boolean) => {
+  state.showPWD = show;
+};
+</script>
+
+<style scoped>
+.input-wrapper {
+  padding: 0 24px;
+  border-radius: 25px;
+  background-color: #262626;
+  flex-direction: row;
+  align-items: center;
+}
+
+.input-container {
+  flex: 1;
+  height: 50px;
+  font-size: 14px;
+  line-height: 50px;
+
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.input-icon + .input-icon {
+  margin-left: 16px;
+}
+</style>

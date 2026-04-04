@@ -1,0 +1,142 @@
+<template>
+  <teleport to="uni-app">
+    <transition name="drawer" appear>
+      <view v-if="props.show" class="drawer-overlay" @click="handleOverlayClick">
+        <view class="drawer-content" :style="{ '--box-height': props.height }">
+          <slot name="header">
+            <!-- 头部容器 -->
+            <view class="header-container">
+              <text class="title">{{ $i18n_t("publish.selectAsset") }}</text>
+              <IconFont name="close" :size="9" color="#fff" @click="emit('close')" :btnSize="20" showBg />
+            </view>
+          </slot>
+          <view class="drawer-content-body">
+            <slot></slot>
+          </view>
+        </view>
+      </view>
+    </transition>
+  </teleport>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+
+type Props = {
+  show: boolean;
+  maskClosable?: boolean;
+  height?: string;
+};
+
+const props = withDefaults(defineProps<Props>(), {
+  show: false,
+  maskClosable: true,
+  height: "90%",
+});
+
+const emit = defineEmits<{
+  (e: "close"): void;
+}>();
+
+const handleOverlayClick = (event: UniPointerEvent) => {
+  // 只有点击蒙版区域且允许蒙版关闭时才响应关闭事件
+  if (props.maskClosable && event.target == event.currentTarget) {
+    emit("close");
+  }
+};
+</script>
+
+<style scoped>
+.drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 999;
+}
+
+.drawer-content {
+  background-color: #1f1f1f;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  width: 100%;
+  height: var(--box-height, 100%);
+  overflow: hidden;
+}
+
+@media (min-width: 750px) {
+  .drawer-overlay {
+    right: 0;
+    height: 100%;
+    left: auto;
+  }
+  .drawer-content {
+    border-radius: 0;
+    height: 100%;
+    
+    max-width: 960px;
+    width: 80vw;
+  }
+}
+
+.drawer-content-body {
+  flex: 1;
+}
+
+/* 进入和离开动画 */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.drawer-enter-active .drawer-content,
+.drawer-leave-active .drawer-content {
+  transition: transform 0.3s ease;
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  opacity: 0;
+}
+
+.drawer-enter-from .drawer-content,
+.drawer-leave-to .drawer-content {
+  transform: translateY(100%);
+}
+
+.drawer-enter-to .drawer-content,
+.drawer-leave-from .drawer-content {
+  transform: translateY(0);
+}
+
+@media (min-width: 750px) {
+  .drawer-enter-from .drawer-content,
+  .drawer-leave-to .drawer-content {
+    transform: translateX(100%);
+  }
+  
+  .drawer-enter-to .drawer-content,
+  .drawer-leave-from .drawer-content {
+    transform: translateX(0);
+  }
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+.header-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+}
+</style>

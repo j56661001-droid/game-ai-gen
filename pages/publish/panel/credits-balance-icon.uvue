@@ -1,0 +1,134 @@
+<template>
+  <view class="credits-balance" :style="creditsBalanceStyle" @click="onGotoTopUp">
+    <image src="/static/icons/flash@2x.png" class="mark-icon" />
+    <template v-if="creditsBalance < 0">
+      <FrSpin :size="16" />
+    </template>
+    <template v-else>
+      <text style="color: #fff; font-size: 16px">{{ thunderboltValue }}</text>
+    </template>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { useLoadDataRequest, LoadDataRequestOptions } from "../../../hooks";
+import { parseNumToThousands } from "@/utils/parse.uts";
+import { user, creditsBalance } from "@/store/user.uts";
+import { appStore } from "@/store/index.uts";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue"; // Explicitly import Vue 3 APIs
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+
+interface Props {
+  showBackground?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  showBackground: true,
+});
+
+const intervalFlag = ref<number | null>(null);
+
+const { loadDataRequest, result } = useLoadDataRequest({
+  url: (p) => `users/${p.userId}/credits/balance`,
+  customErrorHanlder: () => {},
+} as LoadDataRequestOptions);
+
+const thunderboltValue = computed((): string => parseNumToThousands(creditsBalance.value));
+
+const creditsBalanceStyle = computed(() => {
+  if (props.showBackground) {
+    return {
+      backgroundColor: "rgba(0, 0, 0, 0.3)",
+    };
+  }
+  return {};
+});
+
+watch(
+  () => user.value?.id,
+  (id) => {
+
+    if (id != null) {
+      loadDataRequest({ userId: id });
+    }
+  },
+  {
+    immediate: true,
+  },
+);
+
+// Watch for changes in result.data.currentBalance and update the global creditsBalance
+watch(
+  () => result.data?.currentBalance,
+  (newBalance) => {
+    if (newBalance != null) {
+
+      creditsBalance.value = newBalance;
+    } else {
+  
+    }
+  },
+);
+
+const refreshBalanceHandler = () => {
+
+  const pages = getCurrentPages();
+  const currentPage = pages[pages.length - 1];
+  if (currentPage != null && currentPage.route == 'pages/webview/webview' && appStore.value.webviewConfig?.isAigf === true) {
+
+    return;
+  }
+  if (user.value != null) {
+    loadDataRequest({ userId: user.value.id });
+  } else {
+
+  }
+};
+
+onMounted(() => {
+
+  uni.$on("refresh:balance", refreshBalanceHandler);
+
+  intervalFlag.value = setInterval(() => {
+
+    refreshBalanceHandler();
+  }, 1000 * 5); // 5s
+});
+
+onUnmounted(() => {
+
+  uni.$off("refresh:balance", refreshBalanceHandler);
+
+  if (intervalFlag.value != null) {
+    clearInterval(intervalFlag.value);
+    intervalFlag.value = null;
+
+  }
+});
+
+const onGotoTopUp = () => {
+  if (user.value == null) { //.accountType == 'guest'
+    uni.$emit("login:show");
+  } else {
+    /** TODO: 后续跳转外部链接 */
+    uni.navigateTo({ url: `/pages/account/consumption-details` });
+    //   uni.navigateTo({ url: `/pages/account/top-up` });
+  }
+};
+</script>
+
+<style scoped>
+.credits-balance {
+  flex-direction: row;
+  align-items: center;
+  padding: 0 16px;
+  border-radius: 20px;
+  height: 40px;
+}
+
+.mark-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+}
+</style>

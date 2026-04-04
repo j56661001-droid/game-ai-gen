@@ -1,0 +1,82 @@
+<template>
+  <input
+    class="fr-input"
+    :type="props.type"
+    :password="enadbledPWD"
+    :placeholder="props.placeholder"
+    :value="props.value"
+    :auto-focus="props.autoFocus"
+    :focus="props.focus"
+    :disabled="props.disabled"
+    :maxlength="props.maxLength"
+    :min="props.type === 'number' ? props.minValue : undefined"
+    :max="props.type === 'number' ? props.maxValue : undefined"
+    @input="onInput"
+  />
+</template>
+
+<script setup lang="uts">
+type Value = string | number;
+
+type Props = {
+  value?: Value;
+  type?: "email" | "url" | "number" | "idcard" | "digit" | "tel" | "nickname" | "password";
+  placeholder?: string;
+  autoFocus?: boolean;
+  focus?: boolean;
+  disabled?: boolean;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+};
+
+const props = defineProps<Props>();
+const emit = defineEmits<{
+  (e: "input", v: Value): void;
+  (e: "change", v: Value): void;
+}>();
+
+const enadbledPWD = computed(() => props.type == "password");
+
+const onInput = (e: UniInputEvent) => {
+  let val: string | number = e.detail.value;
+
+  switch (props.type) {
+    case "number":
+      val = val != null ? parseInt(val) : val;
+      break;
+    case "digit":
+      val = val != null ? parseFloat(val) : val;
+      break;
+  }
+
+  emit("input", val);
+};
+
+const onChange = (e) => {
+  let val = e.detail.value;
+
+  switch (props.type) {
+    case "number":
+      val = val != null ? parseInt(val) : val;
+      break;
+    case "digit":
+      val = val != null ? parseFloat(val) : val;
+      break;
+  }
+
+  emit("change", val);
+};
+</script>
+
+<style scoped>
+.fr-input {
+  width: 100%;
+  color: #fff;
+  font-size: 12px;
+  padding: 8px 16px;
+  height: 36px;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+}
+</style>

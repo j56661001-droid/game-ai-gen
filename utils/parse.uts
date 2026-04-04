@@ -1,0 +1,7 @@
+export function parseNumToThousands(num: number): string {
+  if (typeof num != "number") {
+    return num;
+  }
+
+  return num.toString().replace(/(?!^)(?=(\d{3})+$)/g, ",");
+}

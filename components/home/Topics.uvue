@@ -1,0 +1,141 @@
+<template>
+	<view class="topics-container">
+		<scroll-view class="scroll-view" direction="horizontal" :show-scrollbar="false"
+		<!-- #ifdef WEB -->
+		@mousedown="handleMouseDown"
+		@mouseup="handleMouseUp" 
+		@mousemove="handleMouseMove"
+		@mouseleave="handleMouseUp"
+		<!-- #endif -->
+		>
+			<view class="item" v-for="(item, index) in props.data" :key="index" @click="goToTopics(item)">
+				<view class="item-content" :style="getOffsetY(index)">
+					<text class="item-text-major">{{ item.displayName[i18n.global.locale.value] }}</text>
+					<text class="item-text-minor">{{ (item.totalViews / 1000).toFixed(1) }}k</text>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { CategoryItem } from '../../types/index';
+	import i18n, { fmtBackendLang } from "@/locale/index.uts";
+	import { execGTagEvent } from "@/utils/ga.uts";
+	
+	const props = defineProps<{
+		data: CategoryItem[];
+	}>();
+
+	const predefinedGradients: string[] = [
+		'linear-gradient(to bottom, #2A4FD9, #A83EF2)',
+		'linear-gradient(to bottom, #00F5A0, #00D9F5)',
+		'linear-gradient(to bottom, #89F7FE, #FACB7B)',
+		'linear-gradient(to bottom, #FF9DE2, #D66CFF)',
+		'linear-gradient(to bottom, #FFA07A, #FFD3B0)',
+		'linear-gradient(to bottom, #43CBFF, #97FF70)',
+		'linear-gradient(to bottom, #9D50BB, #FF6B6B)',
+		'linear-gradient(to bottom, #00CDAC, #F6EFA6)',
+		'linear-gradient(to bottom, #E0E0E0, #D4AF37)'
+	];
+
+	function generateGradientByIndex(index: number): string {
+		const gradientIndex = index % predefinedGradients.length;
+		return predefinedGradients[gradientIndex];
+	}
+
+	function getOffsetY(index: number): string {
+		const amplitude: number = 20;
+		const offset: number = amplitude + amplitude * Math.sin(index * Math.PI + Math.PI / 2);
+		const gradient = generateGradientByIndex(index);
+		return `top: ${offset}px; background-image: ${gradient};`;
+	}
+
+	const goToTopics = (item: CategoryItem) => {
+		execGTagEvent('topics', { name: item.name } as AnyObject);
+		uni.navigateTo({ url: "/pages/topics" });
+	};
+
+	<!-- #ifdef WEB -->
+	// WEB平台鼠标拖动滚动处理
+	const isDragging = ref<boolean>(false)
+	const startX = ref<number>(0)
+	const scrollLeft = ref<number>(0)
+	let scrollElement: HTMLElement | null = null
+
+	function handleMouseDown(e: MouseEvent) {
+		isDragging.value = true
+		startX.value = e.pageX
+		scrollElement = e.currentTarget as HTMLElement
+		if (scrollElement != null) {
+			scrollLeft.value = scrollElement.scrollLeft
+			scrollElement.style.cursor = 'grabbing'
+			scrollElement.style.userSelect = 'none'
+		}
+	}
+
+	function handleMouseUp() {
+		isDragging.value = false
+		if (scrollElement) {
+			scrollElement.style.cursor = 'grab'
+			scrollElement.style.removeProperty('user-select')
+		}
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!isDragging.value) return
+		e.preventDefault()
+		const x = e.pageX
+		const walk = (x - startX.value) * 2 // 拖动速度系数
+		if (scrollElement) {
+			scrollElement.scrollLeft = scrollLeft.value - walk
+		}
+	}
+	<!-- #endif -->
+</script>
+
+<style>
+	.topics-container {
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.scroll-view {
+		width: 100%;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.item {
+		width: 80px;
+		height: 120px; /* 增加高度以容纳偏移 */
+		margin-right: 8px;
+		position: relative; /* 使内部元素可以相对定位 */
+	}
+
+	.item-content {
+		width: 80px;
+		height: 80px;
+		border-radius: 40px; /* Half of width/height */
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		position: absolute; /* 绝对定位以实现top偏移 */
+		left: 0;
+	}
+	
+	.item-text-major {
+		color: #ffffff;
+		font-size: 14px;
+		font-weight: bold;
+		text-align: center;;
+	}
+	
+	.item-text-minor {
+		color: #ffffff;
+		font-size: 12px;
+		text-align: center;;
+	}
+</style>

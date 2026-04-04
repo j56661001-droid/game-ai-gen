@@ -1,0 +1,377 @@
+<template>
+  <view class="modal-container">
+    <view class="modal-mask" @click="handleMaskClick"></view>
+    <view class="modal-content">
+      <!-- 绑定邮箱内容 -->
+      <view class="bind-email-container">
+        <view class="modal-close-button" @click="handleClose">
+          <IconFont name="close" :size="12" color="#333"></IconFont>
+        </view>
+        <view class="welcome">
+          <view class="welcome-title1">{{ $i18n_t("user_return.welcome") }}</view>
+          <view class="welcome-title2">{{ $i18n_t("user_return.sub_welcome") }}</view>
+          <view class="welcome-title3">
+            <image class="welcome-title3-hourglass-icon" src="/static/hourglass.png" />
+            {{ $i18n_t("user_return.time_left") }}
+          </view>
+          <view class="welcome-countdown">
+            <text class="welcome-countdown-item">{{ calculateTimeRemaining(returnUserCreatedAt).days }}</text>
+            {{ $i18n_t("user_return.time_left_day") }}
+            <text class="welcome-countdown-item">{{ calculateTimeRemaining(returnUserCreatedAt).hours }}</text>
+            {{ $i18n_t("user_return.time_left_hour") }}
+            <text class="welcome-countdown-item">{{ calculateTimeRemaining(returnUserCreatedAt).minutes }}</text>
+            {{ $i18n_t("user_return.time_left_minute") }}
+          </view>
+          <view class="welcome-title4">{{ $i18n_t("user_return.unique_reward") }}</view>
+          <view class="welcome-title5">{{ $i18n_t("user_return.welcome_point") }}</view>
+          <view class="welcome-points">
+            <image class="welcome-points-flash-icon" src="/static/icons/flash@2x.png" />
+            {{ returnUserBaseReward?.point || 0 }}
+          </view>
+          <view class="welcome-title6">{{ $i18n_t("user_return.welcome_point_desc") }}</view>
+          <view
+            :class="['welcome-btn', returnUserBaseReward?.status === 2 ? '' : 'welcome-btn-claim']"
+            @click="() => returnUserBaseReward?.status === 1 && handleTaskClick(0)"
+          >
+            <image class="welcome-btn-gift-icon" src="/static/gift.png" />
+            <text class="welcome-btn-text">{{
+              returnUserBaseReward?.status === 2 ? $i18n_t("user_return.btn_claimed") : $i18n_t("user_return.btn_claim")
+            }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, reactive, onMounted, onUnmounted, computed } from "vue";
+import { $i18n_t } from "@/locale/index.uts";
+import type { ClaimItem } from "@/types/index.uts";
+import { claimRewards } from "@/api/home.uts";
+import { user, creditsBalance } from "@/store/user";
+import { execGTagEvent } from "@/utils/index.uts";
+
+const props = defineProps<{
+  maskClosable?: boolean;
+  returnUserCreatedAt?: string;
+  returnUserBaseReward?: ClaimItem;
+}>();
+
+// Emits
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "success"): void;
+}>();
+
+// 处理遮罩层点击
+const handleMaskClick = () => {
+  if (props.maskClosable) {
+    emit("close");
+  }
+};
+
+// 处理关闭按钮点击
+const handleClose = () => {
+  emit("close");
+};
+
+// 计算剩余时间
+const calculateTimeRemaining = (timeString) => {
+  const initialTime = new Date(timeString);
+  // 计算初始时间 + 6天后的时间
+  const targetTime = new Date(initialTime.getTime() + 6 * 24 * 60 * 60 * 1000);
+  // 获取当前时间
+  const currentTime = new Date();
+  // 计算时间差（毫秒）
+  const timeDiff = targetTime.getTime() - currentTime.getTime();
+  // 如果目标时间已经过去，返回负数表示已过期
+  if (timeDiff <= 0) {
+    return {
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      isExpired: true,
+    };
+  }
+  // 计算天、小时、分钟
+  const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+  return {
+    days,
+    hours,
+    minutes,
+    isExpired: false,
+  };
+};
+
+const handleTaskClick = async (rewardLevel) => {
+  const res = await claimRewards(user.value.id, rewardLevel);
+  if (res != null && res.success && res.data != null) {
+    execGTagEvent("returning_reward", { pts: creditsBalance.value.toString(), serial: String(rewardLevel) } as AnyObject);
+    //领取成功
+    uni.showToast({
+      title: $i18n_t("task_center.obtained_reward"),
+      icon: "success",
+      duration: 1000,
+    });
+    setTimeout(() => {
+      handleClose();
+      uni.navigateTo({ url: `/pages/user-return/index?userId=${user.value?.id}` });
+    }, 1000);
+  } else {
+    console.error("Failed to load banner list:", pointsRes?.error?.message);
+  }
+};
+</script>
+
+<style scoped lang="scss">
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 796;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: relative;
+  width: 370px;
+  height: 450px;
+  background-color: transparent;
+  z-index: 701;
+  overflow: visible;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: -50px;
+  right: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 702;
+}
+
+.close-icon {
+  font-size: 20px;
+  color: #333;
+  font-weight: bold;
+}
+
+.bind-email-container {
+  flex: 1;
+  position: relative;
+  overflow: visible;
+}
+
+.welcome {
+  width: 100%;
+  margin-top: 12px;
+  background-image: url("/static/user-return-bg.png");
+  background-repeat: no-repeat;
+  background-position: top;
+  background-size: 100% auto;
+  &-title1 {
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 24px;
+    color: #ffffff;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+    margin-top: 24px;
+    margin-left: 48px;
+  }
+  &-title2 {
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 14px;
+    color: #ffffff;
+    font-style: normal;
+    text-transform: none;
+    margin-left: 48px;
+  }
+  &-title3 {
+    margin-top: 22px;
+    margin-left: 48px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 14px;
+    color: #ffffff;
+    text-align: left;
+    font-style: normal;
+    text-transform: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    &-hourglass-icon {
+      width: 13px;
+      height: 13px;
+      margin-right: 4px;
+    }
+  }
+  &-countdown {
+    width: 342px;
+    margin-left: 24px;
+    padding-left: 24px;
+    margin-top: 7px;
+    height: 37px;
+    background: linear-gradient(
+      270deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.2) 25%,
+      rgba(235, 255, 0, 0.2) 50%,
+      rgba(255, 255, 255, 0.2) 75%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    border-radius: 0px 0px 0px 0px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 18px;
+    color: #ffffff;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    &-item {
+      color: #ffe016;
+      margin-right: 4px;
+    }
+    &-item:not(:first-child) {
+      margin-left: 4px;
+    }
+  }
+  &-title4 {
+    height: 22px;
+    line-height: 22px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 16px;
+    color: #000000;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    margin-top: 48px;
+  }
+  &-title5 {
+    height: 18px;
+    line-height: 18px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.8);
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    margin-top: 48px;
+  }
+  &-points {
+    margin-top: 4px;
+    height: 46px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 600;
+    font-size: 33px;
+    color: #000000;
+    line-height: 46px;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    &-flash-icon {
+      width: 17px;
+      height: 17px;
+      margin-right: 6px;
+      margin-left: -6px;
+    }
+  }
+  &-title6 {
+    height: 18px;
+    line-height: 18px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+    font-weight: 400;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.3);
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+    margin-top: 7px;
+  }
+  &-btn {
+    margin-bottom: 24px;
+    margin-top: 17px;
+    width: 199px;
+    height: 50px;
+    background: #080808;
+    border-radius: 37px 37px 37px 37px;
+    margin-left: auto;
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: row;
+    &-gift-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+    }
+    &-text {
+      padding-top: 2px;
+      font-family:
+        PingFang SC,
+        PingFang SC;
+      font-weight: 600;
+      font-size: 16px;
+      color: #ffffff;
+      line-height: 25px;
+      text-align: left;
+      font-style: normal;
+      text-transform: none;
+    }
+  }
+  &-btn.welcome-btn-claim {
+    background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+  }
+}
+</style>

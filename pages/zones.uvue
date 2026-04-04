@@ -1,0 +1,371 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <view class="zones-page">
+        <view class="zones-header">
+          <view class="back-button">
+            <IconFont name="arrowleft" :size="16" color="#fff" @click="() => goBack()" :btnSize="30" />
+          </view>
+          <text class="header-title">{{ $i18n_t("zones.title") }}</text>
+          <view class="back-button" @click="goToSearch()">
+            <IconFont name="search" :size="18" color="rgba(255,255,255,1)" />
+          </view>
+        </view>
+
+        <FrTabs :tabs="tabItems" :activeTabKey="currentTabKey" @switch="changeTabByKey" />
+
+        <swiper class="swiper" :current="currentTab" @change="onSwiperChange">
+          <swiper-item v-for="(tab, index) in data" :key="index" style="flex: 1; height: 100%">
+            <fr-empty v-if="!(currentTabData as ZoneTab).loading && tab.posts.length == 0" style="flex: 1; height: 100%"></fr-empty>
+            <view v-else style="flex: 1; height: 100%">
+              <fr-waterflow-list
+                :data-source="tab.posts"
+                :loading="tab.loading"
+                :pagination="tab.pagination"
+                @loadmore="loadPostsForCurrentTab"
+                style="flex: 1; height: 100%"
+              >
+                <template v-slot:record="{ record: item }">
+                  <view class="waterfall-item" @click="handleItemClick(item as PostItem)">
+                    <bp-media-display
+                      class="item-media"
+                      :type="(item as PostItem).contentType"
+                      :src="(item as PostItem).mediaMetadata[0].fileURL"
+                      :cover="(item as PostItem).mediaMetadata[0].cover?.fileURL"
+                      :encryptionKey="(item as PostItem).mediaMetadata[0]?.encryptionKey"
+                    ></bp-media-display>
+                    <view class="item-icon-top" @click.stop="navigateToAIGenerator((item as PostItem).generationID)">
+                      <IconFont name="create" />
+                    </view>
+                    <view class="item-footer">
+                      <view class="user-info">
+                        <FrAvatar class="avatar" :size="23" :url="(item as PostItem).author.avatar"></FrAvatar>
+                        <text class="username">{{ (item as PostItem).author.nickname }}</text>
+                      </view>
+                      <view class="comments">
+                        <IconFont name="comment_outline" :size="12" />
+                        <text class="comment-count">{{ (item as PostItem).commentsCount || 0 }}</text>
+                        <!-- Placeholder for comments -->
+                      </view>
+                    </view>
+                    <text class="item-title">{{ (item as PostItem).content }}</text>
+                    <!-- <view class="tags"> -->
+                    <!-- PostItem中没有tag字段，此处移除 -->
+                    <!-- </view> -->
+                  </view>
+                </template>
+              </fr-waterflow-list>
+            </view>
+          </swiper-item>
+        </swiper>
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { FrAvatar } from "@/components/widgets";
+import { ref, onMounted, computed, watch } from "vue";
+import IconFont from "../components/IconFont/IconFont.uvue";
+import { setVideoResourceList, setVideoInitialIndex } from "../store/index.uts";
+import { PostItem, CategoryItem, CategoryListWithChildren, Pagination } from "../types/index.uts";
+import { getTrendingZone, getTrendingZonePosts } from "../api/home.uts";
+import { getCoverUrl } from "../utils/coverUtils.uts";
+import { goBack } from "../utils/page.uts";
+import FrTabs from "@/components/widgets/fr-tabs.uvue";
+import { Tab } from "@/components/widgets/type.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import i18n from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import FrEmpty from "@/components/widgets/fr-empty.uvue";
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import FrWaterflowList from "@/components/widgets/fr-waterflow-list.uvue";
+import { user } from "@/store/user.uts";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+type ZoneTab = {
+  hashtag: CategoryItem;
+  posts: PostItem[];
+  pagination: Pagination | null;
+  page: number;
+  noMore: boolean;
+  loading: boolean;
+};
+
+const currentTab = ref(0);
+const data = ref<ZoneTab[]>([]);
+const initialTab = ref<string | null>(null);
+const pageSize = 10;
+
+// Computed property for fr-tabs
+const tabItems = computed<Tab[]>(() => {
+  return data.value.map(
+    (tab, index) =>
+      ({
+        title: tab.hashtag.displayName[i18n.global.locale.value],
+        key: `tab_${index}`, // 使用索引作为key，确保符合ID规范
+        icon: "", // No icon for now, can be added later if needed
+      }) as Tab,
+  );
+});
+
+const currentTabKey = computed(() => {
+  const item = tabItems.value[currentTab.value];
+  return item != null ? item.key : "";
+});
+
+onLoad((options: OnLoadOptions) => {
+  const tab = options["tab"];
+  if (tab != null) {
+    initialTab.value = tab as string;
+  }
+});
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+async function loadCategories() {
+  const categoryResponse = await getTrendingZone(1, 50, user.value?.preferredCountry);
+  if (categoryResponse?.success && categoryResponse?.data != null) {
+    const categories = categoryResponse.data;
+
+    if (initialTab.value != null) {
+      // 尝试通过name查找对应的索引
+      const tabIndex = categories.findIndex((item) => item.name == initialTab.value);
+      if (tabIndex != -1) {
+        currentTab.value = tabIndex;
+      }
+    }
+
+    data.value = categories.map((category: CategoryItem, index: number) => {
+      return {
+        hashtag: category,
+        posts: [],
+        pagination: null,
+        page: 1,
+        noMore: false,
+        loading: false,
+      } as ZoneTab;
+    });
+
+    // Load posts for the initial tab
+    loadPostsForCurrentTab();
+  }
+}
+
+const currentTabData = computed<ZoneTab>(() => data.value[currentTab.value]);
+
+async function loadPostsForCurrentTab() {
+  const curTabData = currentTabData.value;
+  if (curTabData == null || curTabData.loading || curTabData.noMore) return;
+
+  curTabData.loading = true;
+
+  try {
+    const postsResponse = await getTrendingZonePosts(curTabData.hashtag.id, curTabData.page, pageSize);
+
+    if (postsResponse?.success && postsResponse?.data != null) {
+      curTabData.posts.push(...postsResponse.data);
+      curTabData.page += 1;
+      curTabData.pagination = postsResponse.meta.pagination;
+      if (!postsResponse.meta.pagination.has_next) {
+        curTabData.noMore = true;
+      }
+    } else {
+      curTabData.noMore = true;
+    }
+  } finally {
+    curTabData.loading = false;
+  }
+}
+
+onMounted(() => {
+  loadCategories();
+});
+
+watch(currentTab, (newTab, oldTab) => {
+  if (newTab != oldTab) {
+    const currentTabData = data.value[newTab];
+    if (currentTabData != null && currentTabData.posts.length == 0) {
+      loadPostsForCurrentTab();
+    }
+  }
+});
+
+function changeTabByKey(key: string | number) {
+  let ix = tabItems.value.findIndex((item) => item.key == key);
+  currentTab.value = ix == -1 ? 0 : ix;
+}
+
+function onSwiperChange(e: UniSwiperChangeEvent) {
+  currentTab.value = e.detail.current;
+}
+
+const handleItemClick = (item: PostItem) => {
+  const posts = data.value[currentTab.value].posts ?? [];
+  const index = posts.findIndex((resource) => resource.id == item.id);
+  if (index != -1) {
+    setVideoResourceList([...posts]);
+    setVideoInitialIndex(index);
+    uni.navigateTo({ url: `/pages/video?source=zones&zoneId=${data.value[currentTab.value].hashtag.id}` });
+  }
+};
+
+const navigateToAIGenerator = (generationID: string) => {
+  uni.navigateTo({ url: `/pages/publish/ai-generator?generationID=${generationID}` });
+};
+</script>
+
+<style>
+.zones-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000;
+}
+
+.zones-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px;
+}
+
+.back-button {
+  background-color: #1f1f1f;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
+}
+
+.header-title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: bold;
+  flex: 1;
+  text-align: center;
+  margin-right: 26px;
+  /* Offset for back button */
+}
+
+.swiper {
+  flex: 1;
+}
+
+.waterfall-scroll-view {
+  height: 100%;
+  padding: 0 15px;
+}
+
+.waterfall-item {
+  border-radius: 10px;
+  background-color: #000000;
+  padding: 5px;
+  margin-bottom: 10px;
+  /* 增加item间距 */
+  position: relative;
+  overflow: hidden;
+  /* 防止内容溢出圆角 */
+}
+
+.item-media {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+}
+
+.item-icon-top {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 17px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.play-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.item-footer {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.user-info {
+  flex-direction: row;
+  align-items: center;
+}
+
+.avatar {
+  margin-right: 8px;
+}
+
+.username {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.comments {
+  flex-direction: row;
+  align-items: center;
+}
+
+.comment-count {
+  color: #aaaaaa;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.item-title {
+  color: #ffffff;
+  font-size: 12px;
+  margin-top: 5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tags {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+
+.tag {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+</style>

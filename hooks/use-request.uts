@@ -1,0 +1,250 @@
+import { Message } from "@/utils";
+import { request } from "@/api/request";
+import { ERequestState } from "@/types";
+
+export const DEFAULT_PAGE_SIZE = 20;
+
+type SRFunc = (params: any, opts: SubmitRequestOptions) => string;
+
+export type SubmitRequestOptions = {
+  url: string | SRFunc;
+  method?: "POST" | "PUT" | "DELETE";
+  shallow?: boolean;
+  showLoading?: boolean;
+  customErrorHanlder?(error: any): void;
+  onSuccess?(result, params): void;
+  onFail?(err: any): void;
+};
+
+export type SubmitRequestState = {
+  submitting: boolean;
+  result?: any;
+};
+
+export type SubmitRequestReturn = {
+  submitRequest(p: any): Promise<void>;
+  submitting: ComputedRef<boolean>;
+};
+
+export function useSubmitRequest(options: SubmitRequestOptions) {
+  const { url, method = "POST", shallow = true, showLoading, customErrorHanlder } = options;
+
+  const state = shallow ? shallowReactive<SubmitRequestState>({ submitting: false }) : reactive<SubmitRequestState>({ submitting: false });
+
+  const submitRequest = async (data: any) => {
+    if (state.submitting) {
+      return;
+    }
+
+    state.submitting = true;
+
+    if (showLoading) {
+      Message.showLoading({ title: "" });
+    }
+
+    await request({
+      url: typeof url == "function" ? url(data, options) : url,
+      method,
+      data,
+      customErrorHanlder,
+    })
+      .then((result) => {
+        state.result = result;
+        options.onSuccess?.(result, data);
+      })
+      .catch((err) => {
+        console.error(`${url} ~ Submit data error: `, err);
+        options.onFail?.(err);
+      })
+      .finally(() => {
+        state.submitting = false;
+
+        if (showLoading) {
+          Message.hideLoading();
+        }
+      });
+  };
+
+  const submitting = toRef<boolean>(state, "submitting");
+
+  return { submitRequest, submitting } as SubmitRequestReturn;
+}
+
+type LLFunc = (params: any, opts: LoadListRequestOptions) => string;
+
+export type LoadListRequestOptions = {
+  url: string | LLFunc;
+  method?: "POST" | "GET";
+  pageSize?: number;
+  shallow?: boolean;
+  defaultParams?: any;
+  onSuccess?(result: any): void;
+  onFail?(err: any): void;
+};
+
+export type ListPagination = {
+  has_next?: boolean;
+  has_prev?: boolean;
+  page?: number;
+  pages?: number;
+  size?: number;
+  total?: number;
+};
+
+export type LoadListRequestState = {
+  state: number;
+  records: any[];
+  pagination: ListPagination;
+};
+
+export type LoadListRequestParams = {
+  page?: number;
+  size?: number;
+};
+
+export type LoadListRequestReturn = {
+  loadListRequest(p: any | null): Promise<void>;
+  reloadListRequest(): Promise<void>;
+  result: LoadListRequestState;
+  loading: ComputedRef<boolean>;
+};
+
+export function useLoadListRequest(options: LoadListRequestOptions): LoadListRequestReturn {
+  const { url, method = "GET", shallow = true, defaultParams, pageSize = DEFAULT_PAGE_SIZE } = options;
+
+  let reloadLock = false;
+  const paramsCache = ref<any>({});
+  const info = shallow
+    ? shallowReactive<LoadListRequestState>({ state: ERequestState.Pending, records: [], pagination: {} })
+    : reactive<LoadListRequestState>({ state: ERequestState.Pending, records: [], pagination: {} });
+
+  const loadListRequest = async (params: any | null = null) => {
+    const { page = 1, ...rest } = params || {};
+
+    if (info.state == ERequestState.Processing) {
+      return;
+    }
+
+    info.state = ERequestState.Processing;
+    paramsCache.value = params;
+    await request({
+      url: typeof url == "function" ? url(params, options) : url,
+      method,
+      data: {
+        ...defaultParams,
+        ...rest,
+        page,
+        size: pageSize,
+      },
+    })
+      .then((result) => {
+        const pagination = result.meta?.pagination || {};
+        const currentRecords = result.data || [];
+
+        info.records = !pagination.page || pagination.page == 1 ? currentRecords : [...info.records, ...currentRecords];
+        info.pagination = pagination;
+
+        info.state = ERequestState.Success;
+        options.onSuccess?.(result);
+      })
+      .catch((err) => {
+        info.state = ERequestState.Fail;
+        console.error(`${url} ~ Load list error: `, err);
+        options.onFail?.(err);
+      });
+  };
+
+  const reloadListRequest = async () => {
+    const { page = 1, ...rest } = paramsCache.value || {};
+
+    if (reloadLock) {
+      return;
+    }
+
+    reloadLock = true;
+    await request({
+      url: typeof url == "function" ? url(rest, options) : url,
+      method,
+      data: {
+        ...defaultParams,
+        ...rest,
+        page: 1,
+        size: pageSize * (info.pagination.page || 1),
+      },
+    })
+      .then((result) => {
+        info.records = result.data || [];
+        reloadLock = false;
+      })
+      .catch((err) => {
+        console.error(`${url} ~ Reload list error: `, err);
+        reloadLock = false;
+      });
+  };
+
+  const loading = computed((): boolean => [ERequestState.Pending, ERequestState.Processing].includes(info.state));
+
+  return { loadListRequest, reloadListRequest, result: info, loading } as LoadListRequestReturn;
+}
+
+type LDFunc = (p: any, opts: LoadDataRequestOptions) => string;
+
+export type LoadDataRequestOptions = {
+  url: string | LDFunc;
+  method?: "POST" | "GET";
+  shallow?: boolean;
+  customErrorHanlder?(error: any): void;
+  onSuccess?(result: any): void;
+  onFail?(err: any): void;
+};
+
+export type LoadDataRequestState = {
+  state: number;
+  data?: any;
+  meta?: any;
+};
+
+export type LoadDataRequestReturn = {
+  loadDataRequest(p: any | null): Promise<void>;
+  result: LoadDataRequestState;
+  loading: ComputedRef<boolean>;
+};
+
+export function useLoadDataRequest(options: LoadDataRequestOptions) {
+  const { url, method = "GET", shallow = true, customErrorHanlder } = options;
+
+  const info = shallow
+    ? shallowReactive<LoadDataRequestState>({ state: ERequestState.Pending, data: null })
+    : reactive<LoadDataRequestState>({ state: ERequestState.Pending, data: null });
+
+  const loadDataRequest = async (params: any = null) => {
+    if (info.state == ERequestState.Processing) {
+      return;
+    }
+
+    info.state = ERequestState.Processing;
+    await request({
+      url: typeof url == "function" ? url(params, options) : url,
+      method,
+      customErrorHanlder,
+      data: params,
+    })
+      .then((result) => {
+        info.data = result.data;
+        info.meta = result.meta;
+        info.state = ERequestState.Success;
+        options.onSuccess?.(result);
+      })
+      .catch((err) => {
+        info.state = ERequestState.Fail;
+        console.error(`${url} ~ Load data error: `, err);
+        options.onFail?.(err);
+      });
+  };
+
+  const loading = computed((): boolean => [ERequestState.Pending, ERequestState.Processing].includes(info.state));
+
+  return { loadDataRequest, result: info, loading } as LoadDataRequestReturn;
+}
+
+export function useRequestQueue() {}

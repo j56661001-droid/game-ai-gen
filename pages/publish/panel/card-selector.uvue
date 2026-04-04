@@ -1,0 +1,108 @@
+<template>
+  <scroll-view class="card-btns" direction="horizontal" :scroll-with-animation="true" :show-scrollbar="false" :scroll-into-view="currentIdx">
+    <view
+      v-for="(opt, index) in props.options"
+      :id="`id_${index}`"
+      :key="opt.value"
+      class="card-btn"
+      :class="{
+        'card-btn-gap': index != 0,
+        'card-selected': isSelected(opt.value),
+      }"
+      @click="onSelect(opt.value, index)"
+    >
+      <image mode="widthFix" v-if="opt.image != null" class="card-img" :src="getAbsoluteMediaUrl(opt.image)"></image>
+      <slot :option="opt">
+        <text class="card-text">{{ opt.label }}</text>
+      </slot>
+    </view>
+  </scroll-view>
+</template>
+
+<script setup lang="uts">
+import { CardSelectorValue, CardSelectorOption, CardSelectorProps, CardSelectorSlot } from "./type.uts";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+defineSlots<{
+  default(props: CardSelectorSlot): any;
+}>();
+
+const props = withDefaults(defineProps<CardSelectorProps>(), { options: [], multiple: false });
+
+const emit = defineEmits<{ (e: "change", v: CardSelectorValue | CardSelectorValue[]): void }>();
+
+const currentIdx = ref<string>("");
+
+const valueList = computed((): CardSelectorValue[] => {
+  if (typeof props.value == "string" || typeof props.value == "number") {
+    return [props.value];
+  } else if (Array.isArray(props.value)) {
+    return props.value;
+  }
+
+  return [];
+});
+
+onMounted(() => {
+  if (props.value == undefined && props.options.length > 0) {
+    onSelect(props.options[0].value, 0);
+  }
+});
+
+const isSelected = (v: CardSelectorValue) => {
+  return valueList.value.includes(v);
+};
+
+const onSelect = (v: CardSelectorValue, idx: number) => {
+  let current: CardSelectorValue | CardSelectorValue[] = v;
+  if (props.multiple) {
+    if (valueList.value.includes(v)) {
+      current = valueList.value.filter((i) => i != v);
+    } else {
+      current = [...valueList.value, v];
+    }
+  }
+
+  currentIdx.value = `id_${idx}`;
+  emit("change", current);
+};
+</script>
+
+<style scoped>
+.card-btns {
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 48px;
+}
+
+
+.card-btn {
+  flex: 1 0 auto;
+  padding: 14px 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+  position: relative;
+}
+
+.card-img {
+  width: 100%;
+  z-index: 0;
+}
+
+
+.card-btn-gap {
+  margin-left: 12px;
+}
+
+.card-selected {
+  background-color: rgba(246, 33, 178, 0.2);
+  border-color: rgba(255, 35, 184, 1);
+}
+
+.card-text {
+  color: #fff;
+  font-size: 14px;
+}
+</style>

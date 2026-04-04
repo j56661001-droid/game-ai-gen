@@ -1,0 +1,338 @@
+<template>
+  <div class="tutorial-card">
+    <h2 class="tutorial-title">{{ $i18n_t('pwa_install.windows_edge.title') }}</h2>
+
+    <!-- 步骤 1: 地址栏引导 -->
+    <div class="step-section">
+      <p class="tutorial-step">{{ $i18n_t('pwa_install.windows_edge.step1') }}</p>
+      <div class="step-image-container">
+        <!-- 顶部地址栏背景图 -->
+        <img src="/static/pwahelp/windows-edge-1.png" class="guide-image" mode="widthFix" alt="Edge Address Bar" />
+        <!-- 域名定位 (需要根据背景图实际空白位置微调 top/left) -->
+        <div class="edge-address-text">{{ currentDomain }}</div>
+      </div>
+    </div>
+
+    <!-- 步骤 2: 安装确认弹窗 -->
+    <div class="step-section">
+      <p class="tutorial-step">{{ $i18n_t('pwa_install.windows_edge.step2') }}</p>
+      
+      <!-- 模拟 Edge 安装弹窗 -->
+      <div class="edge-mock-dialog">
+        <div class="edge-dialog-header">
+          <img src="/static/icons/welcome@2x.png" class="edge-app-icon" />
+          <div class="edge-header-info">
+            <span class="edge-h-title">{{ $i18n_t('pwa_install.windows_edge.install_app_name', { appName: currentDomain }) }}</span>
+            <span class="edge-h-subtitle">{{ $i18n_t('pwa_install.windows_edge.publisher', { publisherName: currentDomain }) }}</span>
+          </div>
+        </div>
+        
+        <div class="edge-dialog-body">
+          <p class="edge-body-text">{{ $i18n_t('pwa_install.windows_edge.prompt_install') }}</p>
+          <ul class="edge-list">
+            <li>{{ $i18n_t('pwa_install.windows_edge.feature1') }}</li>
+            <li>{{ $i18n_t('pwa_install.windows_edge.feature2') }}</li>
+            <li>{{ $i18n_t('pwa_install.windows_edge.feature3') }}</li>
+          </ul>
+        </div>
+
+        <div class="edge-dialog-footer">
+          <button class="edge-btn edge-btn-primary">{{ $i18n_t('common.install') }}</button>
+          <button class="edge-btn edge-btn-secondary">{{ $i18n_t('common.not_now') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 步骤 3: 权限设置弹窗 -->
+    <div class="step-section">
+      <p class="tutorial-step">{{ $i18n_t('pwa_install.windows_edge.step3') }}</p>
+
+      <!-- 模拟 Edge 权限弹窗 -->
+      <div class="edge-mock-dialog permission-dialog">
+        <div class="edge-dialog-header">
+          <img src="/static/icons/welcome@2x.png" class="edge-app-icon" />
+          <div class="edge-header-info">
+            <span class="edge-h-title">{{ $i18n_t('pwa_install.windows_edge.app_installed') }}</span>
+            <span class="edge-h-subtitle">{{ $i18n_t('pwa_install.windows_edge.publisher', { publisherName: currentDomain }) }}</span>
+          </div>
+        </div>
+
+        <div class="edge-dialog-body">
+          <p class="edge-body-desc">
+            {{ $i18n_t('pwa_install.windows_edge.app_installed_desc', { appName: currentDomain }) }}
+          </p>
+          <div class="edge-permissions-group">
+            <span class="perm-label">{{ $i18n_t('pwa_install.windows_edge.allow_app') }}</span>
+            <label class="edge-checkbox-row">
+              <div class="fake-checkbox checked">✔</div>
+              <span>{{ $i18n_t('pwa_install.windows_edge.pin_taskbar') }}</span>
+            </label>
+            <label class="edge-checkbox-row">
+              <div class="fake-checkbox checked">✔</div>
+              <span>{{ $i18n_t('pwa_install.windows_edge.pin_start') }}</span>
+            </label>
+            <label class="edge-checkbox-row">
+              <div class="fake-checkbox checked">✔</div>
+              <span>{{ $i18n_t('pwa_install.windows_edge.create_shortcut') }}</span>
+            </label>
+            <label class="edge-checkbox-row">
+              <div class="fake-checkbox checked">✔</div>
+              <span>{{ $i18n_t('pwa_install.windows_edge.auto_start') }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="edge-dialog-footer">
+          <button class="edge-btn edge-btn-primary">{{ $i18n_t('common.allow') }}</button>
+          <button class="edge-btn edge-btn-secondary">{{ $i18n_t('common.disallow') }}</button>
+        </div>
+      </div>
+    </div>
+    
+    <p class="tutorial-tip">{{ $i18n_t('pwa_install.windows_edge.tip') }}</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { defineProps } from 'vue';
+import { $i18n_t } from "@/locale";
+defineProps<{
+  currentDomain: string;
+}>();
+</script>
+
+<style scoped>
+/* 全局容器 */
+.tutorial-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.tutorial-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #202020;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.step-section {
+  margin-bottom: 32px;
+}
+
+.tutorial-step {
+  font-size: 15px;
+  color: #333;
+  margin-bottom: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.tutorial-tip {
+  font-size: 13px;
+  color: #666;
+  margin-top: -10px;
+  background: #f9f9f9;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+/* 步骤 1: 地址栏 */
+.step-image-container {
+  position: relative;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.guide-image {
+  width: 100%;
+  display: block;
+}
+
+.edge-address-text {
+  position: absolute;
+  /* 根据你的截图 windows-edge-1.png 的实际空白区域调整 */
+  top: 25%;
+  left:20%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #202020;
+  font-weight: 400;
+}
+
+/* --------------------------
+   Edge 风格弹窗通用样式
+   -------------------------- */
+.edge-mock-dialog {
+  background: #fff;
+  border: 1px solid #d1d1d1;
+  border-radius: 8px; /* Edge 的圆角 */
+  padding: 0;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14);
+  max-width: 420px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+/* 头部 */
+.edge-dialog-header {
+  padding: 20px 20px 10px 20px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.edge-app-icon {
+  width: 32px;
+  height: 32px;
+  margin-right: 12px;
+  border-radius: 4px;
+}
+
+.edge-header-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.edge-h-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #202020;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edge-h-subtitle {
+  font-size: 12px;
+  color: #606060;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 内容区 */
+.edge-dialog-body {
+  padding: 0 20px 20px 20px;
+}
+
+.edge-body-text {
+  font-size: 14px;
+  color: #202020;
+  margin-bottom: 10px;
+}
+
+.edge-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  color: #202020;
+}
+
+.edge-list li {
+  margin-bottom: 4px;
+  padding-left: 10px;
+  position: relative;
+}
+
+.edge-list li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #202020;
+}
+
+/* 底部按钮 */
+.edge-dialog-footer {
+  background-color: #fbfbfb; /* 底部通常微灰 */
+  padding: 16px 20px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.edge-btn {
+  flex: 1;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: default; /* 展示用，非交互 */
+  text-align: center;
+  border: 1px solid transparent;
+}
+
+.edge-btn-primary {
+  background-color: #0078d4; /* Edge 蓝 */
+  color: white;
+  border-color: #0078d4;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.edge-btn-secondary {
+  background-color: #ffffff;
+  color: #202020;
+  border-color: #d1d1d1;
+}
+
+/* --------------------------
+   步骤 3 特定样式 (权限弹窗)
+   -------------------------- */
+.permission-dialog .edge-dialog-body {
+  padding-top: 0;
+}
+
+.edge-body-desc {
+  font-size: 13px;
+  color: #202020;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.edge-permissions-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perm-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #202020;
+  margin-bottom: 4px;
+}
+
+.edge-checkbox-row {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #202020;
+  flex-direction: row;
+}
+
+/* 模拟 Checkbox 样式 */
+.fake-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #0078d4; /* 选中状态框颜色 */
+  background-color: #0078d4; /* 选中背景 */
+  border-radius: 2px;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 如果需要展示未选中状态，可以去掉 .checked 类并修改 border 颜色 */
+</style>

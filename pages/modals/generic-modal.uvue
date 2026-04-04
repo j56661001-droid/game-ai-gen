@@ -1,0 +1,166 @@
+<template>
+  <view class="generic-modal-page">
+    <view class="modal-content">
+      <view class="modal-header">
+        <text class="modal-header-title">{{ modalTitle }}</text>
+        <view v-if="true" class="close-button" @click="closeModal">
+          <IconFont name="close" :size="12" color="#333"></IconFont>
+        </view>
+      </view>
+      <text class="modal-title-text">
+        {{ mainMessage }}
+      </text>
+      <text class="modal-sub-text">{{ subMessage }}</text>
+      <view class="modal-buttons-container">
+        <button v-if="showCancelButton" class="modal-button cancel-button" @click="onCancelClick">{{ cancelText }}</button>
+        <button v-if="true" class="modal-button register-button" @click="onRegisterClick">{{ confirmText }}</button>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted, computed } from "vue";
+import { parseNumToThousands } from "@/utils/parse.uts";
+import { appStore, setTopUpSuccessModalData } from "@/store/index.uts"; // Import appStore and setTopUpSuccessModalData
+
+const modalData = computed(() => appStore.value.topUpSuccessModalData);
+
+const modalTitle = computed(() => modalData.value?.modalTitle || "");
+const mainMessage = computed(() => modalData.value?.mainMessage || "");
+const subMessage = computed(() => modalData.value?.subMessage || "");
+const confirmText = computed(() => modalData.value?.confirmText || "确认");
+const onConfirmCallback = computed(() => modalData.value?.onConfirm || undefined);
+const cancelText = computed(() => modalData.value?.cancelText || "取消"); // New: cancelText computed property
+const onCancelCallback = computed(() => modalData.value?.onCancel || undefined); // New: onCancelCallback computed property
+
+const showCancelButton = computed(() => !!cancelText.value && !!onCancelCallback.value); // New: showCancelButton computed property
+
+const closeModal = () => {
+  // Instead of closing directly, invoke onCancelCallback if available,
+  // which is handled by the parent (App.uvue) to close the dialog.
+  if (onCancelCallback.value) {
+    onCancelCallback.value();
+  }
+};
+
+const onRegisterClick = () => {
+  if (onConfirmCallback.value) {
+    onConfirmCallback.value();
+  }
+  // The modal is closed by the callback itself, no direct action here
+};
+
+const onCancelClick = () => {
+  if (onCancelCallback.value) {
+    onCancelCallback.value();
+  }
+  // The modal is closed by the callback itself, no direct action here
+};
+</script>
+
+<style scoped>
+.generic-modal-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100001; /* Ensure it's above other elements */
+}
+
+.modal-content {
+  background-color: #363636;
+  border-radius: 12px;
+  width: 80%; /* Adjust as needed */
+  max-width: 450px;
+  padding: 0; /* Remove padding from modal-content */
+  overflow: hidden; /* To ensure border-radius applies to children */
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+}
+
+.modal-header-title {
+  flex: 1;
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.close-button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.close-icon {
+  font-size: 18px;
+  color: #999;
+}
+
+.modal-title-text {
+  font-size: 16px;
+  color: #fff;
+  text-align: center;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  padding: 0 20px;
+}
+
+.modal-sub-text {
+  font-size: 14px;
+  color: #FFCE00;
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 0 20px;
+}
+
+.modal-buttons-container {
+  flex-direction: row;
+  justify-content: space-around;
+  width: 100%;
+  padding: 0 15px 20px;
+}
+
+.modal-button {
+  border-radius: 20px; /* More rounded as per design */
+  padding: 10px 0; /* Adjust padding */
+  font-size: 16px;
+  flex: 1;
+  margin: 0 5px;
+  height: 40px; /* Fixed height for buttons */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cancel-button {
+  background-color: #363636;
+  color: #fff;
+  border: 1px solid #ffffff;
+}
+
+.register-button {
+  background-color: #ff23b8; /* Design color */
+  color: #fff;
+  border: none;
+}
+
+.register-button:active {
+  background-color: #e01ea5; /* Darker shade for active state */
+}
+</style>

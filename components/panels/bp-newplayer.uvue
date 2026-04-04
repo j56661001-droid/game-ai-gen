@@ -1,0 +1,512 @@
+<template>
+  <view class="newplayer-container">
+    <view class="content-wrapper">
+      <view class="modal-close-button" @click="handleClose">
+        <IconFont name="close" :size="16" color="#000" />
+      </view>
+      <view class="capture-container" ref="captureContainerRef">
+        <view class="header-row">
+          <image src="/static/icons/newplayer_logo@2x.png" class="home-logo"></image>
+          <text class="identity-card-text" v-if="isGuest">{{ $i18n_t("newPlayer.identityCard") }}</text>
+        </view>
+        <text class="guest-text" v-if="isGuest">{{ $i18n_t('common.guest') }}</text>
+        <text class="username-text" v-if="isGuest">{{ username }}</text>
+        <text class="free-generation-text" v-if="isGuest">{{ $i18n_t('newPlayer.freeGenerationOpportunity') }}</text>
+        <view class="qrcode-outer-wrapper">
+          <view class="qrcode-wrapper" ref="qrcodeContainerRef"></view>
+        </view>
+        <view class="official-website-gradient-wrapper">
+          <text class="official-website-text">{{ officialWebsitePrefix }}</text>
+          <view class="official-website-links">
+            <text v-for="(link, index) in officialWebsites" :key="index" class="official-website-link-item">{{ link }}</text>
+          </view>
+        </view>
+        <text class="description-text">{{ descriptionText }}</text>
+        <image src="/static/newplayerbg@2x.png" class="newplayer-bg-image" mode="widthFix"></image>
+      </view>
+    </view>
+    
+    <!-- Refactored Button Group -->
+    <view class="button-group-container">
+      
+      <!-- Top Row: Always contains Save. Contains Login if Guest. Contains Install if NOT guest but install available. -->
+      <view class="button-row">
+        <!-- Save Button (Transparent, White text) -->
+        <view class="common-btn save-button" @click="saveQRCode">
+          <text class="button-text save-text">{{ $i18n_t("newPlayer.saveCredential") }}</text>
+        </view>
+
+        <!-- Slot 2 Logic -->
+        <!-- If Guest: Show Login -->
+        <view v-if="isGuest" class="common-btn login-button" @click="handleLogin">
+          <text class="button-text" style="color: #000;">{{ $i18n_t("newPlayer.loginNow") }}</text>
+        </view>
+        <!-- If Not Guest AND Install Available: Show Install here (share half) -->
+        <view v-else-if="showInstallButton" class="common-btn install-button" @click="handleInstallClick">
+          <IconFont name="pwa" :size="16" color="#fff"></IconFont>
+          <text class="button-text"  style="margin: 0 0 3px 12px;">{{ $i18n_t("newPlayer.installApp") }}</text>
+        </view>
+      </view>
+
+      <!-- Bottom Row: Only appears if Guest AND Install are both active (3 button mode) -->
+      <view v-if="isGuest && showInstallButton" class="button-row full-width-row">
+        <view class="common-btn install-button" @click="handleInstallClick">
+          <IconFont name="pwa" :size="16" color="#fff"></IconFont>
+           <text class="button-text" style="margin: 0 0 3px 12px;">{{ $i18n_t("newPlayer.installApp") }}</text>
+        </view>
+      </view>
+
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted, nextTick, watch } from "vue";
+import html2canvas from 'html2canvas'; // Import html2canvas
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { $i18n_t } from "@/locale";
+import { getDomainFromUrl, isCapacitor } from "@/utils/platform.uts";
+import { config } from "@/api/request.uts";
+
+// Declare QRCode globally if it's loaded via a script tag
+declare var QRCode: any;
+
+// Refs for data properties
+const qrcodeContainerRef = ref<HTMLElement | null>(null);
+const captureContainerRef = ref<HTMLElement | null>(null); // New ref for the container to capture
+const officialWebsitePrefix = ref<string>($i18n_t("newPlayer.officialWebsitePrefix")); // Prefix for official website
+const descriptionText = ref<string>($i18n_t("newPlayer.descriptionText"));
+const qrCodeImageSrc = ref<string | null>(null);
+const isLoading = ref<boolean>(false);
+const error = ref<string | null>(null);
+const showInstallButton = ref<boolean>(false); // New ref for controlling install button visibility
+
+const emits = defineEmits(["close"]);
+
+const props = defineProps({
+  username: {
+    type: String,
+    default: "",
+  },
+  deviceFingerprint: {
+    type: String,
+    default: null,
+  },
+  officialWebsites: {
+    type: Array as () => string[],
+    default: () => [],
+  },
+  isGuest: {
+    type: Boolean,
+    default: true,
+  },
+});
+
+const handleLogin = () => {
+  uni.$emit("login:show", { page: 'login' }); // Emit event for login
+};
+
+const handleInstallClick = () => {
+  uni.navigateTo({
+    url: '/pages/help/pwa-install'
+  });
+};
+
+
+const handleClose = () => {
+  emits("close");
+};
+
+// 保存二维码图片
+const saveQRCode = async () => {
+  if (qrCodeImageSrc.value == null) {
+    uni.showToast({
+      title: $i18n_t("newPlayer.qrCodeNotGenerated"),
+      icon: "none",
+    });
+    return;
+  }
+
+  isLoading.value = true;
+  uni.showLoading({
+    title: $i18n_t("newPlayer.savingImage"),
+    mask: true,
+  });
+
+  try {
+    if (captureContainerRef.value == null) {
+      console.error("Capture container not found.");
+      uni.hideLoading();
+      uni.showToast({
+        title: $i18n_t("newPlayer.saveFailed"),
+        icon: "none",
+      });
+      return;
+    }
+
+    const canvas = await html2canvas(captureContainerRef.value, {
+      useCORS: true, // Enable cross-origin images
+      scale: 2, // Increase resolution for better quality
+      backgroundColor: "#ff00d8"
+
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    let baseUrlForHostname: string;
+    if (props.officialWebsites != null && props.officialWebsites.length > 0) {
+      baseUrlForHostname = props.officialWebsites[0];
+    } else {
+      baseUrlForHostname = config.baseUrl; // Fallback
+    }
+
+    let hostname: string;
+    try {
+        const urlObj = new URL(baseUrlForHostname);
+        hostname = urlObj.hostname;
+    } catch (e) {
+        console.error("Invalid URL for hostname extraction:", baseUrlForHostname, e);
+        hostname = "download"; // Fallback hostname in case of invalid URL
+    }
+    
+    link.download = `${hostname}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    uni.showToast({
+      title: $i18n_t("newPlayer.saveSuccess"),
+      icon: "success",
+    });
+  } catch (e: any) {
+    console.error("Failed to download image:", e);
+    uni.showToast({
+      title: `${$i18n_t("newPlayer.saveFailed")} ${e.message}`,
+      icon: "none",
+    });
+  } finally {
+    isLoading.value = false;
+    uni.hideLoading();
+  }
+};
+
+// 生成二维码
+const generateQRCode = (text: string) => {
+  if (typeof window !== "undefined" && typeof QRCode !== "undefined" && qrcodeContainerRef.value != null) {
+    try {
+      // Clear existing QR code to prevent duplicates
+      qrcodeContainerRef.value.innerHTML = "";
+
+      const qrcodeInstance = new QRCode(qrcodeContainerRef.value, {
+        text: text,
+        width: 120,
+        height: 120,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.L, // Changed from H to L to reduce square count
+      });
+
+      // After QR code is generated, get its image data
+      nextTick(() => {
+        const imgElement = qrcodeContainerRef.value?.querySelector('img');
+        if (imgElement != null) {
+          qrCodeImageSrc.value = imgElement.src;
+        } else {
+          // Fallback for canvas if img is not found
+          const canvasElement = qrcodeContainerRef.value?.querySelector('canvas');
+          if (canvasElement != null) {
+            qrCodeImageSrc.value = canvasElement.toDataURL("image/png");
+          }
+        }
+      });
+    } catch (e: any) {
+      console.error("QR code generation failed:", e);
+      qrCodeImageSrc.value = null;
+      error.value = $i18n_t("newPlayer.qrCodeGenerationFailed");
+    }
+  } else {
+    console.warn("QRCode library not available, not in web environment, or qrcodeContainerRef is null.");
+    qrCodeImageSrc.value = null;
+    error.value = $i18n_t("newPlayer.qrCodeLibNotLoaded");
+  }
+};
+
+const updateQRCode = () => {
+  const newFingerprint = props.deviceFingerprint;
+  const newOfficialWebsites = props.officialWebsites;
+
+  let qrCodeBaseUrl: string;
+
+  if (newOfficialWebsites != null && newOfficialWebsites.length > 0) {
+    qrCodeBaseUrl = newOfficialWebsites[0]; // Use the first domain for QR code
+  } else {
+    // Fallback if officialWebsites is empty for some reason
+    console.warn("Official websites not provided to bp-newplayer, using a fallback for QR code.");
+    qrCodeBaseUrl = getDomainFromUrl(config.baseUrl); // Default fallback
+  }
+
+  let qrCodeUrl = `${qrCodeBaseUrl}/pages/index/index?tabbar=home`;
+  // For guests, append fingerprint if available. For non-guests, do not append it.
+  if (props.isGuest && newFingerprint != null) {
+    qrCodeUrl += `&fg=${newFingerprint}`;
+  }
+
+  generateQRCode(qrCodeUrl);
+};
+
+onMounted(() => {
+  // Initial QR code generation after component is mounted
+  updateQRCode();
+  showInstallButton.value = !isCapacitor();
+});
+
+watch([() => props.deviceFingerprint, () => props.officialWebsites], () => {
+  // Update QR code when props change after initial mount
+  updateQRCode();
+});
+
+</script>
+
+<style scoped>
+.newplayer-container {
+  position: absolute; /* Position fixed to the viewport */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 800; /* Ensure it's above other content */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.9); /* Add a semi-transparent background like a modal mask */
+}
+
+.content-wrapper {
+  width: 80%;
+  max-width: 450px;
+  min-width: 320px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #ff00d8 0%, #fff500 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+
+/* Button Group Layout */
+.button-group-container {
+  width: 80%;
+  max-width: 450px;
+  min-width: 320px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.button-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px; /* Space between buttons in same row */
+}
+
+.full-width-row {
+  margin-top: 12px;
+}
+
+/* Common Button Styles */
+.common-btn {
+  height: 40px;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  flex: 1; /* Default to sharing width */
+  box-sizing: border-box; /* Important for borders */
+}
+
+/* Save Button: Transparent BG, White Text */
+.save-button {
+  background-color: transparent;
+  border: 1px solid #ffffff;
+}
+.save-text {
+  color: #ffffff;
+}
+
+/* Login Button: White BG, Black Text */
+.login-button {
+  background-color: #ffffff;
+  border: none;
+}
+
+/* Install Button: Pink BG, White Text (Unchanged style) */
+.install-button {
+  background-color: #ff23b8;
+  border: none;
+  flex-direction: row;
+}
+
+.button-text {
+  font-size: 16px;
+  color:  #fff;
+  font-weight: 700;
+}
+
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: center; /* Center content horizontally */
+  align-items: center;
+  margin-bottom: 16px;
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  height: 46px;
+  top: 0;
+  border-radius: 0 0 27px 27px;
+  background-color: #fff;
+}
+
+.home-logo {
+  width: 118px;
+  height: 18.5px;
+  margin-right: 8px;
+}
+
+.identity-card-text {
+  font-size: 16px;
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-weight: 700;
+  color: #000;
+}
+
+.username-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.guest-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.free-generation-text {
+  font-size: 14px;
+  color: #F5FF00;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.qrcode-outer-wrapper {
+  background-color: #ffffff;
+  border-radius: 16px; /* 圆角 12px */
+  padding: 8px; /* 增加内边距 */
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.qrcode-wrapper {
+  width: 100px; /* 二维码缩小 */
+  height: 100px; /* 二维码缩小 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.qrcode-image {
+  width: 180px;
+  height: 180px;
+}
+
+.qrcode-placeholder {
+  color: #999999;
+  font-size: 14px;
+}
+
+.official-website-text {
+  font-size: 14px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.official-website-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.official-website-link-item {
+  font-size: 20px;
+  color: #ffffff;
+  text-align: center;
+  margin-top: 4px; /* Space between links */
+  font-weight: bold;
+  font-family: "Open Sans-ExtraBold";
+  color: #F5FF00;
+}
+
+.official-website-gradient-wrapper {
+  width: 100%;
+  padding: 10px 0; /* Add some vertical padding */
+  background: linear-gradient(to right, rgba(255, 41, 180, 0) 0%, #C01F88 50%, rgba(255, 41, 180, 0) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.description-text {
+  font-size: 12px;
+  color: #ffffff;
+  line-height: 1.8;
+  text-align: center;
+  margin-top: 12px;
+}
+
+.modal-close-button {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  top: -40px;
+  right: 0;
+  z-index: 801;
+}
+
+.capture-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%; /* Take full width of content-wrapper */
+  padding: 60px 24px 12px;
+  position: relative; /* Ensure positioning context for child absolute elements */
+  overflow: hidden; /* Clip the image if it extends beyond the container */
+}
+
+.newplayer-bg-image {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 0;
+}
+</style>

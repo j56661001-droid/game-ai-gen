@@ -1,0 +1,713 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar :show="isPopupMode">
+      <view class="page" id="videoPage">
+        <view class="header" v-show="!showComments">
+          <view class="header-left">
+            <view v-if="isPopupMode" @click="onBackHandle" class="back-button-wrapper">
+              <IconFont name="arrowleft" color="#FFFFFF" :size="16" />
+            </view>
+            <bp-user-avatar class="user-avatar" :style="{ marginLeft: isPopupMode ? '12px' : '0px' }"></bp-user-avatar>
+          </view>
+          <view class="header-icons">
+            <view class="icon-wrapper" @click="goToSearch">
+              <IconFont name="search" />
+            </view>
+            <view class="icon-wrapper">
+              <BpNotificationIcon />
+              <!-- <IconFont name="message" />
+            <view v-if="showRedDot" class="red-dot"></view> -->
+            </view>
+          </view>
+        </view>
+        <swiper
+          class="swiper"
+          :vertical="true"
+          @change="handleSwiperChange"
+          @transition="handleTransition"
+          @animationfinish="handleSwiperAnimationFinish"
+          :current="realCurrentIndex"
+        >
+          <swiper-item v-for="(item, ix) in (resourceList as PostItem[])" :key="item.id">
+            <bp-post-view
+              v-if="postShowCache[item.id]"
+              :item="item"
+              :active="realCurrentIndex == ix"
+              :video-container-height="videoContainerHeight"
+              :is-popup-mode="isPopupMode"
+              :show-comments="showComments"
+              :preview="true"
+              :page-width="pageWidth"
+              :page-height="pageHeight"
+              @open-share-sheet="openShareSheet"
+              @open-comments="handleOpenComments"
+              @closeComments="handleCloseComments"
+            />
+          </swiper-item>
+        </swiper>
+        <Comments ref="commentsRef" :data="currentItem" v-if="showComments" @close="handleCloseComments" @update:height="handleCommentsHeightChange"></Comments>
+        <ShareSheet
+          v-if="showShareSheet"
+          :postId="(currentItem as PostItem)?.id"
+          :authorId="(currentItem as PostItem)?.author.id"
+          @close="showShareSheet = false"
+          @download="handleDownload"
+        />
+        <view v-if="isDownloading" class="download-toast">
+          <text class="download-text">Downloading... {{ downloadProgress.toFixed(2) }}%</text>
+        </view>
+      </view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { Ref, ref, onMounted, onUnmounted, watch, computed } from "vue";
+import IconFont from "../components/IconFont/IconFont.uvue";
+import Comments from "../components/Comments/Comments.uvue";
+import ShareSheet from "../components/ShareSheet/ShareSheet.uvue";
+
+import BpPostView from "@/components/panels/bp-post-view.uvue";
+import { setTabBarVisibility, appStore, storage } from "../store/index.uts";
+import { PostItem, ResourceListResponse } from "../types/index.uts";
+import { getShortVideos } from "../api/home.uts"; // 导入新的API
+import { getTimeline, getPlazaList, viewResource } from "../api/social.uts"; // 导入新的API
+import { searchPosts, getPostByid } from "../api/search.uts"; // 导入新的API
+import { getFavorites } from "../api/user.uts";
+import { getPopularTopicsPosts, getTrendingZonePosts } from "../api/home.uts"; // 导入新的API
+import { goBack } from "../utils/page";
+import { BpNotificationIcon } from "@/components/panels/index.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import BpUserAvatar from "@/components/panels/bp-user-avatar.uvue";
+
+import { isCapacitor, getDomainFromUrl } from "@/utils/platform.uts";
+import { config } from "@/api/request.uts";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+type CommentsExposed = {
+  animateTo: (targetHeight: number, callback: (() => void) | null) => void;
+};
+const commentsRef = ref<CommentsExposed | null>(null);
+
+const isPopupMode = ref<boolean>(false);
+const sourceRef = ref<string>("");
+const userIdRef = ref<string>("");
+const tabRef = ref<string>("");
+const keywordRef = ref<string>("");
+const topicIdRef = ref<string>("");
+const zoneIdRef = ref<string>("");
+
+const pageWidth = ref(0);
+const pageHeight = ref(0);
+const commentsHeight = ref(0);
+const isInfiniteMode = ref(false);
+const dynamicVideoAspectRatio = ref(0);
+
+const postShowCache = reactive<UTSJSONObject>({});
+
+const videoContainerHeight = computed(() => {
+  return pageHeight.value - commentsHeight.value;
+});
+
+const sharedId = ref<string>("");
+
+const onBackHandle = (e: UniEvent) => {
+  e.stopPropagation();
+  goBack();
+};
+
+onLoad(async (options: OnLoadOptions) => {
+  sourceRef.value = options["source"] || "";
+  userIdRef.value = options["userId"] || "";
+  tabRef.value = options["tab"] || "";
+  keywordRef.value = options["keyword"] || "";
+  topicIdRef.value = options["topicId"] || "";
+  zoneIdRef.value = options["zoneId"] || "";
+
+  // 延迟执行，给页面栈更多时间初始化
+  setTimeout(() => {
+    const pages = getCurrentPages();
+    if (pages.length > 0) {
+      isPopupMode.value = pages[pages.length - 1].route == "pages/video";
+      if (sourceRef.value != "" || !isPopupMode.value) {
+        isInfiniteMode.value = true;
+      }
+    } else {
+      console.warn("页面栈为空，无法确定当前页面");
+    }
+  }, 0);
+
+  if (options["id"] != null && options["id"] != "") {
+    const postId = options["id"];
+    sharedId.value = postId;
+  } else {
+    sharedId.value = "";
+  }
+});
+
+const handleCommentsHeightChange = (height: number) => {
+  commentsHeight.value = height;
+};
+
+const showComments = ref(false);
+
+const handleCloseComments = () => {
+  if (commentsRef.value != null) {
+    commentsRef.value.animateTo(0, () => {
+      showComments.value = false;
+    });
+  }
+};
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+const resourceList = ref<PostItem[]>([...appStore.value.videoResourceList]);
+const realCurrentIndex = ref(appStore.value.videoInitialIndex);
+// const renderList = ref<PostItem[]>([]);
+// const renderCurrentIndex = ref(0);
+
+const isPreview = computed(() => (ix: number) => {
+  const currentIndex = realCurrentIndex.value;
+  return ix == currentIndex || ix == currentIndex - 1 || ix == currentIndex + 1;
+});
+
+const currentItem = computed<PostItem | null>(() => {
+  if (resourceList.value.length > 0) {
+    return resourceList.value[realCurrentIndex.value];
+  }
+  return null;
+});
+
+const isActiveItem = computed(() => (item: PostItem) => {
+  return item.id == (currentItem.value as PostItem)?.id;
+});
+
+const downloadSuccessToastText = computed(() => $i18n_t("publish.downloadSuccessToast"));
+const downloadFailedToastText = computed(() => $i18n_t("publish.downloadFailedToast"));
+
+// 根据contentType添加合适的文件后缀名
+const getFileNameWithExtension = (url: string, contentType: string): string => {
+  const fileName = url.substring(url.lastIndexOf("/") + 1);
+
+  // 检查文件是否已有后缀名
+  if (fileName.includes(".")) {
+    return fileName;
+  }
+
+  // 根据contentType添加对应的后缀名
+  switch (contentType) {
+    case "image":
+      return fileName + ".jpg";
+    case "video":
+      return fileName + ".mp4";
+    case "text":
+      return fileName + ".txt";
+    case "audio":
+      return fileName + ".mp3";
+    default:
+      return fileName;
+  }
+};
+
+watch(
+  () => [resourceList.value, realCurrentIndex.value],
+  ([items, currentIndex]) => {
+    // 设置缓冲区
+    [-1, 0, 1, 2].forEach((i) => {
+      const item = items[currentIndex + i];
+      if (item != null) {
+        postShowCache[item.id] = true;
+      }
+    });
+  },
+  { immediate: true },
+);
+
+watch(showComments, (newValue: Boolean) => {
+  setTabBarVisibility(!newValue);
+});
+
+const showShareSheet = ref(false);
+watch(showShareSheet, (newValue: Boolean) => {
+  setTabBarVisibility(!newValue);
+});
+
+const isDownloading = ref(false);
+const downloadProgress = ref(0);
+const downloadTask = ref<DownloadTask | null>(null);
+
+const handleDownload = async () => {
+  isDownloading.value = true;
+  downloadProgress.value = 0;
+  const currentResource = currentItem.value!;
+  let downloadUrl = currentResource.mediaMetadata[0].fileURL;
+
+  try {
+    if (isCapacitor()) {
+      // Capacitor环境：检查并处理相对路径
+      if (downloadUrl && !/^https?:\/\//.test(downloadUrl)) {
+        // 相对路径，需要加上API domain
+        const apiDomain = getDomainFromUrl(config.baseUrl);
+        downloadUrl = apiDomain + downloadUrl;
+      } else {
+      }
+
+      // 使用 window.Capacitor 访问插件
+      const fileName = getFileNameWithExtension(downloadUrl, currentResource.contentType);
+
+      if (typeof window !== "undefined" && window.Capacitor) {
+        // 直接尝试访问插件
+        try {
+          const Filesystem = window.Capacitor.Plugins.Filesystem;
+          const FileTransfer = window.Capacitor.Plugins.FileTransfer;
+
+          if (FileTransfer && Filesystem) {
+            // 获取文件保存路径
+            const fileInfo = await Filesystem.getUri({
+              directory: "DOCUMENTS",
+              path: fileName,
+            });
+
+            // 设置进度监听器
+            let progressListener: any = null;
+
+            if (FileTransfer.addListener) {
+              progressListener = await FileTransfer.addListener("progress", (progress: any) => {
+                const progressPercent = progress.contentLength > 0 ? (progress.bytes / progress.contentLength) * 100 : 0;
+                downloadProgress.value = progressPercent;
+              });
+            }
+
+            // 开始下载文件
+            await FileTransfer.downloadFile({
+              url: downloadUrl,
+              path: fileInfo.uri,
+              progress: true,
+            });
+
+            // 移除进度监听器
+            if (progressListener && progressListener.remove) {
+              progressListener.remove();
+            }
+
+            uni.showToast({
+              title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileName }),
+              icon: "success",
+              duration: 5000,
+            });
+          } else {
+            // 插件不可用，回退到H5方式
+            throw new Error("Required Capacitor plugins not available");
+          }
+        } catch (pluginError) {
+          throw pluginError;
+        }
+      } else {
+        // window.Capacitor不可用，回退到H5方式
+        throw new Error("window.Capacitor not available");
+      }
+    } else {
+      // H5环境：保持原始URL不变，使用原有的uni.downloadFile方式
+      downloadTask.value = uni.downloadFile({
+        url: downloadUrl,
+        success: (res) => {
+          if (res.statusCode == 200) {
+            const link = document.createElement("a");
+            link.href = res.tempFilePath;
+            const fileNameWithExt = getFileNameWithExtension(downloadUrl, currentResource.contentType);
+            link.download = fileNameWithExt;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            uni.showToast({
+              title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: fileNameWithExt }),
+              icon: "success",
+              duration: 5000,
+            });
+          }
+        },
+        fail: (err) => {
+          uni.showToast({
+            title: downloadFailedToastText.value,
+            icon: "error",
+            duration: 2000,
+          });
+        },
+      });
+
+      downloadTask.value.onProgressUpdate((res) => {
+        downloadProgress.value = res.progress;
+      });
+    }
+  } catch (error) {
+    console.error("Download failed:", error);
+
+    // 如果是Capacitor环境出错，尝试回退到H5方式
+    if (isCapacitor()) {
+      try {
+        downloadTask.value = uni.downloadFile({
+          url: downloadUrl,
+          success: (res) => {
+            if (res.statusCode == 200) {
+              uni.showToast({
+                title: $i18n_t("publish.downloadSuccessToastWithPath", { fileName: getFileNameWithExtension(downloadUrl, currentResource.contentType) }),
+                icon: "success",
+                duration: 5000,
+              });
+            }
+          },
+          fail: (err) => {
+            uni.showToast({
+              title: downloadFailedToastText.value,
+              icon: "error",
+              duration: 2000,
+            });
+          },
+        });
+
+        downloadTask.value.onProgressUpdate((res) => {
+          downloadProgress.value = res.progress;
+        });
+      } catch (fallbackError) {
+        uni.showToast({
+          title: downloadFailedToastText.value,
+          icon: "error",
+          duration: 2000,
+        });
+      }
+    } else {
+      uni.showToast({
+        title: downloadFailedToastText.value,
+        icon: "error",
+        duration: 2000,
+      });
+    }
+  } finally {
+    isDownloading.value = false;
+    downloadProgress.value = 0;
+  }
+};
+
+const openShareSheet = () => {
+  showShareSheet.value = true;
+};
+
+let currentPage = 1;
+const pageSize = 20;
+const isLoadingMore = ref(false);
+
+const loadMoreData = async () => {
+  if (isLoadingMore.value) {
+    return;
+  }
+  isLoadingMore.value = true;
+  try {
+    let res: ResourceListResponse | null = null;
+    if (sourceRef.value == "timeline") {
+      res = await getTimeline(userIdRef.value, currentPage);
+    } else if (sourceRef.value == "profile") {
+      if (tabRef.value == "works") {
+        res = await getTimeline(userIdRef.value, currentPage, pageSize, keywordRef.value);
+      } else if (tabRef.value == "collection") {
+        res = await getFavorites(userIdRef.value, currentPage, pageSize, keywordRef.value);
+      }
+    } else if (sourceRef.value == "search_foryou") {
+      res = await searchPosts(keywordRef.value, "", currentPage, pageSize);
+    } else if (sourceRef.value == "search_video") {
+      res = await searchPosts(keywordRef.value, "video", currentPage, pageSize);
+    } else if (sourceRef.value == "search_image") {
+      res = await searchPosts(keywordRef.value, "image", currentPage, pageSize);
+    } else if (sourceRef.value == "search_audio") {
+      res = await searchPosts(keywordRef.value, "audio", currentPage, pageSize);
+    } else if (sourceRef.value == "plaza") {
+      let type: "video" | "image" = tabRef.value.toLowerCase() == "video" ? "video" : "image";
+      res = await getPlazaList(type, currentPage);
+    } else if (sourceRef.value == "zones") {
+      res = await getTrendingZonePosts(zoneIdRef.value, currentPage);
+    } else {
+      res = await getShortVideos(currentPage, pageSize);
+    }
+    if (res != null && res.success && res.data != null) {
+      const existingIds = new Set(resourceList.value.map((item) => item.id));
+      const newResources = res.data.filter((item) => !existingIds.has(item.id));
+      resourceList.value = [...resourceList.value, ...newResources];
+      currentPage++;
+    } else {
+      console.error("Failed to load more video resources:", res?.error?.message);
+    }
+  } catch (error) {
+    console.error("Error fetching more video resources:", error);
+  } finally {
+    isLoadingMore.value = false;
+  }
+};
+
+const handleOpenComments = () => {
+  showComments.value = true;
+};
+
+const handleSwiperChange = (event: UniSwiperChangeEvent) => {
+  const newRenderIndex = event.detail.current;
+  let newRealIndex = newRenderIndex; // + (realCurrentIndex.value - renderCurrentIndex.value);
+
+  if (newRealIndex >= 0 && newRealIndex < resourceList.value.length) {
+    realCurrentIndex.value = newRealIndex;
+    if (currentItem.value != null) {
+      viewResource(currentItem.value.id);
+    }
+  }
+
+  //todo 暂停所有其他post view中的视频播放
+
+  // --- Infinite Scroll Logic ---
+  if (isInfiniteMode.value == true && resourceList.value.length - newRealIndex < 2) {
+    loadMoreData();
+  }
+};
+
+const isScrolling = ref(false); // 标记swiper是否正在滚动
+
+const handleTransition = () => {
+  isScrolling.value = true;
+};
+
+const handleSwiperAnimationFinish = (e: UniSwiperAnimationFinishEvent) => {
+  isScrolling.value = false;
+  if (e.detail.source != "touch") return;
+  const currentSwiperIndex = e.detail.current;
+  if (currentSwiperIndex > 60) {
+    const stratIx = currentSwiperIndex - 30;
+    resourceList.value = resourceList.value.slice(stratIx);
+    realCurrentIndex.value -= stratIx;
+  }
+};
+
+const resizeObserver = ref<UniResizeObserver | null>(null);
+
+onMounted(async () => {
+  //在这里添加时间监听
+  uni.$on("openVideoComments", handleOpenComments);
+  //
+  const videoPageElement = uni.getElementById("videoPage");
+  if (videoPageElement != null) {
+    pageWidth.value = videoPageElement.offsetWidth;
+    pageHeight.value = videoPageElement.offsetHeight;
+    dynamicVideoAspectRatio.value = pageWidth.value / pageHeight.value;
+
+    // 初始化尺寸观察器
+    resizeObserver.value = new UniResizeObserver((entries: Array<UniResizeObserverEntry>) => {
+      entries.forEach((entry) => {
+        if (entry.target == videoPageElement) {
+          pageWidth.value = entry.contentRect.width;
+          pageHeight.value = entry.contentRect.height;
+          dynamicVideoAspectRatio.value = pageWidth.value / pageHeight.value;
+        }
+      });
+    });
+    resizeObserver.value.observe(videoPageElement);
+  }
+
+  resourceList.value = appStore.value.videoResourceList;
+
+  if (resourceList.value.length == 0) {
+    isInfiniteMode.value = true;
+  }
+
+  if (sharedId.value != "") {
+    const res = await getPostByid(sharedId.value);
+    if (res != null && res.success && res.data != null) {
+      appStore.value.videoResourceList.unshift(res.data);
+      appStore.value.videoInitialIndex = 0;
+    }
+    sharedId.value = "";
+  }
+
+  if (isInfiniteMode.value && resourceList.value.length < 3) {
+    await loadMoreData();
+  }
+
+  if (currentItem.value != null) {
+    viewResource(currentItem.value.id); //浏览次数+1
+  }
+});
+
+// H5平台鼠标滚轮事件处理
+let wheelAccumulatedValue = 0; // 累计滚动值
+let wheelListenerAdded = false; // 标记事件监听器是否已添加
+
+const handleMouseWheel = (event: Uni.WheelEvent) => {
+  if (showComments.value || showShareSheet.value) {
+    wheelAccumulatedValue = 0;
+    return; // 如果评论或分享面板打开，不处理滚轮事件
+  }
+  if (isScrolling.value) {
+    wheelAccumulatedValue = 0;
+    return;
+  }
+
+  // 累加滚动值（取绝对值）
+  wheelAccumulatedValue += event.deltaY;
+
+  // 只有当累计值大于100时才触发索引变化
+  if (Math.abs(wheelAccumulatedValue) > 50) {
+    if (wheelAccumulatedValue > 0) {
+      // 向下滚动，增加索引
+      if (realCurrentIndex.value < resourceList.value.length - 1) {
+        realCurrentIndex.value++;
+      }
+    } else if (wheelAccumulatedValue < 0) {
+      // 向上滚动，减少索引
+      if (realCurrentIndex.value > 0) {
+        realCurrentIndex.value--;
+      }
+    }
+    // 触发后清零累计值
+    wheelAccumulatedValue = 0;
+  }
+
+  // 阻止默认滚动行为
+  event.preventDefault();
+};
+
+// 移除事件监听器的辅助函数
+const removeWheelListener = () => {
+  // #ifdef H5
+  if (wheelListenerAdded) {
+    window.removeEventListener("wheel", handleMouseWheel, { passive: false });
+    wheelListenerAdded = false;
+  }
+  // #endif
+};
+
+// 页面显示时添加事件监听
+onPageShow(() => {
+  // #ifdef H5
+  if (!navigator.userAgent.includes("Mobile") && !navigator.userAgent.includes("mobile")) {
+    if (appStore.value.videoResourceList.length != 1 || isInfiniteMode.value) {
+      // 检查是否今天已经提示过
+      const today = new Date().toDateString();
+      const lastWheelTipDate = storage.get<string>("lastWheelTipDate");
+
+      if (lastWheelTipDate !== today) {
+        uni.showToast({
+          title: $i18n_t("common.wheeltips"),
+          image: "/static/icons/mouse@3x.png",
+        });
+        // 存储今天的日期
+        storage.set("lastWheelTipDate", today);
+      }
+    }
+  }
+
+  // 防止重复添加
+  if (!wheelListenerAdded) {
+    window.addEventListener("wheel", handleMouseWheel, { passive: false });
+    wheelListenerAdded = true;
+  }
+  // #endif
+});
+
+// 页面隐藏时移除事件监听
+onPageHide(() => {
+  removeWheelListener();
+});
+
+onUnmounted(() => {
+  uni.$off("openVideoComments", handleOpenComments);
+  // 确保在组件卸载时也移除事件监听器
+  removeWheelListener();
+});
+</script>
+
+<style scoped lang="scss">
+.page,
+.swiper,
+.swiper-item {
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+}
+
+.page {
+  position: relative;
+}
+
+/* --- Header --- */
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 16px 10px;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.user-avatar {
+  /* Additional styling for the avatar if needed */
+}
+
+.back-button-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto; /* Allow clicks on the back button */
+}
+
+.header-icons {
+  display: flex;
+  flex-direction: row;
+}
+
+.icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: 12px;
+  pointer-events: auto; /* Allow clicks on the icons */
+}
+
+.icon-wrapper uni-view {
+  overflow: unset;
+}
+
+.download-toast {
+  position: absolute;
+  bottom: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 10px 0;
+  width: 80%;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+.download-text {
+  font-size: 14px;
+  color: #fff;
+  text-align: center;
+}
+</style>

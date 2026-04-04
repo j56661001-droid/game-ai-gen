@@ -1,0 +1,190 @@
+<template>
+	<view class="stars-container">
+		<scroll-view class="tag-scroll-view" direction="horizontal" :show-scrollbar="false" :scroll-into-view="selectedTag" :scroll-with-animation="true"
+		<!-- #ifdef WEB -->
+		@mousedown="handleMouseDown"
+		@mouseup="handleMouseUp" 
+		@mousemove="handleMouseMove"
+		@mouseleave="handleMouseUp"
+		<!-- #endif -->
+		>
+			<view
+				class="tag-button"
+				v-for="(category, index) in data"
+				:key="index"
+				:id="`tab_${index}`"
+				:class="{ 'active-tag': selectedTag == `tab_${index}` }"
+				@click="selectTag(`tab_${index}`)"
+			>
+				<text class="tag-text">{{ category.hashtag.displayName[i18n.global.locale.value] }}</text>
+			</view>
+		</scroll-view>
+
+		<scroll-view class="item-scroll-view" direction="horizontal" :show-scrollbar="false"
+		<!-- #ifdef WEB -->
+		@mousedown="handleMouseDown"
+		@mouseup="handleMouseUp" 
+		@mousemove="handleMouseMove"
+		@mouseleave="handleMouseUp"
+		<!-- #endif -->
+		>
+			<view class="item" v-for="(item, index) in (filteredData as UserItem[])" :key="index">
+				<view @click="goToProfile(item.id)">
+					<FrAvatar :size="82" :url="item.avatar"></FrAvatar>
+				</view>
+				<text class="item-name">{{ item.nickname }}</text>
+				<!-- <text class="item-count">{{ item.followersCount }}</text> -->
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { FrAvatar } from "@/components/widgets";
+	import { ref, computed } from 'vue';
+	import { CategoryListWithChildren, UserItem } from '../../types/index';
+	import i18n from "@/locale/index.uts";
+	const props = defineProps<{
+		data: CategoryListWithChildren[];
+	}>();
+
+	const selectedTag = ref<string>(props.data.length > 0 ? 'tab_0' : '');
+
+	const filteredData = computed<UserItem[]>(() => {
+		let preTag = selectedTag.value;
+		if(props.data.length > 0 && (preTag == '' || !preTag.startsWith('tab_'))){
+			selectedTag.value = 'tab_0';
+		}
+		// 从tab_${index}中提取索引
+		let index = 0;
+		if (preTag.startsWith('tab_')) {
+			const match = preTag.match(/^tab_(\d+)$/);
+			if (match != null && match[1] != null) {
+				index = parseInt(match[1]);
+			}
+		}
+		// 确保索引在有效范围内
+		if (index >= 0 && index < props.data.length) {
+			return props.data[index].users;
+		}
+		return [];
+	});
+
+	function selectTag(tag: string) {
+		selectedTag.value = tag;
+	}
+
+	function goToProfile(userId: string) {
+		uni.navigateTo({
+			url: `/pages/profile/personal?userId=${userId}`
+		});
+	}
+
+	<!-- #ifdef WEB -->
+	// WEB平台鼠标拖动滚动处理
+	const isDragging = ref<boolean>(false)
+	const startX = ref<number>(0)
+	const scrollLeft = ref<number>(0)
+	let scrollElement: HTMLElement | null = null
+
+	function handleMouseDown(e: MouseEvent) {
+		isDragging.value = true
+		startX.value = e.pageX
+		scrollElement = e.currentTarget as HTMLElement
+		if (scrollElement != null) {
+			scrollLeft.value = scrollElement.scrollLeft
+			scrollElement.style.cursor = 'grabbing'
+			scrollElement.style.userSelect = 'none'
+		}
+	}
+
+	function handleMouseUp() {
+		isDragging.value = false
+		if (scrollElement) {
+			scrollElement.style.cursor = 'grab'
+			scrollElement.style.removeProperty('user-select')
+		}
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!isDragging.value) return
+		e.preventDefault()
+		const x = e.pageX
+		const walk = (x - startX.value) * 2 // 拖动速度系数
+		if (scrollElement) {
+			scrollElement.scrollLeft = scrollLeft.value - walk
+		}
+	}
+	<!-- #endif -->
+</script>
+
+<style>
+	.stars-container {
+		width: 100%;
+		box-sizing: border-box;
+	}
+	
+	.tag-scroll-view {
+		width: 100%;
+		margin-bottom: 15px;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.tag-button {
+		padding: 7px 15px;
+		border-radius: 20px;
+		background-color: #333333;
+		margin-right: 10px;
+		display: flex;
+		height: 30px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.tag-button.active-tag {
+		background: linear-gradient(to bottom right, #FF00D8, #FFF500); /* Active tag color */
+	}
+
+	.tag-text {
+		font-size: 14px;
+		color: #ffffff;
+	}
+
+	.item-scroll-view {
+		width: 100%;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-right: 15px;
+		width: 82px;
+	}
+
+	
+
+	.verified-badge {
+		position: absolute;
+		bottom: 0px;
+		right: 0px;
+		width: 18px;
+		height: 18px;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.item-name {
+		margin-left: 8px;
+		font-size: 14px;
+		color: #dddddd;
+	}
+	
+	.item-count {
+		font-size: 12px;
+		color: #888888;
+	}
+</style>

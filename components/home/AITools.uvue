@@ -1,0 +1,204 @@
+<template>
+	<view class="ai-effects-container">
+		<scroll-view class="tag-scroll-view" direction="horizontal" :show-scrollbar="false" :scroll-into-view="selectedTag" :scroll-with-animation="true"
+		<!-- #ifdef WEB -->
+		@mousedown="handleMouseDown"
+		@mouseup="handleMouseUp" 
+		@mousemove="handleMouseMove"
+		@mouseleave="handleMouseUp"
+		<!-- #endif -->
+		>
+			<view
+				class="tag-button"
+				v-for="(category, index) in props.data"
+				:key="index"
+				:id="`tab_${index}`"
+				:class="{ 'active-tag': selectedTag == `tab_${index}` }"
+				@click="selectTag(`tab_${index}`)"
+			>
+				<text class="tag-text">{{ category.hashtag.displayName[i18n.global.locale.value] }}</text>
+			</view>
+		</scroll-view>
+
+		<scroll-view class="item-scroll-view" direction="horizontal" :show-scrollbar="false">
+			<view class="item" v-for="(item, index) in (filteredData as PostItem[])" :key="index" @click="onGotoAIGenerator(item.generationID)">
+
+				<view class="item-image">
+					<VideoDisplay
+						v-if="item.contentType == 'video'"
+						:autoresize="false"
+						:cover="item.mediaMetadata[0].cover?.fileURL"
+						:src="item.mediaMetadata[0].fileURL"
+					/>
+					<bp-image-display v-else :autoresize="false" mode="aspectFill" :src="getCoverUrl(item)"></bp-image-display>
+				</view>
+				<text class="item-name">{{ item.caption }}</text>
+				<text class="item-desc">{{ item.content }}</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { ref, computed } from 'vue';
+	import { CategoryListWithChildren, PostItem, MediaMetadata } from '../../types/index';
+	import { getCoverUrl } from "../../utils/coverUtils.uts";
+	import VideoDisplay from "@/components/panels/bp-video-display.uvue";
+	import BpImageDisplay from "@/components/panels/bp-image-display.uvue";
+	import i18n from "@/locale/index.uts";
+	
+	type Props = {
+		data: CategoryListWithChildren[];
+	}
+	
+	const props = defineProps<Props>();
+
+	const selectedTag = ref<string>((props.data != null && props.data.length > 0) ? 'tab_0' : '');
+
+	const filteredData = computed<PostItem[]>(() => {
+		if(props.data == null){
+			return [];
+		}
+		let preTag = selectedTag.value;
+		if(props.data.length > 0 && (preTag == '' || !preTag.startsWith('tab_'))){
+			selectedTag.value = 'tab_0';
+		}
+		// 从tab_${index}中提取索引
+		let index = 0;
+		if (preTag.startsWith('tab_')) {
+			const match = preTag.match(/^tab_(\d+)$/);
+			if (match != null && match[1] != null) {
+				index = parseInt(match[1]);
+			}
+		}
+		// 确保索引在有效范围内
+		if (index >= 0 && index < props.data.length) {
+			return props.data[index].posts;
+		}
+		return [];
+	});
+
+	function selectTag(tag: string) {
+		selectedTag.value = tag;
+	}
+
+	<!-- #ifdef WEB -->
+	// WEB平台鼠标拖动滚动处理
+	const isDragging = ref<boolean>(false)
+	const startX = ref<number>(0)
+	const scrollLeft = ref<number>(0)
+	let scrollElement: HTMLElement | null = null
+
+	function handleMouseDown(e: MouseEvent) {
+		isDragging.value = true
+		startX.value = e.pageX
+		scrollElement = e.currentTarget as HTMLElement
+		if (scrollElement != null) {
+			scrollLeft.value = scrollElement.scrollLeft
+			scrollElement.style.cursor = 'grabbing'
+			scrollElement.style.userSelect = 'none'
+		}
+	}
+
+	function handleMouseUp() {
+		isDragging.value = false
+		if (scrollElement) {
+			scrollElement.style.cursor = 'grab'
+			scrollElement.style.removeProperty('user-select')
+		}
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!isDragging.value) return
+		e.preventDefault()
+		const x = e.pageX
+		const walk = (x - startX.value) * 2 // 拖动速度系数
+		if (scrollElement) {
+			scrollElement.scrollLeft = scrollLeft.value - walk
+		}
+	}
+	<!-- #endif -->
+	
+	const onGotoAIGenerator = (generationID: string) => {
+		uni.navigateTo({
+			url: `/pages/publish/ai-generator?generationID=${generationID}`
+		})
+	}
+
+</script>
+
+<style>
+	.ai-effects-container {
+		width: 100%;
+		box-sizing: border-box;
+	}
+	
+	.tag-scroll-view {
+		width: 100%;
+		margin-bottom: 15px;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.tag-button {
+		padding: 7px 15px;
+		border-radius: 20px;
+		background-color: #333333;
+		margin-right: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 30px;
+	}
+
+	.tag-button.active-tag {
+		background: linear-gradient(to bottom right, #FF00D8, #FFF500); /* Active tag color */
+	}
+
+	.tag-text {
+		font-size: 14px;
+		color: #ffffff;
+	}
+
+	.item-scroll-view {
+		width: 100%;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.item {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start; /* Align text to the left */
+		margin-right: 15px;
+		width: 111px;
+	}
+
+	.item-image {
+		width: 111px;
+		height: 111px;
+		border-radius: 12px;
+		margin-bottom: 10px;
+	}
+
+	.item-name {
+		font-size: 12px;
+		color: #ffffff;
+		font-weight: bold;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2; /* 最多三行 */
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.item-desc {
+		font-size: 12px;
+		color: rgba(255,255,255,0.4);
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2; /* 最多三行 */
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+</style>

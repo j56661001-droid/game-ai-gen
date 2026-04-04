@@ -1,0 +1,622 @@
+<template>
+  <bg-panel>
+    <scroll-view :scroll-y="true" class="register-container">
+      <view class="login-header-row">
+        <view class="login-close-wrapper">
+          <icon-font name="close" :size="20" color="#fff" @click="onClose"></icon-font>
+        </view>
+        <text class="register-title-centered">{{ registerText }}</text>
+        <view class="login-header-spacer"></view>
+      </view>
+      <!-- <image mode="aspectFit" class="login-logo" src="/static/icons/login_logo@2x.png"></image> -->
+      <view class="register-form">
+        <text-input :placeholder="accountText" type="text" :value="formState.account" @change="onFormChange('account', $event)"></text-input>
+        <view class="error-message-wrapper">
+          <text v-if="!!usernameErrorMsg" class="error-message">{{ usernameErrorMsg }}</text>
+        </view>
+        <text-input
+          :placeholder="passwordText"
+          style="margin-top: 16px"
+          type="password"
+          :value="formState.password"
+          @change="onFormChange('password', $event)"
+        ></text-input>
+        <view class="password-hints">
+          <text class="password-hint-item">{{ passwordMinLengthText }}</text>
+          <text class="password-hint-item">{{ passwordLetterAndNumberText }}</text>
+        </view>
+        <view class="error-message-wrapper">
+          <text v-if="!!passwordErrorMsg" class="error-message">{{ passwordErrorMsg }}</text>
+        </view>
+        <text-input
+          :placeholder="confirmPasswordText"
+          style="margin-top: 16px"
+          type="password"
+          :value="formState.confirmPassword"
+          @change="onFormChange('confirmPassword', $event)"
+        ></text-input>
+        <view class="error-message-wrapper">
+          <text v-if="!!confirmPasswordErrorMsg" class="error-message">{{ confirmPasswordErrorMsg }}</text>
+        </view>
+        <view class="invitation-code-wrapper" style="margin-top: 40px">
+          <text class="invitation-code-label">{{ invitationCodeText }}：</text>
+          <text-input
+            :placeholder="invitationCodeText"
+            style="flex: 1"
+            type="text"
+            :value="formState.promotional_code"
+            @change="onFormChange('promotional_code', $event)"
+          ></text-input>
+        </view>
+        <view class="error-message-wrapper">
+          <text v-if="!!promotionalCodeErrorMsg" class="error-message">{{ promotionalCodeErrorMsg }}</text>
+        </view>
+      </view>
+      <submit-button :submitting="registering" :disabled="!formState.account || !formState.password || !formState.confirmPassword" @submit="onSubmit">{{
+        registerText
+      }}</submit-button>
+      <view class="existing-account-wrapper">
+        <text class="existing-account-text" @click="navigateToLogin">{{ existingAccountText }}</text>
+      </view>
+      <third-party-login :get-promotional-code="() => formState.promotional_code"></third-party-login>
+      <!-- Cloudflare Turnstile Widget -->
+      <!-- <view id="turnstile-register-widget" :style="{ 'margin-top': '24px', display: showTurnstileWidget ? 'flex' : 'none' }"></view> -->
+    </scroll-view>
+  </bg-panel>
+</template>
+
+<script setup lang="uts">
+import { computed, reactive, ref, onMounted } from "vue";
+import { useSubmitRequest } from "@/hooks";
+import { $i18n_t, getLocale } from "@/locale/index.uts";
+import { CheckUserName } from "@/api/user.uts";
+import { debounce, execGTagEvent } from "@/utils/index.uts";
+import { storage } from "@/store/index.uts";
+import { getFingerprintParams } from "@/api/fingerprint.uts";
+import { isDevelopmentEnv } from "@/utils/platform.uts";
+import FrPage from "../../components/widgets/fr-page.uvue";
+import IconFont from "../../components/IconFont/IconFont.uvue";
+import BgPanel from "./widgets/bg-panel.uvue";
+import TextInput from "./widgets/text-input.uvue";
+import SubmitButton from "./widgets/submit-button.uvue";
+import ThirdPartyLogin from "@/components/account/third-party-login.uvue";
+import { tokenStorage, user, fingerprintFromUrl } from "@/store/user.uts";
+import { generateDeviceFingerprint } from "@/utils/fingerprint.uts";
+
+const navigate = (config: { to?: string; toAction?: string; action?: string }) => {
+  if (!config.to) return;
+
+  const action = config.toAction || config.action || "navigateTo";
+  const options = { url: config.to };
+
+  switch (action) {
+    case "href":
+      window.location.href = options.url;
+      break;
+    case "navigateTo":
+      uni.navigateTo(options);
+      break;
+    case "redirectTo":
+      uni.redirectTo(options);
+      break;
+    case "reLaunch":
+      uni.reLaunch(options);
+      break;
+    case "switchTab":
+      uni.switchTab(options);
+      break;
+    default:
+      uni.navigateTo(options);
+      break;
+  }
+};
+
+const onClose = () => {
+  const { from, fromAction, action, successRedirectOnly } = redirectConfig.value;
+  uni.$emit("login:close");
+
+  if (successRedirectOnly) {
+    return;
+  }
+
+  if (!!redirectConfig.value.to) {
+    navigate(redirectConfig.value);
+  } else {
+    uni.redirectTo({
+      url: "/pages/index/index?tabbar=home", // 重定向到首页
+    });
+  }
+};
+
+const redirectConfig = ref<{ from?: string; to?: string; action?: string; toAction?: string; fromAction?: string; successRedirectOnly?: boolean }>({});
+
+const finalFingerprint = ref("");
+
+onLoad(({ from, to, action, toAction, fromAction, successRedirectOnly }) => {
+  redirectConfig.value = {
+    from: from || "",
+    to: to || "",
+    action: action,
+    toAction: toAction,
+    fromAction: fromAction,
+    successRedirectOnly: successRedirectOnly === "true",
+  };
+});
+
+// Define global type for turnstile if not already defined
+declare var turnstile: any;
+
+const registerText = computed(() => $i18n_t("common.register"));
+const accountText = computed(() => $i18n_t("profile.username"));
+const passwordText = computed(() => $i18n_t("common.password"));
+const passwordMinLengthText = computed(() => $i18n_t("common.regexp.passwordMinLength", { length: 8 }));
+const passwordLetterAndNumberText = computed(() => $i18n_t("common.regexp.passwordContainsLetterAndNumber"));
+const invitationCodeText = computed(() => $i18n_t("profile.invitationCode"));
+const confirmPasswordText = computed(() => $i18n_t("common.confirmPassword")); // New computed property
+const existingAccountText = computed(() => $i18n_t("common.existingAccount"));
+
+const navigateToLogin = () => {
+  uni.$emit("login:close");
+  setTimeout(() => {
+    uni.$emit("login:show", { page: "login", ...redirectConfig.value });
+  }, 20);
+};
+
+const isCapacitorEnv = computed<boolean>(() => {
+  // #ifdef WEB
+  return typeof window !== "undefined" && window.Capacitor != null;
+  // #endif
+  return false;
+});
+
+type FormState = {
+  account?: string;
+  password?: string;
+  confirmPassword?: string; // New property for confirm password
+  promotional_code?: string;
+  click_id?: string;
+};
+
+const passwordErrorMsg = ref<string>(""); // Renamed from errorMsg for password-specific errors
+const confirmPasswordErrorMsg = ref<string>(""); // New ref for confirm password errors
+const usernameErrorMsg = ref<string>("");
+const promotionalCodeErrorMsg = ref<string>("");
+
+const formState = reactive<FormState>({});
+const turnstileWidgetId = ref<string | null>(null);
+const showTurnstileWidget = ref<boolean>(false); // New ref to control widget visibility
+
+// 从剪切板读取数据
+const readFromClipboard = async (): Promise<string | null> => {
+  if (typeof window !== "undefined" && window.Capacitor) {
+    try {
+      const { Clipboard } = window.Capacitor.Plugins;
+      if (Clipboard) {
+        const result = await Clipboard.read();
+        if (result && result.value) {
+          // 假设剪切板中直接是指纹ID
+          const clipboardFingerprint = result.value.trim();
+          if (clipboardFingerprint.length > 10) {
+            // 简单验证指纹长度
+            console.log("Read fingerprint from clipboard:", clipboardFingerprint);
+            return clipboardFingerprint;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to read from clipboard:", error);
+    }
+  }
+  return null;
+};
+
+// 解析查询字符串 (Copied from App.uvue)
+const parseQueryParams = (queryString: string | null): any => {
+  const params: any = {};
+  if (queryString == null || queryString.length == 0) {
+    return params;
+  }
+  const pairs = queryString.split("&");
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i].split("=");
+    if (pair.length == 2) {
+      const key = decodeURIComponent(pair[0]);
+      const value = decodeURIComponent(pair[1] || "");
+      if (key != null) {
+        params[key] = value;
+      }
+    }
+  }
+  return params;
+};
+
+onMounted(async () => {
+  // 1. 优先使用从URL中获取的指纹
+  if (fingerprintFromUrl.value != null && fingerprintFromUrl.value.length > 0) {
+    finalFingerprint.value = fingerprintFromUrl.value;
+  } else {
+    // 2. 如果URL中没有，则生成设备指纹
+    finalFingerprint.value = await generateDeviceFingerprint();
+  }
+  if (isCapacitorEnv.value) {
+    // 3. 尝试从剪切板读取指纹 (作为 randomcode)
+    const clipboardFingerprint = await readFromClipboard();
+
+    if (finalFingerprint.value != null || clipboardFingerprint != null) {
+      try {
+        const result = await getFingerprintParams({
+          fingerprint: finalFingerprint.value,
+          randomcode: clipboardFingerprint, // 剪切板读取的指纹（可能为null）
+        });
+
+        if (result != null && result.success && result.data != null && result.data.value != null) {
+          let fingerprintData = result.data.value;
+          if (fingerprintData.promotional_code != null) {
+            formState.promotional_code = fingerprintData.promotional_code;
+            storage.set("promotional_code", fingerprintData.promotional_code);
+            console.log("Promotional code fetched from fingerprint service:", fingerprintData.promotional_code);
+          }
+        }
+      } catch (error: any) {
+        console.error("Error getting fingerprint parameters in register page:", error);
+      }
+    }
+  }
+
+  // 备用方案：从存储中读取 promotional_code
+  if (formState.promotional_code == null || formState.promotional_code.length == 0) {
+    let storedPromotionalCode = storage.get<string>("promotional_code");
+    if (storedPromotionalCode != null && storedPromotionalCode.length > 0) {
+      formState.promotional_code = storedPromotionalCode;
+      console.log("Using stored promotional code:", storedPromotionalCode);
+    }
+  }
+
+  // 从存储中读取 click_id
+  let storedClickId = storage.get<string>("click_id");
+  if (storedClickId != null && storedClickId.length > 0) {
+    formState.click_id = storedClickId;
+    console.log("Using stored click_id:", storedClickId);
+  }
+
+  // Initialize Turnstile widget in execution mode
+  if (false && typeof window !== "undefined" && (window as any).turnstile != null) {
+
+    // Only skip Cloudflare Turnstile if in development environment, on localhost, and NOT in Capacitor environment
+    if (isDevelopmentEnv() && !isCapacitorEnv.value) {
+      console.log("Running on localhost in development, skipping Cloudflare Turnstile verification.");
+      showTurnstileWidget.value = false; // Hide the widget
+      // Directly proceed with registration, passing null for the token
+      handleRegistration(null);
+    } else {
+      turnstileWidgetId.value = (window as any).turnstile.render("#turnstile-register-widget", {
+        sitekey: "0x4AAAAAAB3tzZpeRdeYtHDy", // Replace with your actual sitekey
+        execution: "execute", // Don't auto-execute
+        callback: function (token: string) {
+          console.log("Turnstile token:", token);
+          // Proceed with registration after successful verification
+          handleRegistration(token);
+        },
+        "error-callback": function (errorCode: string) {
+          console.error("Turnstile error:", errorCode);
+          // passwordErrorMsg.value = $i18n_t("common.turnstileError");
+        },
+        "expired-callback": function () {
+          console.warn("Turnstile token expired");
+          // passwordErrorMsg.value = $i18n_t("common.turnstileExpired");
+          if (turnstileWidgetId.value != null) {
+            (window as any).turnstile.reset(turnstileWidgetId.value);
+          }
+        },
+      });
+    }
+  }
+});
+
+const checkUsername = async (username: string) => {
+  if (!username) {
+    usernameErrorMsg.value = "";
+    return;
+  }
+  const res = await CheckUserName(username);
+  if (res != null && !res.data.available) {
+    usernameErrorMsg.value = $i18n_t("profile.usernameNotAvailable");
+  } else {
+    usernameErrorMsg.value = "";
+  }
+};
+
+const checkUsernameDebounced = debounce(checkUsername, 300);
+
+const { submitRequest: registerRequest, submitting: registering } = useSubmitRequest({
+  url: `auth/register`,
+  onSuccess(result) {
+    // GA 埋点上报: 注册成功
+    execGTagEvent("register", { result: "success" } as AnyObject);
+
+    tokenStorage.set<string>("token", result.data.accessToken);
+    user.value = {
+      id: result.data.userID,
+      username: registeredUsername,
+      avatar: "",
+      bio: "",
+      createdAt: "",
+      email: "",
+      followersCount: 0,
+      followingCount: 0,
+      videoLikeCount: 0,
+      photoLikeCount: 0,
+      isFollowing: false,
+      location: "",
+      nickname: registeredUsername, // Assuming nickname is the same as username for now
+      postsCount: 0,
+    } as UserItem;
+    uni.$emit("login:close");
+    uni.$emit("refresh:balance");
+
+    /** 根据不同路由拦截器的action,适配业务处理 */
+    if (!!redirectConfig.value.to) {
+      navigate(redirectConfig.value);
+    } else {
+      uni.redirectTo({
+        url: "/pages/index/index?tabbar=home", // 重定向到首页
+      });
+    }
+  },
+  onFail(err) {
+    // GA 埋点上报: 注册失败
+    execGTagEvent("register", { result: "fail", error_code: err?.code } as AnyObject);
+
+    passwordErrorMsg.value = err.message;
+  },
+});
+
+const onFormChange = (field: string, val: string) => {
+  formState[field] = val;
+  if (field == "account") {
+    checkUsernameDebounced(val);
+  }
+};
+
+const preCheck = async () => {
+  // Clear previous errors
+  passwordErrorMsg.value = "";
+  confirmPasswordErrorMsg.value = "";
+  usernameErrorMsg.value = "";
+
+  if (!formState.account) {
+    usernameErrorMsg.value = $i18n_t("common.regexp.required", { field: accountText.value });
+    return false;
+  }
+
+  if (!formState.password) {
+    passwordErrorMsg.value = $i18n_t("common.regexp.required", { field: passwordText.value });
+    return false;
+  }
+
+  if (!formState.confirmPassword) {
+    confirmPasswordErrorMsg.value = $i18n_t("common.regexp.required", { field: confirmPasswordText.value });
+    return false;
+  }
+
+  // Password validation: at least 8 characters
+  if (formState.password.length < 8) {
+    passwordErrorMsg.value = passwordMinLengthText.value;
+    return false;
+  }
+
+  // Password validation: at least one letter and one number
+  if (!/[a-zA-Z]/.test(formState.password) || !/[0-9]/.test(formState.password)) {
+    passwordErrorMsg.value = passwordLetterAndNumberText.value;
+    return false;
+  }
+
+  // Password and confirm password must match
+  if (formState.password != formState.confirmPassword) {
+    confirmPasswordErrorMsg.value = $i18n_t("common.passwordMismatch"); // Assuming a translation for this
+    return false;
+  }
+
+  // Check username availability before submitting
+  await checkUsername(formState.account);
+  if (usernameErrorMsg.value != null && usernameErrorMsg.value.length > 0) {
+    return false;
+  }
+  return true;
+};
+
+let registeredUsername = "";
+
+const handleRegistration = async (turnstileToken: string | null) => {
+  let b = await preCheck();
+  if (!b) return;
+
+  const registerData: any = {
+    email: "",
+    nickname: "",
+    password: formState.password,
+    username: formState.account,
+    preferredLanguage: getLocale(), // Add preferredLanguage parameter
+  };
+
+  // If there's an existing guest account, attach the fingerprint
+  if (user.value != null && user.value.accountType == "guest") {
+    if (finalFingerprint.value != null) {
+      registerData.deviceFingerprint = finalFingerprint.value;
+    }
+  }
+
+  // Always add promotional_code if available
+  if (formState.promotional_code != null && formState.promotional_code.length > 0) {
+    registerData.promotional_code = formState.promotional_code;
+  }
+
+  // Always add click_id if available
+  if (formState.click_id != null && formState.click_id.length > 0) {
+    registerData.click_id = formState.click_id;
+  }
+
+  let affiliateCode = "";
+  if (typeof window !== "undefined") {
+    affiliateCode = (window as any).location.hostname;
+  }
+  if (affiliateCode.length > 0) {
+    registerData.affiliateCode = affiliateCode;
+  }
+  // Always attempt to get stored affiliate parameters
+  const affiliateParams = storage.get<any>("affiliate_params");
+  if (
+    affiliateParams != null &&
+    affiliateParams.utm_id != null &&
+    affiliateParams.utm_source != null &&
+    affiliateParams.utm_medium != null &&
+    affiliateParams.utm_campaign != null
+  ) {
+    registerData.utm_id = affiliateParams.utm_id;
+    registerData.utm_source = affiliateParams.utm_source;
+    registerData.utm_medium = affiliateParams.utm_medium;
+    registerData.utm_campaign = affiliateParams.utm_campaign;
+  }
+  // Add Turnstile token to registration data
+  if (turnstileToken != null && turnstileToken.length > 0) {
+    registerData["cf-turnstile-response"] = turnstileToken;
+  }
+  const source = import.meta.env.VITE_APP_SOURCE;
+  if (source) {
+    uni.$emit("debug:log", "source is " + source);
+    registerData.source = source;
+  }
+
+  registeredUsername = registerData.username;
+  registerRequest(registerData);
+};
+
+const onSubmit = async () => {
+  // Perform client-side validations first
+  let b = await preCheck();
+  if (!b) return;
+
+  // #ifdef WEB
+  // Only skip Turnstile execution if in development environment, on localhost, and NOT in Capacitor environment
+  if (isDevelopmentEnv() && !isCapacitorEnv.value) {
+    console.log("Running on localhost in development, skipping Turnstile execution in onSubmit.");
+    handleRegistration(null);
+  } else if (typeof window !== "undefined" && (window as any).turnstile != null && turnstileWidgetId.value != null) {
+    showTurnstileWidget.value = true; // Show the Turnstile widget after preCheck passes
+    (window as any).turnstile.execute(turnstileWidgetId.value);
+  } else {
+    // Fallback if Turnstile is not available or not initialized
+    console.warn("Turnstile not available or not initialized, proceeding without verification.");
+    handleRegistration(null);
+  }
+  // #endif
+};
+</script>
+
+<style scoped>
+.register-container {
+  flex: 1;
+  align-items: center;
+  max-width: 750px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.login-header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  padding-top: 24px;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
+}
+
+/* .login-close-wrapper does not need explicit style, it will take its natural size */
+
+.register-title-centered {
+  flex: 1;
+  text-align: center;
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-size: 26px;
+  line-height: 40px;
+  color: #fff;
+}
+
+.login-header-spacer {
+  width: 20px; /* Assuming the icon font is 20px, this acts as a balance */
+}
+
+.register-form {
+  margin: 24px 0;
+  width: 100%;
+}
+
+.error-message-wrapper {
+  padding: 0 24px;
+}
+
+.error-message {
+  color: red;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.password-hints {
+  padding: 0 24px;
+  margin-top: 8px;
+}
+
+.password-hint-item {
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  display: block;
+}
+
+.invitation-code-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 24px;
+}
+
+.invitation-code-label {
+  color: #fff;
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+.register-mark-bot {
+  width: 10px;
+  height: 10px;
+  background: #707070;
+  border-radius: 50%;
+}
+
+.register-mark-bot-selected {
+  background: linear-gradient(180deg, #ff00d8 0%, #fff500 100%);
+}
+
+.existing-account-wrapper {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.existing-account-text {
+  color: #ff00d8;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.login-logo {
+  width: 276px;
+  height: 154px;
+  margin-top: 48px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+</style>

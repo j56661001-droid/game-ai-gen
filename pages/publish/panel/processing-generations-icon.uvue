@@ -1,0 +1,77 @@
+<template>
+  <slot :count="count">
+    <view class="order-icon-container">
+      <fr-badge :count="count" count-class="badge-count">
+        <icon-font name="order_outlined" :size="18" class="order-icon" @click="onGotoProcessingRecords" />
+      </fr-badge>
+    </view>
+  </slot>
+</template>
+
+<script setup lang="uts">
+import { FrBadge } from "@/components/widgets/index.uts";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { useLoadDataRequest, LoadDataRequestOptions } from "@/hooks";
+import { user } from "@/store/user";
+
+const intervalFlag = ref<number | null>(null);
+
+const { loadDataRequest, result } = useLoadDataRequest({
+  url: `ai-generations/history`,
+  customErrorHanlder: () => {},
+} as LoadDataRequestOptions);
+
+const count = computed((): number => {
+  const total = result.meta?.pagination?.total;
+  return total != null ? total : 0;
+});
+
+const loadData = () => {
+  if (user.value != null) {
+    loadDataRequest({ page: 1, size: 1, status: ["processing"] });
+  }
+};
+
+onMounted(() => {
+  loadData();
+
+  intervalFlag.value = setInterval(() => {
+    loadData();
+  }, 1000 * 5); // 5s
+});
+
+onUnmounted(() => {
+  if (intervalFlag.value != null) {
+    clearInterval(intervalFlag.value);
+    intervalFlag.value = null;
+  }
+});
+
+const onGotoProcessingRecords = () => {
+  uni.navigateTo({ url: "/pages/publish/processing-records" });
+};
+</script>
+
+<style scoped>
+.order-icon-container {
+  width: 40px;
+  height: 40px;
+  background-color: #1f1f1f;
+  border-radius: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.order-icon-container uni-view {
+  overflow: unset;
+}
+
+.order-icon {
+  color: #fff;
+}
+
+.fr-badge :deep(.badge-count) {
+  top: -10px;
+  right: -10px;
+}
+</style>

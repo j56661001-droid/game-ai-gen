@@ -1,0 +1,24 @@
+export const AUDIO_BG_COLORS = [
+  "linear-gradient(136deg, #ff4e6d 0%, #ff41d3 100%)",
+  "linear-gradient( 135deg, #7841CC 0%, #3793CC 100%)",
+  "linear-gradient( 135deg, #0B8418 0%, #C8BA3D 100%)",
+  "linear-gradient( 134deg, #973DCB 0%, #C934C1 100%)",
+  "linear-gradient( 136deg, #3F87CA 0%, #35C99A 100%)",
+  "linear-gradient( 134deg, #CC703E 0%, #CC9135 100%)",
+  "linear-gradient( 136deg, #CC0700 0%, #CC8500 100%)",
+  "linear-gradient( 136deg, #A1A1A1 0%, #CACACA 100%)",
+];
+
+export function parseAudioBGColor(url: string) {
+  // TODO: 先随机
+  //   const i = Math.floor(Math.random() * 100) % 8;
+  let charSize = 0;
+  if (typeof url == "string") {
+    for (let char of url) {
+      charSize += char.charCodeAt(0);
+    }
+  }
+
+  const i = charSize % 8;
+  return AUDIO_BG_COLORS[i];
+}

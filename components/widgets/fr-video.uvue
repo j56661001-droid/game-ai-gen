@@ -1,0 +1,95 @@
+<template>
+  <view class="fr-video-container" @click="onOpenFullscreen">
+    <video
+      ref="videoRef"
+      class="fr-video"
+      :controls="controlsEnabled"
+      :src="getAbsoluteMediaUrl(props.src)"
+      :loop="props.loop"
+      :autoplay="props.autoplay"
+      :direction="props.direction"
+      :muted="props.muted"
+      :object-fit="props.objectFit"
+      :page-gesture="props.pageGesture"
+      :show-center-play-btn="props.showCenterPlayBtn"
+      @error="onError"
+      @fullscreenchange="onFullscreenChange"
+    ></video>
+    <view v-if="props.preview || props.disabled" class="fr-video_disabled"></view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+type Props = {
+  src: string.VideoURIString;
+  loop?: boolean;
+  autoplay?: boolean;
+  muted?: boolean;
+  pageGesture?: boolean;
+  direction?: number;
+  showCenterPlayBtn?: boolean;
+  objectFit?: string;
+  preview?: boolean;
+  controls?: boolean;
+  disabled?: boolean;
+  /** TODO */
+};
+
+const props = withDefaults(defineProps<Props>(), { objectFit: "contain", controls: true });
+
+const videoRef = ref<UniVideoElement | null>(null);
+const isFullscreen = ref<boolean>(false);
+
+const controlsEnabled = computed((): boolean => (props.preview == true ? isFullscreen.value : props.controls));
+
+const onFullscreenChange = (e: UniVideoFullScreenChangeEvent) => {
+  isFullscreen.value = e.detail.fullScreen;
+
+  if (!props.preview) {
+    return;
+  }
+
+  if (isFullscreen.value) {
+    videoRef.value?.play();
+  } else {
+    videoRef.value?.pause();
+  }
+};
+
+const onOpenFullscreen = () => {
+  if (!props.preview || props.disabled) {
+    return;
+  }
+
+  videoRef.value?.requestFullScreen({ fullScreen: true, direction: 0 } as any);
+};
+
+const onError = (e) => {
+  console.error("Video load error: ", e);
+  // TODO:  fallback
+};
+</script>
+
+<style scoped>
+.fr-video-container {
+  position: relative;
+}
+
+.fr-video {
+  height: 100%;
+  width: 100%;
+  background-color: #1a1a1a;
+  border-radius: 4px;
+}
+
+.fr-video_disabled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+</style>

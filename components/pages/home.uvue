@@ -1,0 +1,2203 @@
+<template>
+  <view class="page">
+    <!-- 新用户警告弹框 -->
+    <bp-newplayer
+      v-if="showNewPlayerModal"
+      @close="handleNewPlayerModalClose"
+      :username="newPlayerUsername"
+      :deviceFingerprint="newPlayerDeviceFingerprint"
+      :officialWebsites="newPlayerOfficialWebsites"
+      :is-guest="user?.accountType === 'guest' || user == null"
+    />
+
+    <!-- 绑定邮箱弹窗 -->
+    <bind-email-modal
+      v-if="showBindEmailModal && !bindEmailModalClosedManually"
+      :visible="showBindEmailModal && !bindEmailModalClosedManually"
+      :maskClosable="false"
+      @close="handleBindEmailClose"
+      @success="handleBindEmailSuccess"
+    />
+
+    <!-- 合并邮箱成功弹窗 -->
+    <merge-email-modal
+      v-if="showMergeEmailModal"
+      :visible="showMergeEmailModal"
+      :maskClosable="false"
+      @close="handleMergeEmailClose"
+      @explore="handleMergeEmailExplore"
+    />
+
+    <!-- 回归用户奖励弹窗 -->
+    <user-return-modal
+      v-if="showUserReturnModal"
+      :maskClosable="false"
+      :returnUserCreatedAt="returnUserCreatedAt"
+      :returnUserBaseReward="returnUserBaseReward"
+      @close="handleUserReturnModalClose"
+    />
+
+    <view class="header" :style="headerBgStyle">
+      <view class="header-left">
+        <bp-user-avatar></bp-user-avatar>
+      </view>
+      <view class="header-right">
+        <view class="icon-wrapper" @click="openLanguagePicker">
+          <IconFont name="lang" />
+        </view>
+        <view class="icon-wrapper" @click="goToSearch">
+          <IconFont name="search" />
+        </view>
+        <view class="icon-wrapper">
+          <bp-notification-icon />
+          <!-- <IconFont name="message" @click="gotoNotifications" /> -->
+        </view>
+      </view>
+    </view>
+    <scroll-view
+      class="container"
+      direction="vertical"
+      @scroll="onScroll"
+      @scrolltolower="loadMoreData"
+      :show-scrollbar="false"
+      :scroll-top="currentScrollPosition"
+    >
+      <!-- 轮播图片区 -->
+      <view class="banner-container">
+        <view class="banner-swiper-wrapper">
+          <swiper
+            id="bannerSwiper"
+            class="banner-swiper"
+            circular
+            :indicator-dots="false"
+            :autoplay="false"
+            :interval="5000"
+            :duration="500"
+            @change="onSwiperChange"
+            :disable-touch="false"
+            :current="currentSwiperIndex"
+          >
+            <swiper-item v-for="(item, index) in (bannerList as BannerItem[])" :key="index">
+              <view class="floattext">
+                <text class="floattext-title">{{ reactiveFmtBackendLang(item.title).value }}</text>
+                <text class="floattext-subtitle">{{ reactiveFmtBackendLang(item.subtitle).value }}</text>
+                <view class="banner-buttons" v-if="item.links && item.links.length > 0">
+                  <view
+                    class="banner-button"
+                    :class="{ 'banner-button-first': linkIndex == 0 }"
+                    v-for="(link, linkIndex) in item.links"
+                    :key="linkIndex"
+                    @click="handleBannerLinkClick(link)"
+                  >
+                    <text class="banner-button-text">{{ reactiveFmtBackendLang(link.title).value || $i18n_t("home.banner.learnMore") }}</text>
+                  </view>
+                </view>
+              </view>
+              <video
+                v-if="item.mimeType == 'video'"
+                class="banner-image"
+                :src="getAbsoluteMediaUrl(item.fileURL)"
+                object-fit="cover"
+                :controls="false"
+                :show-play-btn="false"
+                :show-center-play-btn="false"
+                :enable-progress-gesture="false"
+                :loop="false"
+                :muted="true"
+                :autoplay="true"
+                @ended="handleVideoEnd"
+                :id="'bannerVideo-' + index"
+              ></video>
+              <image v-else class="banner-image" :src="getAbsoluteMediaUrl(item.fileURL)" mode="aspectFill"> </image>
+            </swiper-item>
+          </swiper>
+          <view class="banner-gradient-overlay"></view>
+          <view class="custom-dots">
+            <view v-for="(item, index) in (bannerList as BannerItem[])" :key="index" class="dot-wrapper" @click="onDotClick(index)">
+              <view class="dot" :class="{ active: index == currentSwiperIndex }"></view>
+            </view>
+          </view>
+        </view>
+        <view class="banner-list-wrapper">
+          <scroll-view class="banner-list" :scroll-y="true">
+            <view
+              class="banner-list-item"
+              :class="{ active: index == currentSwiperIndex }"
+              v-for="(item, index) in (bannerList as BannerItem[])"
+              :key="index"
+              @click="onDotClick(index)"
+            >
+              <view class="banner-list-item-media">
+                <video
+                  v-if="item.mimeType == 'video'"
+                  class="banner-list-item-image"
+                  :src="getAbsoluteMediaUrl(item.fileURL)"
+                  :show-play-btn="false"
+                  :show-center-play-btn="false"
+                  :controls="false"
+                  object-fit="cover"
+                ></video>
+                <image v-else class="banner-list-item-image" :src="getAbsoluteMediaUrl(item.fileURL)" mode="aspectFill"></image>
+              </view>
+              <view class="banner-list-item-info">
+                <text class="banner-list-item-title">{{ reactiveFmtBackendLang(item.title).value }}</text>
+                <text class="banner-list-item-subtitle">{{
+                  reactiveFmtBackendLang(item.subtitle).value || (item.links && item.links.length > 0 ? reactiveFmtBackendLang(item.links[0].title).value : "")
+                }}</text>
+              </view>
+              <view class="banner-list-item-arrow" v-if="index == currentSwiperIndex">
+                <IconFont name="arrowright" :size="12" color="#FFFFFF" />
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+      </view>
+
+      <!-- 活动入口 -->
+      <view class="activity-container">
+        <!-- 签到 -->
+        <fr-activity-entrance
+          :title="$i18n_t('home.activityEntrance.dailyCheckin')"
+          icon="/static/icons/daily-checkin.png"
+          size="small"
+          bgColor="red"
+          @click="goToDailyCheckin"
+        />
+        <!-- 每日任务 -->
+        <fr-activity-entrance
+          :title="$i18n_t('home.activityEntrance.dailyTask')"
+          icon="/static/icons/daily-task.png"
+          size="small"
+          bgColor="yellow"
+          @click="goToDailyTask"
+        />
+        <!-- 用户回归 -->
+        <fr-activity-entrance
+          v-if="isReturnUser"
+          :title="$i18n_t('home.activityEntrance.userReactivation')"
+          :time="calculateTimeRemaining(returnUserCreatedAt).value"
+          icon="/static/icons/user-reactivation@2x.png"
+          size="small"
+          bgColor="purple-red"
+          @click="goToUserReactivation"
+        />
+        <!-- 推广有礼 -->
+         <!-- || user.accountType == 'guest'  -->
+        <fr-activity-entrance
+          v-if="user == null || !isReturnUser"
+          :title="$i18n_t('affiliate.title')"
+          icon="/static/icons/c2cicon.png"
+          size="small"
+          bgColor="pink"
+          @click="goToAffiliate"
+        />
+        <!-- 转盘抽奖 -->
+        <fr-activity-entrance
+          v-if="showLotteryEntrance"
+          :title="$i18n_t('home.activityEntrance.luckyWheel')"
+          icon="/static/icons/lucky-wheel​.png"
+          size="small"
+          bgColor="purple"
+          @click="goToLuckyWheel"
+        />
+      </view>
+
+      <view class="content-sections">
+        <view v-if="zoneData.length" class="section-header">
+          <text class="section-title">{{ zonesTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('Zone')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <Zone v-if="zoneData.length" :data="zoneData" :is-wide-screen="isWideScreen" />
+
+        <view v-if="aiToolsData.length" class="section-header">
+          <text class="section-title">{{ aiToolsTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('AITools')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <AITools v-if="aiToolsData.length" :data="aiToolsData" />
+        <!-- 在这里添加aigf 入口banner -->
+        <view class="aigf-banner" @click="goToAigf" v-if="showAigfEntrance && !isWideScreen">
+          <image src="/static/aigf_bg@2x.png" class="aigf-banner-bg" mode="widthFix" />
+          <view class="aigf-banner-content">
+            <view class="aigf-banner-left">
+              <view class="aigf-banner-title-wrapper">
+                <text class="aigf-banner-title">{{ $i18n_t("home.aigfBannerTitle") }}</text>
+                <view class="aigf-banner-arrow-group">
+                  <IconFont name="arrowright" :size="10" color="#FFFFFF" />
+                  <IconFont name="arrowright" :size="10" color="rgba(255,255,255,0.4)" class="aigf-banner-arrow-second" />
+                </view>
+              </view>
+              <text class="aigf-banner-desc">{{ $i18n_t("home.aigfBannerDesc") }}</text>
+            </view>
+            <!-- <view class="aigf-banner-right">
+              <view class="aigf-banner-btn">
+                <text class="aigf-banner-btn-text">→</text>
+              </view>
+            </view> -->
+          </view>
+        </view>
+
+        <view v-if="shortVideosData.length" class="section-header">
+          <text class="section-title">{{ videosTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('ShortVideos')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <ShortVideos v-if="shortVideosData.length" :data="shortVideosData" />
+
+        <view v-if="topicsData.length" class="section-header">
+          <text class="section-title">{{ topicsTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('Topics')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <Topics v-if="topicsData.length" :data="topicsData" />
+
+        <view v-if="starsData.length" class="section-header">
+          <text class="section-title">{{ starsTitleText }}</text>
+          <view class="view-more-wrapper" @click="goToSection('Stars')">
+            <text class="view-more">{{ viewMoreText }}</text>
+            <IconFont name="arrowright" :size="10" color="#FF23B8" />
+          </view>
+        </view>
+        <Stars v-if="starsData.length" :data="starsData" />
+
+        <view class="section-header">
+          <text class="section-title">{{ forYouText }}</text>
+        </view>
+        <AdaptiveWebWaterfallN class="waterfall" :items="interspersedList">
+          <template v-slot:default="{ item, onItemReady }">
+            <view v-if="item.type === 'ad'" class="waterfall-item in-feed-ad-item" @click="goToAigf">
+              <image src="/static/aigf_ad.webp" class="item-image" mode="widthFix" @load="() => onItemReady(item.id)"></image>
+              <view class="ad-tag">
+                <text class="ad-tag-text">{{ $i18n_t("common.ad") }}</text>
+              </view>
+              <view class="in-feed-ad-content">
+                <view class="in-feed-ad-title-wrapper">
+                  <text class="in-feed-ad-title">{{ $i18n_t("home.aigfBannerTitle") }}</text>
+                  <view class="aigf-banner-arrow-group">
+                    <IconFont name="arrowright" :size="10" color="#FFFFFF" />
+                    <IconFont name="arrowright" :size="10" color="rgba(255,255,255,0.4)" class="aigf-banner-arrow-second" />
+                  </view>
+                </view>
+                <text class="in-feed-ad-desc">{{ $i18n_t("home.aigfBannerDesc") }}</text>
+              </view>
+            </view>
+            <view v-else class="waterfall-item">
+              <bp-media-display
+                class="item-image"
+                :type="item.contentType"
+                :src="item.mediaMetadata[0]?.fileURL"
+                :cover="item.mediaMetadata[0]?.cover?.fileURL"
+                :encryptionKey="item.mediaMetadata[0]?.encryptionKey"
+                @click="handleItemClick(item)"
+                @load="() => onItemReady((item as PostItem).id)"
+              ></bp-media-display>
+            </view>
+          </template>
+        </AdaptiveWebWaterfallN>
+        <view v-if="loading && !interspersedList.length" style="align-items: center; justify-content: center; padding: 24px 0">
+          <FrSpin type="primary" />
+        </view>
+        <fr-more-status v-if="interspersedList.length > 0" :loading="loading" :has-more="!noMore"></fr-more-status>
+      </view>
+      <fr-back-top :bottom="40" :right="16"></fr-back-top>
+    </scroll-view>
+    <!-- Download Button -->
+    <view v-if="showBanner && isMobile && !isTelegramMiniApp()" class="download-banner">
+      <image src="/static/icons/welcome@2x.png" class="banner-icon"></image>
+      <text class="banner-text">{{ $i18n_t("home.downloadAppExplore") }}</text>
+      <view class="banner-buttons-wrapper">
+        <view class="download-now-button" @click="downloadAppFromBanner">
+          <text class="download-now-button-text">{{ $i18n_t("home.downloadNow") }}</text>
+        </view>
+      </view>
+      <view class="close-banner-button" @click="closeBanner">
+        <IconFont name="close" color="#FFFFFF" :size="12" />
+      </view>
+    </view>
+    <view v-else-if="isMobile && !isTelegramMiniApp()" class="download-button-wrapper" @click="goToDownload">
+      <IconFont name="download_app" color="#FFFFFF" :size="20" />
+    </view>
+    <!-- </view> -->
+
+    <view class="recharge-button-wrapper">
+      <!-- 回顶部 -->
+
+      <!-- 反馈 -->
+      <view class="feedback-button-item" @click="goToFeedback">
+        <image src="/static/icons/feedback.png" class="feedback-button-icon" />
+      </view>
+      <!-- 充值 -->
+      <view class="recharge-button-item" v-if="user != null" @click="openExternalTopupPage('home-recharge-button')">
+        <image src="/static/icons/recharge@2x.png" class="recharge-button-icon"></image>
+      </view>
+    </view>
+
+    <!-- Floating Button -->
+    <!-- <view v-if="floatingButtonData != null" class="floating-button-wrapper" @click="handleBannerLinkClick(floatingButtonData)">
+      <image :src="getAbsoluteMediaUrl(floatingButtonData.icon)" class="floating-button-icon"></image>
+    </view> -->
+
+    <view v-if="showLanguagePicker" class="picker-view">
+      <view class="picker-header" style="width: 100%">
+        <view class="picker-button picker-cancel" @click="showLanguagePicker = false">
+          <text class="picker-button-text">{{ $i18n_t("common.cancel") }}</text>
+        </view>
+        <view class="picker-button picker-save" @click="saveLanguageSelection">
+          <text class="picker-button-text">{{ $i18n_t("common.confirm") }}</text>
+        </view>
+      </view>
+      <picker-view
+        :value="[languageIndex]"
+        @change="onLanguageChangePickerView"
+        :indicator-style="indicatorStyle"
+        mask-bottom-style="background-color: rgba(0,0,0,0.5)"
+        mask-top-style="background-color: rgba(0,0,0,0.5)"
+        mask-class="picker-mask-class"
+      >
+        <picker-view-column class="picker-view-column">
+          <view class="item" v-for="(item, index) in languages" :key="index">
+            <text class="text">{{ item.name }}</text>
+          </view>
+        </picker-view-column>
+      </picker-view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { FrSpin } from "@/components/widgets";
+import AITools from "@/components/home/AITools.uvue";
+import ShortVideos from "@/components/home/ShortVideos.uvue";
+import Stars from "@/components/home/Stars.uvue";
+import Topics from "@/components/home/Topics.uvue";
+import Zone from "@/components/home/Zone.uvue";
+import IconFont from "../IconFont/IconFont.uvue";
+import AdaptiveWebWaterfallN from "@/components/WebWaterfall/AdaptiveWebWaterfallN.uvue";
+import BpNewplayer from "@/components/panels/bp-newplayer.uvue";
+import BindEmailModal from "@/components/account/bind-email-modal.uvue";
+import MergeEmailModal from "@/components/account/merge-email-modal.uvue";
+import UserReturnModal from "@/components/UserReturnModal/index.uvue";
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from "vue";
+import { setVideoResourceList, setVideoInitialIndex, storage, setWebviewConfig } from "../../store/index.uts";
+import { user, userInited, bindEmailModalClosedManually, fingerprintFromUrl, tokenStorage, isAigfLogoutLocked } from "../../store/user.uts";
+import { getTodayDateString } from "@/utils/date.uts";
+import { getPopularTopics, getTrendingZone, getStars, getEffets, getForyou, getForyouOld, getShortVideos, getBannerList, getReturnUserRewards } from "../../api/home.uts";
+import { getSettings } from "../../api/file.uts";
+import { BpNotificationIcon } from "@/components/panels";
+import { $i18n_t, fmtBackendLang, setLocale, getLocale, Language, availableLanguages } from "@/locale/index.uts";
+import i18n from "@/locale/index.uts";
+import { CategoryListWithChildren, PopResourceList, Link, CategoryItem, BannerItem, UserItem, PostItem, MediaMetadata } from "../../types/index";
+import BpUserAvatar from "../panels/bp-user-avatar.uvue";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import FrMoreStatus from "@/components/widgets/fr-more-status.uvue";
+import FrBackTop from "@/components/widgets/fr-back-top.uvue";
+import { isMobileBrowser, isCapacitor, getDomainFromUrl, isDevelopmentEnv, isTelegramMiniApp } from "@/utils/platform.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { getAbsoluteMediaUrl, config } from "@/api/request.uts";
+import { openExternalTopupPage } from "@/utils/navigator.uts";
+import { guestAutoAuth, GuestAuthResponse } from "@/api/fingerprint.uts";
+import { generateDeviceFingerprint } from "@/utils/fingerprint.uts";
+import { getAffiliateLink, AffiliateLinkResponse } from "@/api/affiliate.uts";
+import { getAigfUrl, loginAigf, logoutAigf } from "@/api/index.uts";
+import { executeRedirect, type RedirectConfig } from "@/utils/thirdAuth.uts";
+import FrActivityEntrance from "@/components/widgets/fr-activity-entrance.uvue";
+import {
+  isReturnUser as isReturnUserStore,
+  returnUserCreatedAt as returnUserCreatedAtStore,
+  showLotteryEntrance as showLotteryEntranceStore,
+} from "@/store/menu.uts";
+
+const isWideScreen = ref(false);
+
+const handleResize = () => {
+  isWideScreen.value = window.innerWidth > 899.98;
+};
+
+const aigfAuthUrl = ref<string>("");
+const isNavigatingToAigf = ref(false);
+const isReturnUser = ref<boolean>(false);
+const returnUserCreatedAt = ref<string>();
+const returnUserBaseReward = ref();
+const showUserReturnModal = ref<boolean>(false);
+
+// Computed property for the base domain
+const baseDomain = computed(() => getDomainFromUrl(config.baseUrl));
+
+// Computed property for the current frontend base URL (protocol + host)
+const currentFrontendBaseUrl = computed(() => {
+  if (typeof window !== "undefined" && window.location.protocol && window.location.host) {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+  // Fallback for environments where window.location might not be fully available or meaningful
+  // In a web/Capacitor context, window.location should generally be available.
+  return "";
+});
+
+// Helper function to check if a URL is an internal link for direct uni navigation
+function isInternalLink(fullUrl: string): string | null {
+  if (!fullUrl || typeof fullUrl !== "string") {
+    return null;
+  }
+
+  // Handle root-relative paths that are known to be internal
+  if (fullUrl.startsWith("/pages/") || fullUrl.startsWith("/static/")) {
+    return fullUrl;
+  }
+
+  const baseUrl = currentFrontendBaseUrl.value;
+  if (!baseUrl) {
+    return null;
+  }
+
+  try {
+    const url = new URL(fullUrl);
+    // Ensure the domain matches the current frontend base URL
+    if (url.origin === baseUrl) {
+      const path = url.pathname;
+      const search = url.search;
+      // Check if the path starts with /pages/ or /static/
+      if (path.startsWith("/pages/") || path.startsWith("/static/")) {
+        return path + search;
+      }
+    }
+  } catch (error) {
+    // URL parsing failed for what we assume is an absolute or invalid URL.
+    // This is expected for relative paths not caught above, so we can just let it be.
+    // console.error("Error parsing URL in isInternalLink:", fullUrl, error);
+  }
+  return null;
+}
+
+// Reactive wrapper for fmtBackendLang
+function reactiveFmtBackendLang(info: string | UTSJSONObject | null | undefined): ComputedRef<string> {
+  return computed(() => {
+    // Depend on i18n.global.locale.value to re-calculate when locale changes
+    const currentLocale = i18n.global.locale.value;
+    return fmtBackendLang(info);
+  });
+}
+
+const zonesTitleText = computed(() => $i18n_t("home.zonesTitle"));
+const viewMoreText = computed(() => $i18n_t("common.viewMore"));
+const aiToolsTitleText = computed(() => $i18n_t("home.aiToolsTitle"));
+const videosTitleText = computed(() => $i18n_t("home.videosTitle"));
+const topicsTitleText = computed(() => $i18n_t("home.topicsTitle"));
+const starsTitleText = computed(() => $i18n_t("home.starsTitle"));
+const forYouText = computed(() => $i18n_t("home.forYou"));
+const loadingText = computed(() => $i18n_t("common.loading_"));
+const noMoreText = computed(() => $i18n_t("common.noMore"));
+
+const warnVersion = ref("");
+
+const showAigfEntrance = ref(true);
+const showLotteryEntrance = ref(true);
+
+// --- State ---
+const isMobile = ref(!isTelegramMiniApp());
+const showBanner = ref(true); // 控制下载banner的显示
+const allWaterfallItems = ref<PostItem[]>([]); // All items for waterfall
+
+const interspersedList = computed(() => {
+  // 仅在宽屏且aigf入口显示时插入广告
+  if (isWideScreen.value && showAigfEntrance.value) {
+    const result: (PostItem | { type: string; id: string })[] = [];
+    const items = allWaterfallItems.value;
+    for (let i = 0; i < items.length; i++) {
+      result.push(items[i]);
+      // 每30个项目后插入一个广告
+      if (i % 30 === 0) {
+        result.push({ type: "ad", id: `ad-${i}` });
+      }
+    }
+    return result;
+  }
+
+  // 在其他情况下，直接返回原始瀑布流项目数组以提高性能
+  return allWaterfallItems.value;
+});
+
+const actualScrollTop = ref(0); // Tracks the actual scroll position
+const currentScrollPosition = ref(0); // Used to programmatically set scroll position
+
+const languages = ref<Language[]>(availableLanguages);
+
+// 获取当前语言的索引
+function getLanguageIndex(): number {
+  const currentLocale = getLocale();
+  const index = languages.value.findIndex((lang) => lang.code === currentLocale);
+  return index >= 0 ? index : 0; // 如果找不到匹配的语言，默认返回0
+}
+
+const languageIndex = ref(getLanguageIndex());
+const showLanguagePicker = ref(false);
+// const showWarnModal = ref(false);
+const NEW_PLAYER_MODAL_LAST_SHOWN_DATE_KEY = "newPlayerModalLastShownDate";
+
+const showNewPlayerModal = ref(false); // New reactive variable to control new player modal visibility
+const newPlayerUsername = ref<string>("");
+const newPlayerDeviceFingerprint = ref<string | null>(null);
+const newPlayerOfficialWebsites = ref<string[]>([]);
+const warnModalTitle = ref("");
+const warnModalContent = ref("");
+const showBindEmailModal = ref(false);
+const showMergeEmailModal = ref(false);
+const mergeEmailRedirectConfig = ref<{ from?: string; to?: string; action?: string; toAction?: string; fromAction?: string } | null>(null);
+const newPlayerModalLastShownDate = ref<string | null>(null);
+
+// picker-view 样式配置
+const indicatorStyle = ref("height: 40px; line-height: 40px;");
+
+// 轮播图数据
+const bannerList = ref<BannerItem[]>([]);
+const floatingButtonData = ref<Link | null>(null); // New reactive variable for floating button
+
+// 独立数据定义
+const zoneData = ref<CategoryItem[]>([]);
+const aiToolsData = ref<CategoryListWithChildren[]>([]);
+const shortVideosData = ref<PostItem[]>([]);
+const topicsData = ref<CategoryItem[]>([]);
+const starsData = ref<CategoryListWithChildren[]>([]);
+
+const currentSwiperIndex = ref(0);
+
+let autoplayTimer: number | null = null;
+//切换轮播图
+const advanceSwiper = () => {
+  if (bannerList.value.length > 0) {
+    currentSwiperIndex.value = (currentSwiperIndex.value + 1) % bannerList.value.length;
+  }
+};
+
+const handleVideoEnd = () => {
+  advanceSwiper();
+};
+
+const stopAutoplay = () => {
+  if (autoplayTimer != null) {
+    clearTimeout(autoplayTimer);
+    autoplayTimer = null;
+  }
+};
+
+const startAutoplay = () => {
+  stopAutoplay();
+  if (bannerList.value.length == 0) return;
+
+  const currentItem = bannerList.value[currentSwiperIndex.value];
+  if (currentItem != null && currentItem.mimeType !== "video") {
+    // It's an image, switch after 3 seconds
+    autoplayTimer = setTimeout(() => {
+      advanceSwiper();
+    }, 5000);
+  }
+  // For videos, the @ended event will trigger the switch
+};
+
+const onSwiperChange = (e: UniSwiperChangeEvent) => {
+  const prevIndex = currentSwiperIndex.value;
+  currentSwiperIndex.value = e.detail.current;
+
+  // 暂停上一个视频
+  const prevVideoItem = bannerList.value[prevIndex];
+  if (prevVideoItem != null && prevVideoItem.mimeType == "video") {
+    const prevVideoContext = uni.createVideoContext(`bannerVideo-${prevIndex}`);
+    if (prevVideoContext != null) prevVideoContext.pause();
+  }
+
+  // 播放当前视频
+  const currentVideoItem = bannerList.value[currentSwiperIndex.value];
+  if (currentVideoItem != null && currentVideoItem.mimeType == "video") {
+    const currentVideoContext = uni.createVideoContext(`bannerVideo-${currentSwiperIndex.value}`);
+    if (currentVideoContext != null) {
+      // #ifdef APP
+      // 在App端，seek(0)可以确保视频从头播放
+      currentVideoContext.seek(0);
+      // #endif
+      currentVideoContext.play();
+    }
+  }
+  startAutoplay();
+};
+
+const onDotClick = (index: number) => {
+  currentSwiperIndex.value = index;
+};
+
+// #ifdef WEB
+let isMouseDown = false;
+let startX = 0;
+let endX = 0;
+
+const handleMouseDown = (e: MouseEvent) => {
+  isMouseDown = true;
+  startX = e.clientX;
+};
+
+const handleMouseMove = (e: MouseEvent) => {
+  if (!isMouseDown) return;
+  endX = e.clientX;
+};
+
+const handleMouseUp = () => {
+  if (!isMouseDown) return;
+  isMouseDown = false;
+
+  const threshold = 50; // 拖动阈值
+  const deltaX = endX - startX;
+
+  if (deltaX > threshold) {
+    // 向右滑动，切换到上一张
+    currentSwiperIndex.value = (currentSwiperIndex.value - 1 + bannerList.value.length) % bannerList.value.length;
+  } else if (deltaX < -threshold) {
+    // 向左滑动，切换到下一张
+    currentSwiperIndex.value = (currentSwiperIndex.value + 1) % bannerList.value.length;
+  }
+};
+// #endif
+
+const onScroll = (e: UniScrollEvent) => {
+  actualScrollTop.value = e.detail.scrollTop;
+};
+
+const headerBgStyle = computed(() => {
+  const opacity = Math.min(actualScrollTop.value / 1000, 1);
+  return {
+    // background: `linear-gradient(to bottom, rgba(18, 18, 18, ${opacity}), rgba(18, 18, 18, 0))`,
+    "background-color": `rgba(18, 18, 18, ${opacity})`,
+  };
+});
+
+const loading = ref(false);
+const noMore = ref(false);
+let page = 1;
+const pageSize = 10;
+
+async function loadMoreData() {
+  if (loading.value || noMore.value) {
+    return;
+  }
+  loading.value = true;
+  try {
+    let res;
+    if(user.value){
+      res = await getForyou(page, pageSize);
+    }else{
+      res = await getForyouOld(page, pageSize);
+    }
+    
+    if (res != null && res.success && res.data != null) {
+      allWaterfallItems.value = [...allWaterfallItems.value, ...res.data];
+      if (res.meta == null || !res.meta.pagination.has_next) {
+        noMore.value = true;
+      } else {        
+        page++;
+      }
+    } else {
+      noMore.value = true;
+    }
+  } catch (err) {
+    noMore.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
+
+const loadTrendingZone = async () => {
+  const zoneRes = await getTrendingZone(1, 50, user.value?.preferredCountry);
+  if (zoneRes != null && zoneRes.success && zoneRes.data != null) {
+    zoneData.value = zoneRes.data;
+  }
+};
+
+const loadPopularTopics = async () => {
+  const topicsRes = await getPopularTopics(1, 10, user.value?.preferredCountry);
+  if (topicsRes != null && topicsRes.success && topicsRes.data != null) {
+    topicsData.value = topicsRes.data;
+  }
+};
+
+const loadStars = async () => {
+  const starsRes = await getStars();
+  if (starsRes != null && starsRes.success && starsRes.data != null) {
+    starsData.value = starsRes.data;
+  }
+};
+
+const loadEffects = async () => {
+  const effectsRes = await getEffets();
+  if (effectsRes != null && effectsRes.success && effectsRes.data != null) {
+    aiToolsData.value = effectsRes.data;
+  }
+};
+
+const loadShortVideos = async () => {
+  const shortVideosRes = await getShortVideos();
+  if (shortVideosRes != null && shortVideosRes.success && shortVideosRes.data != null) {
+    shortVideosData.value = shortVideosRes.data;
+  }
+};
+
+const loadBannerList = async () => {
+  const res = await getBannerList(1, 10, user.value?.preferredCountry);
+  if (res != null && res.success && res.data != null) {
+    bannerList.value = res.data;
+  } else {
+  }
+  // 初始播放第一个视频（如果它是视频类型）
+  nextTick(() => {
+    const firstBannerItem = bannerList.value[0];
+    if (firstBannerItem != null && firstBannerItem.mimeType == "video") {
+      const firstVideoContext = uni.createVideoContext(`bannerVideo-0`);
+      if (firstVideoContext != null) firstVideoContext.play();
+    }
+    startAutoplay();
+  });
+};
+
+const loadFloatingButton = async () => {
+  const res = await getSettings("floating_button");
+  if (res != null && res.success && res.data != null) {
+    floatingButtonData.value = res.data.extra;
+  } else {
+  }
+};
+
+const awardPoints = ref(0);
+// 检查是否需要显示绑定邮箱弹窗
+const checkBindEmailModal = () => {
+  // 如果用户已登录且没有绑定邮箱，并且弹窗未被手动关闭过，则显示弹窗
+  if (
+    user.value != null &&
+    (!user.value.email || user.value.email.trim().length === 0) &&
+    awardPoints.value > 0 &&
+    !bindEmailModalClosedManually.value &&
+    user.value.accountType !== "guest"
+  ) {
+    showBindEmailModal.value = true;
+  }
+};
+
+// 反馈按钮点击事件（进入前拦截：未登录则弹登录弹窗，不跳转）
+const goToFeedback = () => {
+  if (user.value == null || user.value?.accountType === "guest") {
+    uni.$emit("login:show", { to: "/pages/feedback/index", successRedirectOnly: true });
+    return;
+  }
+  uni.navigateTo({ url: "/pages/feedback/index" });
+};
+
+// 获取介绍设置
+const loadIntroSettings = async () => {
+  const currentLocale = getLocale();
+  const res = await getSettings("intro." + currentLocale);
+  // const res = await getSettings("intro");
+  if (res && res.data) {
+    let lastVersion = storage.get("init_warn");
+    let currentVersion = (warnVersion.value = res.data.updatedAt || res.data.createdAt);
+    if (lastVersion != currentVersion) {
+      const introData = res.data;
+      warnModalTitle.value = introData.title || "警告";
+      warnModalContent.value = introData.value || "请遵守相关法律法规，合理使用本应用。";
+      // showWarnModal.value = true;
+    }
+  }
+};
+
+// 处理警告确认
+const handleWarnConfirm = () => {
+  // 用户确认后，将init_warn设置为true，避免再次显示
+  // storage.set("init_warn", warnVersion.value);
+  // showWarnModal.value = false;
+};
+
+const loadHomeSections = async () => {
+  const promises = [loadBannerList(), loadTrendingZone(), loadPopularTopics(), loadStars(), loadEffects(), loadShortVideos(), loadFloatingButton()];
+
+  // Use Promise.allSettled to ensure all promises complete, regardless of individual success or failure.
+  const results = await Promise.allSettled(promises);
+
+  // Optional: Log any rejected promises for debugging.
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      // You can create a mapping from index to promise name for clearer logs.
+      console.error(`A promise in loadHomeSections failed (index ${index}):`, result.reason);
+    }
+  });
+};
+
+// Helper to extract subdomain
+const getSubdomain = (host: string): string | null => {
+  const parts = host.split(".");
+  if (parts.length > 2) {
+    // Assuming format like subdomain.domain.tld
+    return parts[0];
+  }
+  return null;
+};
+
+// 根据设备指纹创建临时账号 (调用API)
+const initGuestAutoAuth = async () => {
+  if (isTelegramMiniApp()) {
+    return;
+  }
+  let currentDeviceFingerprint: string | null = null;
+  let currentOfficialWebsites: string[] = [];
+  let currentUsername: string = "";
+
+  try {
+    // 1. 获取设备指纹
+    if (fingerprintFromUrl.value != null) {
+      currentDeviceFingerprint = fingerprintFromUrl.value;
+    } else {
+      currentDeviceFingerprint = await generateDeviceFingerprint();
+    }
+
+    if (currentDeviceFingerprint == null) {
+      console.error("Failed to get device fingerprint.");
+      return; // Do not show modal if fingerprint is not available
+    }
+
+    // Check if user.value already exists
+    if (user.value != null) {
+      currentUsername = user.value.username;
+    } else {
+      // 2. 根据设备指纹创建临时账号
+      let click_id = tokenStorage.get<string>("click_id") || null;
+      console.log("guestAutoAuth")
+      const result = await guestAutoAuth({
+        deviceFingerprint: currentDeviceFingerprint,
+        source: import.meta.env.VITE_APP_SOURCE,
+        click_id: click_id,
+      });
+      if (result != null && result.success && result.data != null) {
+        if (result.data.user) {
+          tokenStorage.set<string>("token", result.data.accessToken);
+          user.value = result.data.user;
+          currentUsername = user.value?.username;
+        } else {
+          showNewPlayerModal.value = false;
+          return;
+        }
+      } else {
+        return; // Do not show modal if guest auto-auth fails
+      }
+    }
+
+    // 3. 获取当前域名信息并处理二级域名逻辑
+    let currentHost: string | null = null;
+    if (isCapacitor()) {
+      // Capacitor environment: keep original logic
+      currentHost = baseDomain.value;
+      currentOfficialWebsites = [currentHost];
+    } else {
+      // Non-Capacitor environment: apply subdomain logic
+      if (typeof window !== "undefined" && window.location.hostname != null) {
+        if (isDevelopmentEnv()) {
+          currentHost = baseDomain.value;
+        } else {
+          currentHost = `https://${window.location.hostname}`;
+        }
+      } else {
+        currentHost = baseDomain.value;
+      }
+
+      let subdomain: string | null = null;
+      if (currentHost != null) {
+        const url = new URL(currentHost);
+        subdomain = getSubdomain(url.hostname);
+      }
+
+      if (subdomain != null) {
+        // If subdomain exists, fetch affiliate links
+        const affiliateResult = await getAffiliateLink(subdomain);
+        if (affiliateResult != null && affiliateResult.success && affiliateResult.data != null) {
+          const domains = affiliateResult.data.distributorDomain.split(",").map((d) => d.trim());
+          currentOfficialWebsites = ["https://seseai.com"]; //domains;
+        } else {
+          currentOfficialWebsites = [currentHost != null ? currentHost : baseDomain.value];
+        }
+      } else {
+        // No subdomain, use the current host as the official website
+        currentOfficialWebsites = [currentHost != null ? currentHost : baseDomain.value];
+      }
+    }
+
+    // If all steps are successful, set the state to show the modal
+    newPlayerUsername.value = currentUsername;
+    newPlayerDeviceFingerprint.value = currentDeviceFingerprint;
+    newPlayerOfficialWebsites.value = currentOfficialWebsites;
+
+    // Check if the modal was shown today
+    newPlayerModalLastShownDate.value = storage.get<string>(NEW_PLAYER_MODAL_LAST_SHOWN_DATE_KEY);
+    const today = getTodayDateString();
+
+    if (newPlayerModalLastShownDate.value != today) {
+      showNewPlayerModal.value = true;
+      storage.set(NEW_PLAYER_MODAL_LAST_SHOWN_DATE_KEY, today);
+    } else {
+      showNewPlayerModal.value = false;
+    }
+  } catch (e: any) {
+    // If any error occurs, ensure the modal is not shown
+    showNewPlayerModal.value = false;
+  }
+};
+
+const initializeHomeData = async () => {
+  // 首先等待 initGuestAutoAuth 完成，无论成功与否
+  try {
+    await initGuestAutoAuth();
+  } catch (e) {
+    console.error("initGuestAutoAuth failed:", e);
+  }
+  
+  // --- Fire-and-forget tasks (run in background) ---
+  loadHomeSections(); // Now internally resilient thanks to Promise.allSettled
+  loadIntroSettings().catch((e) => console.error("loadIntroSettings failed:", e));
+  getUserReturnData().catch((e) => console.error("getUserReturnData failed:", e));
+  
+
+  loadMoreData().catch((e) => console.error("loadMoreData failed:", e));
+
+  // --- Synchronous tasks ---
+  checkAigfTopupRedirect();
+
+  // --- Await critical settings needed for UI ---
+  const [aigfSetting, lotterySetting, verificationAward] = await Promise.all([
+    getSettings("enable.aigf").catch((e) => {
+      console.error("getSettings(enable.aigf) failed:", e);
+      return null;
+    }),
+    getSettings("enable.lottery").catch((e) => {
+      console.error("getSettings(enable.lottery) failed:", e);
+      return null;
+    }),
+    getSettings("verification_award").catch((e) => {
+      console.error("getSettings(verification_award) failed:", e);
+      return null;
+    }),
+  ]);
+
+  // --- Process results of awaited promises ---
+  if (aigfSetting?.success && aigfSetting.data != null) {
+    showAigfEntrance.value = String(aigfSetting.data.value).toLowerCase() === "true";
+  }
+
+  if (lotterySetting?.success && lotterySetting.data != null) {
+    showLotteryEntrance.value = String(lotterySetting.data.value).toLowerCase() === "true";
+    showLotteryEntranceStore.value = String(lotterySetting.data.value).toLowerCase() === "true";
+  }
+
+  if (verificationAward?.success && verificationAward.data != null) {
+    awardPoints.value = Number(verificationAward.data.value);
+  }
+
+  // This depends on the result of verificationAward promise
+  checkBindEmailModal();
+};
+
+const loadAigfUrl = async () => {
+  const res = await getAigfUrl();
+  if (res.success && res.data != null) {
+    aigfAuthUrl.value = res.data.authUrl;
+  }
+};
+
+onMounted(() => {
+  handleResize(); // Initial check
+  window.addEventListener("resize", handleResize);
+
+  // 先注册事件监听器，确保能接收到后续发送的事件
+  uni.$on("onFollowStatusChange", (data: { userId: string; isFollowing: boolean }) => {
+    const { userId, isFollowing } = data;
+    starsData.value.forEach((categoryItem) => {
+      const userIndex = categoryItem.users.findIndex((user) => user.id == userId);
+      if (userIndex != -1) {
+        if (isFollowing) {
+          categoryItem.users[userIndex].followersCount += 1;
+        } else {
+          categoryItem.users[userIndex].followersCount -= 1;
+        }
+        categoryItem.users[userIndex].isFollowing = isFollowing;
+      }
+    });
+  });
+
+  // 监听合并邮箱弹窗显示事件
+  uni.$on("merge-email:show", handleMergeEmailShow);
+
+  // 检查是否需要弹出合并邮箱弹窗
+  const mailemail = tokenStorage.get<string>("mailemail");
+  if (mailemail === "true") {
+    // 弹出merge-email-modal.uvue，传递空的重定向配置
+    uni.$emit("merge-email:show", {});
+    console.log("弹出merge-email-modal.uvue");
+  }
+
+  // 监听 userInited 变量，确保在用户信息初始化完成后再加载首页数据
+  watch(
+    userInited,
+    async (newValue) => {
+      if(!newValue)return;
+      try {
+        console.log("watch userInited: ", newValue)
+        await initializeHomeData();
+      } catch (e) {
+        console.error("initializeHomeData failed", e);
+      }
+      if (shouldGoToAigf.value && showAigfEntrance.value) {
+        goToAigf();
+      } else if (shouldGoToAigf.value && !showAigfEntrance.value) {
+        console.warn("Attempted to navigate to AIGF, but entrance is disabled by settings.");
+      }
+    },
+    { immediate: true },
+  ); // immediate: true 确保在组件挂载时立即执行一次，如果 userInited 已经为 true
+
+  // 新增：监听 user 对象的变化，并在用户数据更新后重新检查绑定邮箱弹窗
+  watch(user, (newValue, oldValue) => {
+    if (newValue != null && newValue.accountType !== "guest") {
+      checkBindEmailModal();
+    }
+  });
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", handleResize);
+  uni.$off("onFollowStatusChange");
+  uni.$off("merge-email:show", handleMergeEmailShow);
+});
+
+const closeBanner = () => {
+  showBanner.value = false;
+};
+
+const downloadAppFromBanner = () => {
+  goToDownload();
+};
+
+const goToDownload = () => {
+  // #ifdef H5
+  let promotional_code = storage.get<string>("promotional_code");
+  window.location.href = `/static/download.html?promotional_code=${promotional_code}`;
+  // #endif
+};
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+const goToSection = (componentName: string) => {
+  if (componentName == "Zone") {
+    uni.navigateTo({ url: "/pages/zones" });
+  } else if (componentName == "Stars") {
+    uni.navigateTo({ url: "/pages/stars" });
+  } else if (componentName == "Topics") {
+    uni.navigateTo({ url: "/pages/topics" });
+  } else if (componentName == "AITools") {
+    uni.redirectTo({ url: "/pages/index/index?tabbar=publish" });
+  } else if (componentName == "ShortVideos") {
+    setVideoResourceList(shortVideosData.value);
+    setVideoInitialIndex(0);
+    // uni.redirectTo({ url: "/pages/index/index?tabbar=video&source=shortVideos" });
+    uni.navigateTo({ url: "/pages/video?source=shortVideos" });
+  }
+};
+
+//for you item
+const handleItemClick = (item: PostItem) => {
+  setVideoResourceList([item]);
+  setVideoInitialIndex(0);
+  uni.navigateTo({ url: "/pages/video?source=foryou" });
+};
+
+const gotoNotifications = () => {
+  uni.navigateTo({ url: "/pages/account/notifications" });
+};
+
+const handleBannerLinkClick = (link: Link) => {
+  if (link.isPost) {
+    uni.redirectTo({ url: `/pages/index/index?tabbar=video&id=${link.postID}` });
+  } else {
+    const relativePath = isInternalLink(link.url);
+    if (relativePath !== null) {
+      // If it's an internal link and we got a relative path, navigate directly
+      uni.navigateTo({ url: relativePath });
+    } else if (link.isOpenNewTab) {
+      // If not internal and is set to open in a new tab, use window.open
+      window.open(link.url, "_blank");
+    } else {
+      // Otherwise, open in webview
+      setWebviewConfig({ url: link.url, isAigf: false, title: reactiveFmtBackendLang(link.title).value });
+      uni.navigateTo({ url: `/pages/webview/webview` });
+    }
+  }
+};
+
+// picker-view change 事件 - 只更新索引，不立即设置语言
+const onLanguageChangePickerView = (e: UniPickerViewChangeEvent) => {
+  const newIndex = e.detail.value[0] as number;
+  languageIndex.value = newIndex;
+};
+
+const shouldGoToAigf = ref(false);
+onLoad((options) => {
+  isMobile.value = isMobileBrowser();
+  uni.$emit("debug:log", `Home page onLoad: isMobile=${isMobile.value}, isTelegramMiniApp()=${isTelegramMiniApp()}`);
+  if (options != null) {
+    if (options.fg != null) {
+      fingerprintFromUrl.value = options.fg;
+    }
+    if (options.action === "goToAigf") {
+      shouldGoToAigf.value = true;
+    }
+  }
+});
+
+// 打开语言选择器 - 重置索引为当前实际语言
+const openLanguagePicker = () => {
+  languageIndex.value = getLanguageIndex();
+  showLanguagePicker.value = true;
+};
+
+// 保存语言选择
+const saveLanguageSelection = () => {
+  const selectedLang = languages.value[languageIndex.value].code;
+  setLocale(selectedLang);
+  showLanguagePicker.value = false;
+};
+
+// 处理绑定邮箱弹窗关闭
+const handleBindEmailClose = () => {
+  showBindEmailModal.value = false;
+  bindEmailModalClosedManually.value = true; // 用户手动关闭后，设置标志为true
+};
+
+// 处理绑定邮箱成功
+const handleBindEmailSuccess = () => {
+  showBindEmailModal.value = false;
+  // 这里可以添加绑定成功后的逻辑，比如更新用户信息等
+};
+
+// 处理合并邮箱弹窗显示
+const handleMergeEmailShow = (redirectConfig: RedirectConfig) => {
+  mergeEmailRedirectConfig.value = redirectConfig;
+  showMergeEmailModal.value = true;
+};
+
+// 处理合并邮箱弹窗关闭
+const handleMergeEmailClose = () => {
+  showMergeEmailModal.value = false;
+  // 关闭弹窗后设置 mailemail 为 false
+  tokenStorage.set<string>("mailemail", "false");
+  // 弹窗关闭后执行跳转逻辑
+  if (mergeEmailRedirectConfig.value != null) {
+    const $logoutAigf = async () => {
+      const res = await logoutAigf();
+      if (res.success) {
+        execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "login" } as AnyObject);
+      }
+    };
+    executeRedirect(mergeEmailRedirectConfig.value, $logoutAigf);
+    mergeEmailRedirectConfig.value = null;
+  }
+};
+
+// 处理合并邮箱弹窗探索按钮
+const handleMergeEmailExplore = () => {
+  showMergeEmailModal.value = false;
+  // 关闭弹窗后设置 mailemail 为 false
+  tokenStorage.set<string>("mailemail", "false");
+  // 点击探索按钮后执行跳转逻辑
+  if (mergeEmailRedirectConfig.value != null) {
+    const $logoutAigf = async () => {
+      const res = await logoutAigf();
+      if (res.success) {
+        execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "login" } as AnyObject);
+      }
+    };
+    executeRedirect(mergeEmailRedirectConfig.value, $logoutAigf);
+    mergeEmailRedirectConfig.value = null;
+  }
+};
+
+// 处理新用户弹窗关闭
+const handleNewPlayerModalClose = () => {
+  showNewPlayerModal.value = false;
+  // newPlayerModalClosedManually.value = true; // 用户手动关闭后，设置标志为true
+};
+
+const goToUserReactivation = () => {
+  // uni.showToast({title: '开发中...', icon: 'none'});
+  uni.navigateTo({ url: `/pages/user-return/index?userId=${user.value?.id}&tabbar=home` });
+};
+const goToDailyTask = () => {
+  if (user.value == null ) {//|| user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: `/pages/daily-task/index?from=main&tabbar=home`, successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: `/pages/daily-task/index?userId=${user.value?.id}&from=main&tabbar=home` });
+  }
+};
+const goToDailyCheckin = () => {
+  if (user.value == null ) { //|| user.value.accountType == "guest"
+    uni.$emit("login:show", { page: "register", to: "/pages/daily-checkin/index?from=main&tabbar=home", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/daily-checkin/index?from=main&tabbar=home" });
+  }
+};
+const goToLuckyWheel = () => {
+  if (isCapacitor()) {
+    const token = tokenStorage.get<string>("token");
+    if (user.value == null || !token) { //|| user.value.accountType === "guest"
+      uni.showModal({
+        title: $i18n_t("home.aigfLoginRequiredTitle"),
+        content: $i18n_t("home.aigfLoginRequiredContent"),
+        confirmText: $i18n_t("common.login"),
+        cancelText: $i18n_t("common.cancel"),
+        success: (res) => {
+          if (res.confirm) {
+            uni.$emit("login:show");
+          }
+        },
+      });
+      return;
+    }
+    const url = `https://${baseDomain.value}/lottery/?token=${token}`;
+    setWebviewConfig({ url: url, isAigf: false, title: $i18n_t("home.activityEntrance.luckyWheel") });
+    uni.navigateTo({ url: "/pages/webview/webview" });
+  } else {
+    // Original behavior for web
+    if (user.value == null ) { //|| user.value.accountType == "guest"
+      uni.$emit("login:show", { page: "register", to: "/lottery/", action: "href", successRedirectOnly: true });
+      return;
+    }
+    window.location.href = "/lottery/";
+  }
+};
+
+const goToAffiliate = () => {
+  if (user.value == null || user.value.accountType == "guest") {
+    uni.$emit("login:show", { page: "register", to: "/pages/affiliate/index?from=home&tabbar=home", successRedirectOnly: true });
+  } else {
+    uni.navigateTo({ url: "/pages/affiliate/index?tabbar=home" });
+  }
+};
+
+const goToAigf = async () => {
+  if (user.value == null || user.value?.accountType === "guest") {
+    uni.showModal({
+      title: $i18n_t("home.aigfLoginRequiredTitle"),
+      content: $i18n_t("home.aigfLoginRequiredContent"),
+      confirmText: $i18n_t("common.login"),
+      cancelText: $i18n_t("common.cancel"),
+      success: (res) => {
+        if (res.confirm) {
+          uni.$emit("login:show");
+        }
+      },
+    });
+    return;
+  }
+
+  if (isAigfLogoutLocked.value) {
+    uni.showToast({
+      title: $i18n_t("home.aigfLogoutInProgress"), // 需要在 locale 中添加这个 key
+      icon: "none",
+    });
+    return;
+  }
+
+  if (isNavigatingToAigf.value) {
+    return;
+  }
+
+  isNavigatingToAigf.value = true;
+  try {
+    if (!userInited.value) {
+      uni.showToast({
+        title: $i18n_t("home.gettingUserInfo"),
+        icon: "none",
+      });
+      return;
+    }
+    uni.showToast({
+      title: $i18n_t("home.gettingAigfUrl"),
+      icon: "none",
+    });
+    await loadAigfUrl();
+    if (!aigfAuthUrl.value) {
+      uni.showToast({
+        title: $i18n_t("home.getAigfUrlFailed"),
+        icon: "none",
+      });
+      return;
+    }
+    setWebviewConfig({ url: aigfAuthUrl.value, isAigf: true, title: $i18n_t("home.aigfBannerTitle") });
+    uni.redirectTo({
+      url: `/pages/webview/webview`,
+    });
+  } finally {
+    isNavigatingToAigf.value = false;
+  }
+};
+
+const checkAigfTopupRedirect = () => {
+  const topupInfoJSON = uni.getStorageSync("aigf_topup_redirect");
+  if (topupInfoJSON != null && topupInfoJSON != "") {
+    try {
+      const topupInfo = JSON.parse(topupInfoJSON as string) as UTSJSONObject;
+      const timestamp = topupInfo["timestamp"] as number;
+      const type = topupInfo["type"] as string;
+
+      // Check if it's an AIGF top-up and within the 20-minute window
+      if (type === "aigf_topup" && Date.now() - timestamp < 20 * 60 * 1000) {
+        uni.showModal({
+          title: $i18n_t("aigf.return_prompt.title"),
+          content: $i18n_t("aigf.return_prompt.content"),
+          cancelText: $i18n_t("aigf.return_prompt.cancel"),
+          confirmText: $i18n_t("aigf.return_prompt.confirm"),
+          success: (res) => {
+            if (res.confirm) {
+              goToAigf();
+            }
+          },
+          complete: () => {
+            uni.removeStorageSync("aigf_topup_redirect");
+            uni.removeStorageSync("aigf_last_webview_url");
+          },
+        });
+      } else {
+        // If expired or not an AIGF top-up, just clear the storage
+        uni.removeStorageSync("aigf_topup_redirect");
+        uni.removeStorageSync("aigf_last_webview_url");
+      }
+    } catch (e) {
+      console.error("Failed to parse aigf_topup_redirect from localStorage", e);
+      uni.removeStorageSync("aigf_topup_redirect");
+      uni.removeStorageSync("aigf_last_webview_url");
+    }
+  }
+};
+
+const getUserReturnData = async () => {
+  if (user.value == null || user.value.accountType === "guest") return;
+  try {
+    const res = await getReturnUserRewards(user.value?.id);
+    if (res != null && res.success && res.data != null) {
+      const base = (res.data?.claimRecords || []).filter((item) => item.rewardLevel === 0)[0];
+      isReturnUser.value = res.data?.is_return || false;
+      isReturnUserStore.value = res.data?.is_return || false;
+      returnUserCreatedAt.value = res.data?.createdAt;
+      returnUserCreatedAtStore.value = res.data?.createdAt;
+      returnUserBaseReward.value = base;
+      // 弹窗显示控制
+      if (res.data?.is_return) {
+        showUserReturnModal.value = base.status === 1;
+      } else {
+        showUserReturnModal.value = false;
+      }
+    } else {
+      console.error("Failed to load banner list:", pointsRes?.error?.message);
+    }
+  } catch (error) {
+    console.error("Failed to fetch affiliate data:", error);
+  }
+};
+
+// 计算回归用户活动剩余时间
+const calculateTimeRemaining = (timeString) => {
+  const formatTime = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+  const initialTime = new Date(timeString);
+  // 计算初始时间 + 6天后的时间
+  const targetTime = new Date(initialTime.getTime() + 6 * 24 * 60 * 60 * 1000);
+  // 获取当前时间
+  const currentTime = new Date();
+  // 计算时间差（毫秒）
+  const timeDiff = targetTime.getTime() - currentTime.getTime();
+  // 如果目标时间已经过去，返回负数表示已过期
+  if (timeDiff <= 0) {
+    return {
+      value: formatTime(currentTime),
+      isExpired: true,
+    };
+  }
+  return {
+    value: formatTime(targetTime),
+    isExpired: false,
+  };
+};
+
+// 处理回归用户奖励弹窗
+const handleUserReturnModalClose = () => {
+  showUserReturnModal.value = false;
+};
+</script>
+
+<style scoped>
+.header {
+  position: absolute; /* Changed from absolute to fixed to ensure it stays at the top of the viewport */
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 700;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 16px 10px;
+  /* 调整内边距 */
+}
+
+.header uni-view {
+  overflow: unset;
+}
+
+.header-left {
+  flex-direction: row;
+  align-items: center;
+}
+
+.header-left-image {
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+}
+
+.header-left-text {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.header-right {
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+}
+
+.icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: 12px;
+}
+
+.page {
+  position: relative;
+  flex: 1;
+  padding-bottom: 64px;
+}
+
+.container {
+  flex: 1;
+}
+
+.custom-dots {
+  position: absolute;
+  flex-direction: row;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  display: flex;
+  z-index: 45;
+  justify-content: center;
+}
+
+.dot-wrapper {
+  padding: 5px 8px;
+  margin: 0;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  background-color: #fff;
+  border-radius: 5px;
+  opacity: 0.5;
+}
+
+.dot.active {
+  background-color: #ff23b8;
+  opacity: 1;
+}
+
+.banner-swiper .uni-swiper-dots-horizontal {
+  display: none;
+}
+
+.banner-container {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 420px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.banner-swiper-wrapper {
+  width: 60%;
+  height: 100%;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.banner-list-wrapper {
+  width: 40%;
+  height: 100%;
+  padding-left: 10px;
+  box-sizing: border-box;
+}
+
+.banner-list {
+  height: 100%;
+}
+
+.banner-list-item {
+  position: relative;
+  width: 100%;
+  height: 128px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px;
+  box-sizing: border-box;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.banner-list-item:last-child {
+  margin-bottom: 0;
+}
+
+.banner-list-item.active {
+  border-color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.banner-list-item-media {
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.banner-list-item-image {
+  width: 100%;
+  height: 100%;
+}
+
+.banner-list-item-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 8px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.banner-list-item-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.banner-list-item-subtitle {
+  color: #a9a9a9;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4px;
+}
+
+.banner-list-item-arrow {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.floattext {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  padding-bottom: 40px;
+}
+
+.floattext-title {
+  font-family: "Baloo Thambi 2-ExtraBold";
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  text-shadow: #ff00ff 0 5px 8px;
+  text-align: center;
+  width: 90%;
+}
+
+.floattext-subtitle {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.banner-buttons {
+  flex-direction: row;
+  margin-top: 15px;
+}
+
+.banner-button {
+  background-color: rgba(255, 35, 184, 0.3);
+  border-radius: 20px;
+  padding: 10px 34px;
+  margin: 0 5px;
+  border: 1px solid #ff23b8;
+}
+
+.banner-button-first {
+  background-color: rgba(128, 128, 128, 0.3);
+  border: 1px solid rgba(128, 128, 128, 0.5);
+}
+
+.banner-button-text {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.banner-swiper {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.banner-image {
+  width: 100%;
+  height: 100%;
+}
+
+.banner-gradient-overlay {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 100px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.content-sections {
+  padding: 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  margin-top: 24px;
+  flex-direction: row;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  font-family: "Baloo Thambi 2-ExtraBold";
+}
+
+.view-more-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.view-more {
+  font-size: 14px;
+  color: #ff23b8;
+  margin-right: 6px;
+}
+
+.waterfall-item {
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.in-feed-ad-item {
+  position: relative;
+}
+
+.in-feed-ad-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 10% 20px 20px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.in-feed-ad-title-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.in-feed-ad-title {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: bold;
+  font-style: italic;
+  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+.in-feed-ad-desc {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  margin-top: 8px;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.ad-tag {
+  position: absolute;
+  top: 8px; /* Some padding from the top edge */
+  right: 8px; /* Some padding from the right edge */
+  background-color: rgba(0, 0, 0, 0.4); /* Semi-transparent background */
+  color: #ffffff; /* White text */
+  padding: 4px 10px; /* Padding inside the tag */
+  border-radius: 11px; /* Rounded corners */
+  z-index: 100; /* Ensure it's above other content */
+}
+
+.ad-tag-text {
+  font-size: 12px;
+}
+
+.item-image {
+  width: 100%;
+  display: block;
+}
+
+.loading-wrapper {
+  padding: 10px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.loading-text {
+  color: #fff;
+  font-size: 14px;
+}
+
+.play-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* picker-view 样式 */
+.picker-view {
+  width: 100%;
+  height: 180px;
+  background-color: #000;
+  overflow: hidden;
+  position: absolute;
+  bottom: 65px;
+  z-index: 399;
+}
+
+.picker-header {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  background-color: rgba(50, 50, 50, 0.9);
+  flex-direction: row;
+}
+
+.picker-button {
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.picker-button-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.picker-cancel .picker-button-text {
+  color: #999;
+}
+
+.picker-save .picker-button-text {
+  color: #ff23b8;
+}
+
+.picker-mask-class {
+  background-image:
+    linear-gradient(to bottom, rgba(50, 50, 50, 0.9), rgba(50, 50, 50, 0.5)), linear-gradient(to bottom, rgba(50, 50, 50, 0.5), rgba(50, 50, 50, 0.9));
+}
+
+.picker-view-column {
+  height: 180px;
+  background-color: #000;
+}
+
+.picker-view-column .item {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000;
+}
+
+.picker-view-column .text {
+  color: #fff;
+  font-size: 14px;
+  background-color: #000;
+}
+
+.download-button-wrapper {
+  position: absolute;
+  bottom: 80px; /* Adjust position as needed, below fr-back-top */
+  right: 16px;
+  z-index: 300; /* Below header, above other content */
+
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background-color: #ff23b8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.recharge-button-wrapper {
+  position: absolute;
+  bottom: 180px; /* Position above fr-back-top and download button */
+  right: 16px;
+  z-index: 300;
+
+  background-color: transparent; /* No background, image will fill */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.recharge-button-item {
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+}
+
+.feedback-button-item {
+  padding: 3px;
+  width: 40px;
+  height: 40px;
+  background: #181818;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+@media (min-width: 900px) {
+  .feedback-button-item,
+  .recharge-button-item {
+    width: 55px;
+    height: 55px;
+  }
+  .feedback-button-item {
+    padding: 5px;
+  }
+}
+
+.floating-button-wrapper {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%); /* Vertically center the button */
+  z-index: 300;
+
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 平板 (横向) 和其他更大屏幕 */
+@media (min-width: 900px) {
+  .recharge-button-wrapper {
+    display: none;
+  }
+}
+
+.floating-button-icon {
+  width: 60px;
+  height: 60px;
+}
+
+.feedback-button-icon {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #fb1fbb;
+  border-radius: 50%;
+  padding: 5px;
+}
+
+.recharge-button-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.download-banner {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  height: 50px;
+  background-color: #ff23b8;
+  border-radius: 11px;
+  z-index: 300;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0;
+  overflow: visible;
+}
+
+.banner-icon {
+  width: 50px;
+  height: 50px;
+  margin-right: 10px;
+}
+
+.banner-text {
+  flex: 1;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.banner-buttons-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.download-now-button {
+  background-color: #000;
+  border-radius: 20px;
+  height: 40px;
+  padding: 0 20px;
+  margin-right: 20px;
+  justify-content: center;
+}
+
+.download-now-button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.close-banner-button {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: #000;
+  top: -10px;
+  right: -2px;
+  justify-content: center;
+  align-items: center;
+}
+
+.aigf-banner {
+  margin-top: 24px;
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.aigf-banner-bg {
+  width: 100%;
+  display: block;
+}
+.aigf-banner-content {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px 0 25%;
+  box-sizing: border-box;
+}
+.aigf-banner-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1; /* Make left section take available space */
+  min-width: 0; /* Allow text to shrink and wrap */
+}
+.aigf-banner-title-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.aigf-banner-title {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+.aigf-banner-arrow-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 4px;
+}
+.aigf-banner-arrow-second {
+  margin-left: -1px;
+}
+.aigf-banner-desc {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin-top: 4px;
+}
+.aigf-banner-right {
+}
+.aigf-banner-btn {
+  height: 36px;
+  width: 36px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.aigf-banner-btn-text {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+}
+.activity-container {
+  display: flex;
+  flex-direction: row;
+  /* justify-content: space-between; */
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 10px;
+  overflow: visible;
+}
+/* 平板 (横向) 和其他更大屏幕 */
+@media (min-width: 900px) {
+  .activity-container {
+    display: none !important;
+  }
+}
+@media (max-width: 899.98px) {
+  .banner-container {
+    flex-direction: column;
+    height: auto;
+    padding: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .banner-swiper-wrapper {
+    width: 100%;
+    height: 0;
+    padding-bottom: 100%;
+    border-radius: 0;
+  }
+
+  .banner-list-wrapper {
+    display: none;
+  }
+
+  .floattext {
+    padding-bottom: 80px;
+  }
+
+  .floattext-title {
+    font-size: 38px;
+  }
+
+  .custom-dots {
+    bottom: 30px;
+  }
+}
+
+@media (min-width: 899.98px) {
+  .container {
+    margin-top: 82px;
+  }
+}
+</style>

@@ -1,0 +1,688 @@
+<template>
+  <view class="change-email-page">
+    <!-- 顶部标题 -->
+    <view class="header">
+      <view class="header-row">
+        <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+        <text class="title">{{ $i18n_t("bindEmailModal.title") }}</text>
+      </view>
+    </view>
+
+    <!-- 步骤导航 -->
+    <view class="steps-container">
+      <view class="step-item">
+        <IconFont class="step-icon" name="mail" :size="12" :color="currentStep >= 1 ? '#FF23B8' : 'rgba(255,255,255,0.8)'"></IconFont>
+        <text class="step-text" :style="{ color: currentStep >= 1 ? '#FF23B8' : 'rgba(255,255,255,0.8)', opacity: currentStep >= 1 ? 1 : 0.4 }">
+          {{ $i18n_t("bindEmailModal.step1") }}
+        </text>
+      </view>
+      <view class="step-divider"></view>
+      <view class="step-item">
+        <IconFont class="step-icon" name="readmail" :size="12" :color="currentStep >= 2 ? '#FF23B8' : 'rgba(255,255,255,0.8)'"></IconFont>
+        <text class="step-text" :style="{ color: currentStep >= 2 ? '#FF23B8' : 'rgba(255,255,255,0.8)', opacity: currentStep >= 2 ? 1 : 0.4 }">
+          {{ $i18n_t("bindEmailModal.step2") }}
+        </text>
+      </view>
+      <view class="step-divider"></view>
+      <view class="step-item">
+        <IconFont class="step-icon" name="gift" :size="12" :color="currentStep >= 3 ? '#FF23B8' : 'rgba(255,255,255,0.8)'"></IconFont>
+        <text class="step-text" :style="{ color: currentStep >= 3 ? '#FF23B8' : 'rgba(255,255,255,0.8)', opacity: currentStep >= 3 ? 1 : 0.4 }">
+          {{ $i18n_t("bindEmailModal.step3") }}
+        </text>
+      </view>
+    </view>
+
+    <!-- 步骤1：身份验证 -->
+    <view v-if="currentStep === 1" class="step-container">
+      <view class="notice-container yellow">
+        <text class="notice-title">{{ $i18n_t("bindEmailModal.step1NoticeTitle") }}</text>
+        <text class="notice-desc">{{ $i18n_t("bindEmailModal.step1NoticeDesc") }}</text>
+      </view>
+
+      <!-- 当前绑定邮箱（只读） -->
+      <view class="input-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.currentEmail") }}</text>
+        <view class="readonly-input">
+          <text class="readonly-text">{{ currentEmail }}</text>
+        </view>
+      </view>
+
+      <!-- 密码输入 -->
+      <view class="input-container" v-if="!isTgMiniApp">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.passwordPlaceholder") }}</text>
+        <text-input class="password-input" placeholder="" type="password" :value="password" @change="onPasswordChange" />
+        <text v-if="passwordError" class="error-text">{{ passwordError }}</text>
+      </view>
+
+      <!-- 验证码输入 -->
+      <view class="verification-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.codePlaceholder") }}</text>
+        <text-input class="code-input" placeholder="" type="text" :value="verificationCode" @change="onVerificationCodeChange" maxlength="6" />
+        <view class="resend-container">
+          <text class="resend-text" @click="onSendCode" :style="{ opacity: isSendingCode ? 0.6 : 1 }">
+            <template v-if="isSendingCode">
+              {{ $i18n_t('bindEmailModal.sendingCode') }}...
+            </template>
+            <template v-else>
+              {{ countdown > 0 ? $i18n_t("bindEmailModal.resendCountdown", { countdown: countdown }) : $i18n_t("bindEmailModal.sendCodeText") }}
+            </template>
+          </text>
+        </view>
+      </view>
+      <text v-if="verificationError" class="error-text">{{ verificationError }}</text>
+      <text class="tip-text">{{ $i18n_t("bindEmailModal.securityTip") }}</text>
+
+      <!-- 按钮 -->
+      <view class="button-container">
+        <view class="button cancel-button" @click="onCancel">
+          <text class="button-text">{{ $i18n_t("common.cancel") }}</text>
+        </view>
+        <view class="button confirm-button" @click="onVerifyIdentity" :style="{ pointerEvents: isVerifyingIdentity ? 'none' : 'auto', opacity: isVerifyingIdentity ? 0.6 : 1 }">
+          <text class="button-text">
+            <template v-if="isVerifyingIdentity">
+              {{ $i18n_t('bindEmailModal.verifying') }}...
+            </template>
+            <template v-else>
+              {{ $i18n_t("bindEmailModal.nextButton") }}
+            </template>
+          </text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 步骤2：新邮箱验证 -->
+    <view v-if="currentStep === 2" class="step-container">
+      <view class="notice-container yellow">
+        <text class="notice-title">{{ $i18n_t("bindEmailModal.step2NoticeTitle") }}</text>
+        <text class="notice-desc">{{ $i18n_t("bindEmailModal.step2NoticeDesc") }}</text>
+      </view>
+
+      <!-- 新邮箱输入 -->
+      <view class="input-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.newEmailPlaceholder") }}</text>
+        <text-input class="email-input" placeholder="" type="text" :value="newEmail" @change="onNewEmailChange" />
+        <text v-if="newEmailError" class="error-text">{{ newEmailError }}</text>
+      </view>
+
+      <!-- 新邮箱验证码 -->
+      <view class="verification-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.newCodePlaceholder") }}</text>
+        <text-input
+          class="code-input"
+          placeholder=""
+          type="text"
+          :value="newVerificationCode"
+          @change="onNewVerificationCodeChange"
+          :max-length="6"
+        />
+        <view class="resend-container">
+          <text class="resend-text" @click="onResendNewCode" :style="{ opacity: isSendingNewCode ? 0.6 : 1 }">
+            <template v-if="isSendingNewCode">
+              {{ $i18n_t('bindEmailModal.sendingCode') }}...
+            </template>
+            <template v-else>
+              {{ countdown > 0 ? $i18n_t("bindEmailModal.resendCountdown", { countdown: countdown }) : $i18n_t("bindEmailModal.sendCodeText") }}
+            </template>
+          </text>
+        </view>
+      </view>
+      <text v-if="newVerificationError" class="error-text">{{ newVerificationError }}</text>
+      <text class="tip-text important">{{ $i18n_t("bindEmailModal.importantTip") }}</text>
+
+      <!-- 按钮 -->
+      <view class="button-container">
+        <view class="button cancel-button" @click="onBackToStep1">
+          <text class="button-text">{{ $i18n_t("common.cancel") }}</text>
+        </view>
+        <view class="button confirm-button" @click="onVerifyNewEmail" :style="{ pointerEvents: isVerifyingNewEmail ? 'none' : 'auto', opacity: isVerifyingNewEmail ? 0.6 : 1 }">
+          <text class="button-text">
+            <template v-if="isVerifyingNewEmail">
+              {{ $i18n_t('bindEmailModal.verifying') }}...
+            </template>
+            <template v-else>
+              {{ $i18n_t("bindEmailModal.nextButton") }}
+            </template>
+          </text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 步骤3：换绑成功 -->
+    <view v-if="currentStep === 3" class="step-container success-container">
+      <view class="notice-container green">
+        <text class="notice-title">{{ $i18n_t("bindEmailModal.successNoticeTitle") }}</text>
+        <text class="notice-desc">{{ $i18n_t("bindEmailModal.successNoticeDesc") }}</text>
+      </view>
+
+      <!-- 旧邮箱（只读） -->
+      <view class="input-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.oldEmail") }}</text>
+        <view class="readonly-input">
+          <text class="readonly-text">{{ oldEmailValue }}</text>
+        </view>
+      </view>
+
+      <!-- 新邮箱（只读） -->
+      <view class="input-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.newEmail") }}</text>
+        <view class="readonly-input">
+          <text class="readonly-text">{{ newEmail }}</text>
+        </view>
+      </view>
+
+      <!-- 换绑时间（只读） -->
+      <view class="input-container">
+        <text class="field-label">{{ $i18n_t("bindEmailModal.changeTime") }}</text>
+        <text class="info-value">{{ formatTime(completeTime) }}</text>
+      </view>
+
+      <text class="tip-text security">{{ $i18n_t("bindEmailModal.securityReminder") }}</text>
+
+      <view class="button-container single-button">
+        <view class="button confirm-button" @click="onComplete">
+          <text class="button-text">{{ $i18n_t("bindEmailModal.verifyButton") }}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted, onUnmounted, computed } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import TextInput from "@/pages/account/widgets/text-input.uvue";
+import { sendEmailVerificationCode, verifyEmailCode, verifyPassword } from "@/api/user.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import { user } from "@/store/user.uts"
+import { isTelegramMiniApp } from "@/utils/platform.uts";
+
+// 当前步骤
+const currentStep = ref<number>(1);
+
+// 用户当前邮箱（从用户信息中获取真实邮箱）
+const currentEmail = computed(() => user.value?.email || '');
+
+// 旧邮箱值，用于步骤3显示
+const oldEmailValue = ref<string>("");
+
+// 步骤1数据
+const password = ref<string>("");
+const passwordError = ref<string>("");
+const verificationCode = ref<string>("");
+const verificationError = ref<string>("");
+
+// 步骤2数据
+const newEmail = ref<string>("");
+const newEmailError = ref<string>("");
+const newVerificationCode = ref<string>("");
+const newVerificationError = ref<string>("");
+
+// 倒计时
+const countdown = ref<number>(0);
+let countdownTimer: number | null = null;
+
+// 加载状态
+const isSendingCode = ref<boolean>(false);
+const isVerifyingIdentity = ref<boolean>(false);
+const isSendingNewCode = ref<boolean>(false);
+const isVerifyingNewEmail = ref<boolean>(false);
+
+// 步骤3
+const completeTime = ref<Date>(new Date());
+
+const isTgMiniApp = ref<boolean>(false); // <-- Add this reactive variable
+
+onMounted(() => {
+  isTgMiniApp.value = isTelegramMiniApp(); // <-- Set the value on mount
+});
+
+// 密码输入
+const onPasswordChange = (value: string) => {
+  password.value = value;
+  passwordError.value = "";
+};
+
+// 验证码输入
+const onVerificationCodeChange = (value: string) => {
+  verificationCode.value = value;
+  verificationError.value = "";
+};
+
+const onNewEmailChange = (value: string) => {
+  newEmail.value = value;
+  newEmailError.value = "";
+};
+
+const onNewVerificationCodeChange = (value: string) => {
+  newVerificationCode.value = value;
+  newVerificationError.value = "";
+};
+
+// 发送当前邮箱验证码（用于身份验证）
+const onSendCode = async () => {
+  if (countdown.value > 0 || isSendingCode.value) return;
+
+  isSendingCode.value = true;
+  try {
+    if (!isTgMiniApp.value) {
+      if (!password.value) {
+        passwordError.value = $i18n_t("bindEmailModal.passwordRequiredError");
+        return;
+      }
+
+      try {
+        const passwordVerifyResponse = await verifyPassword(password.value);
+        if (!passwordVerifyResponse?.success) {
+          passwordError.value = passwordVerifyResponse?.error?.message || $i18n_t("bindEmailModal.passwordVerifyFailed");
+          return;
+        }
+      } catch (e) {
+        console.error("密码验证失败", e);
+        passwordError.value = $i18n_t("bindEmailModal.passwordVerifyFailed");
+        return;
+      }
+    }
+
+    const response = await sendEmailVerificationCode(currentEmail.value);
+    if (response?.success) {
+      startCountdown();
+    } else {
+      verificationError.value = response?.error?.message || $i18n_t("bindEmailModal.sendCodeError");
+    }
+  } catch (e) {
+    console.error("发送验证码失败", e);
+    verificationError.value = $i18n_t("bindEmailModal.sendCodeError");
+  } finally {
+    isSendingCode.value = false;
+  }
+};
+
+// 重新发送新邮箱验证码
+const onResendNewCode = async () => {
+  if (countdown.value > 0 || isSendingNewCode.value) return;
+  if (!newEmail.value) {
+    newEmailError.value = $i18n_t("bindEmailModal.emailRequiredError");
+    return;
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newEmail.value)) {
+    newEmailError.value = $i18n_t("bindEmailModal.emailFormatError");
+    return;
+  }
+
+  isSendingNewCode.value = true;
+  try {
+    const response = await sendEmailVerificationCode(newEmail.value);
+    if (response?.success) {
+      startCountdown();
+    } else {
+      newVerificationError.value = response?.error?.message || $i18n_t("bindEmailModal.resendCodeError");
+    }
+  } catch (e) {
+    console.error("重新发送验证码失败", e);
+    newVerificationError.value = $i18n_t("bindEmailModal.resendCodeError");
+  } finally {
+    isSendingNewCode.value = false;
+  }
+};
+
+// 验证身份（步骤1 → 步骤2）
+const onVerifyIdentity = async () => {
+  if (isVerifyingIdentity.value) return;
+
+  if (!isTgMiniApp.value) { // Only require password if not in TG Mini App
+    if (!password.value) {
+      passwordError.value = $i18n_t("bindEmailModal.passwordRequiredError");
+      return;
+    }
+  }
+
+  if (verificationCode.value.length < 6) {
+    verificationError.value = $i18n_t("bindEmailModal.codeLengthError");
+    return;
+  }
+  isVerifyingIdentity.value = true;
+  // 调用验证接口（需后端支持：验证密码 + 验证码），如果是非TG环境，后端也需要验证密码。
+  try {
+    const response = await verifyEmailCode(currentEmail.value, verificationCode.value);
+    if (response?.success) {
+      oldEmailValue.value = currentEmail.value; // 在进入步骤2前保存旧邮箱
+      currentStep.value = 2;
+      // 重置倒计时，准备发新邮箱验证码
+      stopCountdown();
+      countdown.value = 0;
+    } else {
+      const msg = response?.error?.message;
+      if (!isTgMiniApp.value && msg?.includes("password")) { // Only show password error if not TG and message includes password
+        passwordError.value = msg;
+      } else {
+        verificationError.value = msg || $i18n_t("bindEmailModal.verifyFailedError");
+      }
+    }
+  } catch (e) {
+    console.error("身份验证失败", e);
+    verificationError.value = $i18n_t("bindEmailModal.verifyFailedError");
+  } finally {
+    isVerifyingIdentity.value = false;
+  }
+};
+
+// 验证新邮箱（步骤2 → 步骤3）
+const onVerifyNewEmail = async () => {
+  if (isVerifyingNewEmail.value) return;
+
+  if (!newEmail.value) {
+    newEmailError.value = $i18n_t("bindEmailModal.emailRequiredError");
+    return;
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newEmail.value)) {
+    newEmailError.value = $i18n_t("bindEmailModal.emailFormatError");
+    return;
+  }
+  if (newVerificationCode.value.length < 6) {
+    newVerificationError.value = $i18n_t("bindEmailModal.codeLengthError");
+    return;
+  }
+
+  isVerifyingNewEmail.value = true;
+  try {
+    // 调用换绑接口
+    const changeRes = await verifyEmailCode(newEmail.value, newVerificationCode.value);
+    if (changeRes?.success) {
+      currentStep.value = 3;
+      completeTime.value = new Date();
+      user.value.email = newEmail.value; // 更新用户邮箱
+      stopCountdown();
+    } else {
+      newVerificationError.value = changeRes?.error?.message || $i18n_t("bindEmailModal.changeFailedError");
+    }
+  } catch (e) {
+    console.error("新邮箱验证失败", e);
+    newVerificationError.value = $i18n_t("bindEmailModal.verifyFailedError");
+  } finally {
+    isVerifyingNewEmail.value = false;
+  }
+};
+
+// 返回步骤1
+const onBackToStep1 = () => {
+  currentStep.value = 1;
+  newEmail.value = "";
+  newVerificationCode.value = "";
+  newEmailError.value = "";
+  newVerificationError.value = "";
+  stopCountdown();
+};
+
+// 取消：返回上一页
+const onCancel = () => {
+  uni.navigateBack();
+};
+
+// 完成：返回上一页或首页
+const onComplete = () => {
+  uni.navigateBack();
+};
+
+// 倒计时
+const startCountdown = () => {
+  countdown.value = 60;
+  stopCountdown();
+  countdownTimer = setInterval(() => {
+    if (countdown.value > 0) {
+      countdown.value--;
+    } else {
+      stopCountdown();
+    }
+  }, 1000) as unknown as number;
+};
+
+const stopCountdown = () => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+};
+
+const formatTime = (date: Date): string => {
+  return date.toLocaleString();
+};
+
+onUnmounted(() => {
+  stopCountdown();
+});
+</script>
+
+<style scoped>
+.change-email-page {
+  padding: 20px;
+  background-color: #000;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #000;
+}
+
+.steps-container {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.step-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-icon {
+  margin-right: 4px;
+}
+
+.step-text {
+  font-size: 14px;
+}
+
+.step-divider {
+  width: 10px;
+  height: 2px;
+  background-color: #ccc;
+  margin: 0 6px;
+}
+
+.step-container {
+  position: relative;
+  flex: 1;
+}
+
+.notice-container {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.notice-container.yellow {
+  background-color: rgba(255, 224, 22, 0.2);
+}
+
+.notice-container.green {
+  background-color: #c8e6c9;
+}
+
+.notice-title {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.notice-container.yellow .notice-title {
+  color: #ffa000;
+}
+
+.notice-container.green .notice-title {
+  color: #2e7d32;
+}
+
+.notice-desc {
+  font-size: 12px;
+  color: #ffffff;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.readonly-field {
+  background-color: #262626;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.readonly-input {
+  width: 100%;
+  height: 48px;
+  background-color: #262626;
+  border-radius: 24px;
+  padding: 0 16px;
+  align-items: left;;
+}
+
+.readonly-text {
+  font-size: 14px;
+  color: #fff;
+  line-height: 48px;
+  text-align: left;
+}
+
+.field-label {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 6px;
+}
+
+.field-value {
+  font-size: 14px;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.input-container,
+.verification-container {
+  width: 100%;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+
+.password-input,
+.email-input,
+.code-input {
+  width: 100%;
+  height: 48px;
+  background-color: #262626;
+  border-radius: 24px;
+  padding: 0 16px;
+  font-size: 14px;
+  color: #fff;
+}
+
+.error-text {
+  font-size: 12px;
+  color: #ff4757;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.resend-container {
+  position: absolute;
+  top: 50%;
+  right: 50px;
+  height: 100%;
+}
+
+.resend-text {
+  font-size: 14px;
+  color: #ff23b8;
+}
+
+.tip-text {
+  font-size: 14px;
+  color: rgba(255,255,255,0.8);
+  margin: 8px 0 24px;
+  line-height: 1.4;
+}
+
+.tip-text.important {
+  color: #e91e63;
+}
+
+.tip-text.security {
+  color: #f57c00;
+}
+
+.info-item {
+  flex-direction: row;
+  margin-bottom: 12px;
+  padding: 0 16px;
+}
+
+.info-label {
+  font-size: 14px;
+  color: rgba(255,255,255,0.8);
+  min-width: 80px;
+}
+
+.info-value {
+  font-size: 14px;
+  color: #fff;
+  flex: 1;
+}
+
+.button-container {
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+}
+
+.button-container.single-button {
+  justify-content: center;
+}
+
+.button {
+  padding: 0 24px;
+  height: 44px;
+  border-radius: 22px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 8px;
+}
+
+.cancel-button {
+  background-color: #888;
+}
+
+.confirm-button {
+  background: linear-gradient(to right, #ff23b8, #ffd700);
+}
+
+.button-text {
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+}
+</style>

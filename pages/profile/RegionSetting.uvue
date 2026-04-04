@@ -1,0 +1,143 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <!-- 顶部导航栏 -->
+      <view class="header">
+        <view class="header-row">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ regionSettingText }}</text>
+        </view>
+      </view>
+
+      <scroll-view scroll-y class="region-list">
+        <view v-for="(region, index) in regions" :key="index" class="region-item" @click="selectRegion(region)">
+          <text :class="['region-name', { 'selected-region-name': selectedRegionAlpha2 == region.alpha2 }]">{{ region.country }}</text>
+          <IconFont v-if="selectedRegionAlpha2 == region.alpha2" name="ok" :size="10" color="#E6007A"></IconFont>
+        </view>
+      </scroll-view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { ref, computed, onMounted, watch } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { goBack } from "@/utils/page";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+import iso from "iso-3166-1";
+import { user } from "@/store/user.uts";
+import { setUserInfo } from "@/api/user.uts";
+
+const regionSettingText = computed(() => $i18n_t("profile.regionSetting"));
+
+type Region = {
+  country: string;
+  alpha2: string;
+  alpha3: string;
+  numeric: string;
+};
+
+const regions = ref<Region[]>([]);
+const selectedRegionAlpha2 = ref<string | null>(null);
+
+onMounted(() => {
+  regions.value = iso.all() as Region[];
+  if (user.value != null && user.value.preferredCountry != null) {
+    selectedRegionAlpha2.value = user.value.preferredCountry;
+  }
+});
+
+watch(
+  () => user.value?.preferredCountry,
+  (newVal) => {
+    if (newVal != null) {
+      selectedRegionAlpha2.value = newVal;
+    }
+  },
+  { immediate: true }
+);
+
+const selectRegion = async (region: Region) => {
+  if (selectedRegionAlpha2.value == region.alpha2) {
+    return;
+  }
+  selectedRegionAlpha2.value = region.alpha2;
+  // Call API to save region
+  if (user.value != null) {
+    let res = await setUserInfo(user.value.id, { preferredCountry: region.alpha2 } as UTSJSONObject);
+    if (res != null && res.success) {
+      user.value.preferredCountry = region.alpha2;
+      uni.showToast({ title: $i18n_t("profile.regionUpdateSuccess"), icon: "none" });
+    } else {
+      uni.showToast({ title: $i18n_t("profile.regionUpdateFailed"), icon: "none" });
+    }
+  } else {
+    uni.showToast({ title: $i18n_t("profile.regionUpdateFailed"), icon: "none" });
+  }
+};
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+.region-list {
+  flex: 1;
+  padding: 0 20px;
+}
+
+.region-item {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 5px;
+  border-bottom: 1px solid #333333;
+}
+
+.region-item:last-child {
+  border-bottom: none;
+}
+
+.region-name {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.selected-region-name {
+  color: #E6007A; /* Highlight color for text */
+}
+</style>

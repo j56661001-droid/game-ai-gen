@@ -1,0 +1,28 @@
+import { UserListResponse, ResourceListResponse, ApiResponse, PostItem } from "@/types/index.uts";
+import { request } from "./request.uts";
+
+export async function searchPosts(
+  keyword: string,
+  contentType: "" | "video" | "image" | "audio",
+  page: number = 1,
+  size: number = 10,
+): Promise<ResourceListResponse | null> {
+  return await request<ResourceListResponse>({
+    url: `posts?keyword=${keyword}&page=${page}&size=${size}${contentType ? "&contentType=" + contentType : ""}`,
+    method: "GET",
+  });
+}
+
+export async function searchUser(keyword: string, page: number = 1, size: number = 20): Promise<UserListResponse | null> {
+  return await request<UserListResponse>({
+    url: `users/search?keyword=${keyword}&page=${page}&size=${size}`,
+    method: "GET",
+  });
+}
+
+export async function getPostByid(postid: string): Promise<ApiResponse<PostItem> | null> {
+  return await request<ApiResponse<PostItem>>({
+    url: `posts/${postid}`,
+    method: "GET",
+  });
+}

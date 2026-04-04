@@ -1,0 +1,232 @@
+<template>
+  <view class="splash-container">
+    <image class="splash-background" src="/static/splash.png" mode="cover"></image>
+    <view class="main-content-wrapper">
+      <image class="webname-image" src="/static/icons/welcome_logo@2x.png"></image>
+      <view class="promo-banner">
+        <!-- 背景：包含闪电和 HOT SALE -->
+        <image class="promo-banner-bg" src="/static/splash_header@2x.png" mode="widthFix"></image>
+        <!-- 文本：UP TO 50% OFF -->
+        <text class="promo-banner-text">{{ fmtBackendLang(welcomeData?.title) }}</text>
+      </view>
+
+      <!-- 标题 -->
+      <text class="create-ai-title">{{ fmtBackendLang(welcomeData?.subtitle) }}</text>
+
+      <!-- 视频区域 -->
+      <view class="video-container">
+        <view class="video-wrapper">
+          <bp-media-display
+            style="width:100%"
+            mediaClassName="video-player"
+            :type="getFileTypeBySuffix(welcomeData?.renderings?.source?.fileURL)"
+            :src="welcomeData?.renderings?.source?.fileURL"
+            :autoplay="true"
+            :loop="true"
+            :muted="true"
+            :autoresize="true"
+            :controls="false"
+            object-fit="cover"
+          ></bp-media-display>
+          <text class="video-desc">{{ fmtBackendLang(welcomeData?.renderings?.source?.displayName) }}</text>
+        </view>
+        <view class="video-wrapper">
+          <bp-media-display
+            style="width:100%"
+            mediaClassName="video-player"
+            :type="getFileTypeBySuffix(welcomeData?.renderings?.target?.fileURL)"
+            :src="welcomeData?.renderings?.target?.fileURL"
+            :autoplay="true"
+            :loop="true"
+            :autoresize="true"
+            :muted="true"
+            :controls="false"
+            object-fit="cover"
+          ></bp-media-display>
+          <text class="video-desc">{{ fmtBackendLang(welcomeData?.renderings?.target?.displayName) }}</text>
+        </view>
+      </view>
+
+      <!-- Next 按钮 -->
+      <button class="action-button gradient-next-button" @click="handleSplashClick">{{ $i18n_t("welcome.next_button") }}</button>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import BpMediaDisplay from "@/components/panels/bp-media-display.uvue";
+import { getFileTypeBySuffix } from "@/utils/format.uts";
+import type { WelcomeSettings } from '@/types/index.uts'
+
+defineProps<{
+  welcomeData: WelcomeSettings | null;
+}>();
+
+const handleSplashClick = async () => {
+  try {
+    console.log("handleSplashClick")
+    await uni.redirectTo({ url: "/pages/index/index" });
+  } catch (err: any) {
+    if (err != null) {
+      console.error("navigateTo failed", err);
+    } else {
+      console.error("navigateTo failed: unknown error");
+    }
+  }
+};
+
+</script>
+
+<style scoped>
+/* All the styles from .splash-container and its children from welcome.uvue */
+.splash-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* 垂直居中内容 */
+}
+
+.main-content-wrapper {
+  width: 100%; /* 占据父容器的100%宽度 */
+  max-width: min(calc(100vw), 90vh); /* 响应式最大宽度，左右留15px边距，最大500px */
+  margin: 0 auto; /* 水平居中 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0; /* 垂直内边距 */
+  box-sizing: border-box; /* 确保padding不增加总宽度 */
+}
+
+.splash-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.webname-image {
+  width: 264.5px;
+  height: 41px;
+  margin-bottom: 25px;
+}
+
+.splash-header {
+  margin-top: -10px;
+  width: 100%;
+}
+
+/* 促销 Banner 容器 */
+.promo-banner {
+  position: relative; /* 用于绝对定位内部文本 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+
+  margin-bottom: 25px;
+}
+
+.promo-banner-bg {
+  width: 100%;
+  height: 70px;
+}
+
+/* 促销文本样式 */
+.promo-banner-text {
+  position: absolute;
+  font-family: "Baloo Thambi 2-Bold";
+  /* 通过 transform 精确居中 */
+  left: 50%;
+  top: 50%;
+  padding-right: 30px;
+  transform: translate(-50%, -50%);
+  font-size: 28px; /* 根据设计图微调字体大小 */
+  font-weight: bold;
+  color: #ffffff;
+  /* 文字描边增加立体感 */
+  text-shadow: 4px 4px 0 #FF23B8; 
+  white-space: nowrap; /* 确保文本单行显示 */
+}
+
+/* 创建AI标题 */
+.create-ai-title {
+  font-size: 38px;
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-weight: bold;
+  color: #ffffff;
+  text-shadow: 4px 4px 10px #FF23B8;
+  margin-bottom: 25px;
+}
+
+/* 视频容器 */
+.video-container {
+  display: flex;
+  justify-content: center;
+  gap: 15px; /* 视频之间的间距 */
+  width: 90%;
+
+  margin-bottom: 30px;
+  flex-direction: row;
+}
+
+/* 视频容器 */
+.video-wrapper {
+  position: relative; /* Establish positioning context for video-desc */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 45%;
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+/* 单个视频播放器样式 */
+.video-player {
+  width: 100%;
+  background-color: #333; /* 视频加载时的背景色 */
+}
+
+.video-desc {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  text-align: center;
+  padding: 10px; /* Add some padding for better appearance */
+  border-bottom-left-radius: 15px; /* Match video-player border-radius */
+  border-bottom-right-radius: 15px; /* Match video-player border-radius */
+  width: 100%; /* Ensure it spans the full width of the wrapper */
+  box-sizing: border-box; /* Include padding in the width */
+}
+
+/* 渐变色按钮样式 */
+.gradient-next-button {
+  background: linear-gradient(90deg, #F820B3 0%, #FDCB0A 100%);
+  color: white;
+  border-radius: 50px;
+  width: 90%;
+  height: 50px;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: auto; /* 将按钮固定在底部 */
+  padding: 0;
+  line-height: 1;
+}
+
+.action-button {
+  margin-top: 16px;
+  border-width: 0;
+
+}
+</style>

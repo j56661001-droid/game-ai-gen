@@ -1,0 +1,159 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <!-- 顶部导航栏 -->
+      <view class="header">
+        <view class="header-row">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ languageText }}</text>
+        </view>
+      </view>
+
+      <!-- 使用 scroll-view 实现可滚动的语言列表 -->
+      <scroll-view class="language-list" scroll-y>
+        <!-- 使用 v-for 循环渲染语言选项 -->
+        <view v-for="lang in languages" :key="lang.code" class="list-item" @click="selectLanguage(lang.code)">
+          <!-- 语言名称，根据是否选中应用不同样式 -->
+          <text :class="['item-text', { 'selected-text': lang.code == selectedLanguage }]">{{ lang.name }}</text>
+          <!-- 选中时显示勾选图标 -->
+          <IconFont v-if="lang.code == selectedLanguage" name="ok" :size="10" color="#E6007A"></IconFont>
+        </view>
+      </scroll-view>
+
+      <!-- 底部操作区域 -->
+      <view class="bottom-container">
+        <view class="save-button" @click="onSave">
+          <text class="save-button-text">{{ saveText }}</text>
+        </view>
+      </view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { ref, computed } from "vue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { setLocale, getLocale, Language, availableLanguages } from "@/locale/index.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+
+const languageText = computed(() => $i18n_t("profile.language"));
+const saveText = computed(() => $i18n_t("profile.save"));
+
+// 当前选中的语言，默认为 'en' (English)
+const selectedLanguage = ref(getLocale());
+
+// 语言列表数据
+const languages = ref<Language[]>(availableLanguages);
+
+// 切换语言的函数
+const selectLanguage = (code: string) => {
+  selectedLanguage.value = code;
+};
+
+// 点击保存按钮的函数
+const onSave = () => {
+  // console.log("保存的语言是:", selectedLanguage.value);
+  // 在此可以添加保存逻辑，例如使用 uni.setStorageSync
+
+  setLocale(selectedLanguage.value);
+  uni.navigateBack(); // 保存后返回上一页
+};
+</script>
+
+<style scoped>
+/* 页面整体容器 */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+/* 语言列表区域 */
+.language-list {
+  flex: 1; /* 占据剩余所有空间 */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 列表项样式 */
+.list-item {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  /* border-bottom: 1px solid #222;  可选：添加分隔线 */
+}
+
+/* 列表项文字 */
+.item-text {
+  font-size: 16px;
+  color: #ffffff;
+}
+
+/* 选中的列表项文字样式 */
+.selected-text {
+  color: #e6007a; /* 截图中的粉色/洋红色 */
+  font-weight: 400;
+}
+
+/* 底部容器，用于定位按钮 */
+.bottom-container {
+  align-items: center;
+  width: 100%;
+  padding: 10px 20px 34px 20px; /* 34px 是 iPhone X 系列底部的安全区域高度 */
+  background-color: #000000;
+}
+
+/* 保存按钮样式 */
+.save-button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50px;
+  width: 50%;
+  border-radius: 25px; /* 圆角 */
+  /* 漂亮的渐变背景 */
+  background: linear-gradient(to bottom right, #ff00d8, #fff500);
+  box-shadow: 0 4px 10px rgba(255, 0, 216, 0.3); /* 添加一点辉光效果，颜色调整为渐变起始色 */
+}
+
+/* 保存按钮文字 */
+.save-button-text {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: bold;
+}
+</style>

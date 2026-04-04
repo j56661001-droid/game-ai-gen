@@ -1,0 +1,55 @@
+import { request } from "./request";
+import { ApiResponse } from "../types";
+import type { ReferralCenterData, InvitationHistoryItem } from '@/types/affiliate.uts';
+
+export interface ReferralParams {
+  utm_id?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  affiliateCode?: string;
+  click?: number;
+}
+
+export interface AffiliateLinkResponse {
+  distributorDomain: string; // Comma-separated string of domains
+}
+
+export function postReferral(params: ReferralParams): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `affiliate/referral`,
+    method: "GET",
+    data: params
+  });
+}
+
+export function getAffiliateLink(subdomain: string): Promise<ApiResponse<AffiliateLinkResponse>> | null {
+  return request({
+    url: `affiliate/${subdomain}/link`,
+    method: "GET",
+  });
+}
+
+
+/**
+ * Get affiliate summary information
+ * @returns {Promise<ReferralCenterData>}
+ */
+export function getAffiliateSummary(): Promise<ApiResponse<ReferralCenterData>> {
+  return request<ReferralCenterData>({
+    url: 'referrals/center',
+    method: 'GET',
+  });
+}
+
+/**
+ * Get affiliate invitation history
+ * @returns {Promise<InvitationHistoryItem[]>}
+ */
+export function getAffiliateHistory(page: number, size: number): Promise<ApiResponse<InvitationHistoryItem>[]> {
+  return request<InvitationHistoryItem[]> ({
+    url: 'referrals/invitations',
+    method: 'GET',
+    data: { page, size },
+  });
+}

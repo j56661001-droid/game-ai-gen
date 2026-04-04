@@ -1,0 +1,26 @@
+<template>
+  <text class="fr-typography-title">
+    <slot></slot>
+  </text>
+</template>
+
+<script setup lang="uts"></script>
+
+<style scoped>
+.fr-typography-title {
+  font-size: 26px;
+  line-height: 32px;
+  color: #ffffff;
+  font-family: "Baloo Thambi 2-ExtraBold";
+
+  /* #ifdef APP */
+  lines: 1;
+  /* #endif */
+
+  /* #ifdef WEB */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+</style>

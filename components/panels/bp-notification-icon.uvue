@@ -1,0 +1,35 @@
+<template>
+  <fr-badge :count="notificationCount" dot>
+    <icon-font :size="props.size" :color="props.color" name="message" @click="onGotoNotifications" />
+  </fr-badge>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted } from "vue";
+import { getUnreadCount } from "@/api/social.uts";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { FrBadge } from "@/components/widgets/index.uts";
+
+const props = withDefaults(
+  defineProps<{
+    size?: number;
+    color?: string;
+  }>(),
+  { size: 20, color: "#fff" },
+);
+
+const notificationCount = ref(0);
+
+onMounted(async () => {
+  const res = await getUnreadCount();
+  if (res?.success && res.data != null) {
+    notificationCount.value = res.data.unreadCount;
+  }
+});
+
+const onGotoNotifications = () => {
+  uni.navigateTo({ url: "/pages/account/notifications" });
+};
+</script>
+
+<style scoped></style>

@@ -1,0 +1,138 @@
+import { ref } from 'vue';
+import type { PostItem, CategoryListWithChildren, GenerationedItem } from "@/types/index.uts";
+import { FRStorage } from "@/utils/storage.uts";
+
+export const userStore = ref<any>({});
+
+export type TopUpSuccessModalData = {
+  modalTitle: string;
+  mainMessage: string;
+  subMessage: string;
+  confirmText: string;
+  onConfirm: () => void;
+  cancelText?: string; // Make cancelText optional
+  onCancel?: () => void; // Make onCancel optional
+}
+
+type AppStore = {
+  tabBarHiddenCount: number;
+  videoResourceList: PostItem[];
+  videoInitialIndex: number;
+  starsData: CategoryListWithChildren[] | null; // 新增 starsData 属性
+  historyList: string[];
+  generationedItemList: GenerationedItem[]; // 新增生成记录列表
+  botUsername: string | null; // 新增 botUsername 属性
+  appName: string | null;     // 新增 appName 属性
+  webviewConfig: WebviewConfig;
+  topUpSuccessModalData: TopUpSuccessModalData | null; // 新增 topUpSuccessModalData 属性
+};
+
+const STORAGE_KEY = "search_history";
+const STORAGE_KEY_FINGERPRINT = "device_fingerprint";
+const MAX_HISTORY_COUNT = 60;
+export const storage = new FRStorage();
+
+export const appStore = ref<AppStore>({
+  tabBarHiddenCount: 0,
+  videoResourceList: [],
+  videoInitialIndex: 0,
+  starsData: null, // 初始化为 null
+  historyList: [],
+  generationedItemList: [],
+  botUsername: null, // 初始化为 null
+  appName: null,     // 初始化为 null
+  webviewConfig: {
+    url: '',
+    isAigf: false,
+  },
+  topUpSuccessModalData: null, // 初始化为 null
+});
+
+export function setTopUpSuccessModalData(data: TopUpSuccessModalData | null) {
+  appStore.value.topUpSuccessModalData = data;
+}
+
+export function setWebviewConfig(config: WebviewConfig) {
+  appStore.value.webviewConfig = { ...appStore.value.webviewConfig, ...config };
+}
+
+export function initHistory() {
+  const storedHistory = storage.get<string[]>(STORAGE_KEY);
+  if (Array.isArray(storedHistory)) {
+    appStore.value.historyList = storedHistory;
+  } else {
+    appStore.value.historyList = [];
+  }
+}
+
+export function addHistory(keyword: string) {
+  if (keyword.length == 0) return;
+
+  const lowerCaseKeyword = keyword.toLowerCase();
+  const index = appStore.value.historyList.findIndex(
+    (item) => item.toLowerCase() == lowerCaseKeyword
+  );
+
+  if (index > -1) {
+    appStore.value.historyList.splice(index, 1);
+  }
+
+  appStore.value.historyList.unshift(keyword);
+
+  if (appStore.value.historyList.length > MAX_HISTORY_COUNT) {
+    appStore.value.historyList.splice(MAX_HISTORY_COUNT);
+  }
+
+  storage.set(STORAGE_KEY, appStore.value.historyList);
+}
+
+export function removeHistory(keyword: string) {
+  const index = appStore.value.historyList.findIndex((item) => item == keyword);
+  if (index > -1) {
+    appStore.value.historyList.splice(index, 1);
+    storage.set(STORAGE_KEY, appStore.value.historyList);
+  }
+}
+
+export function clearHistory() {
+  appStore.value.historyList = [];
+  storage.remove(STORAGE_KEY);
+}
+
+export function setTabBarVisibility(visible: boolean) {
+  if (visible) {
+    // 显示 TabBar，计数减一，但不能小于0
+    if (appStore.value.tabBarHiddenCount > 0) {
+      appStore.value.tabBarHiddenCount--;
+    }
+  } else {
+    // 隐藏 TabBar，计数加一
+    appStore.value.tabBarHiddenCount++;
+  }
+}
+
+export function setVideoResourceList(list: PostItem[]) {
+  appStore.value.videoResourceList = list;
+}
+
+export function setVideoInitialIndex(index: number) {
+  appStore.value.videoInitialIndex = index;
+}
+
+// 新增 setStarsData 方法
+export function setStarsData(data: CategoryListWithChildren[]) {
+  appStore.value.starsData = data;
+}
+
+export function setGenerationedItemList(list: GenerationedItem[]) {
+  appStore.value.generationedItemList = list;
+}
+
+export function setDeviceFingerprint(fingerprint: string) {
+  storage.set(STORAGE_KEY_FINGERPRINT, fingerprint);
+}
+
+export function getDeviceFingerprint(): string | null {
+  const storedFingerprint = storage.get<string>(STORAGE_KEY_FINGERPRINT);
+  return storedFingerprint || null;
+}

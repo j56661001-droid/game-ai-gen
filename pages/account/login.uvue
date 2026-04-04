@@ -1,0 +1,263 @@
+<template>
+  <bg-panel>
+    <scroll-view :scroll-y="true" class="login-container">
+      <view class="login-header-row">
+        <view class="login-close-wrapper">
+          <icon-font name="close" :size="20" color="#fff" @click="onClose"></icon-font>
+        </view>
+        <text class="login-title-centered">{{ loginText }}</text>
+        <view class="login-header-spacer"></view>
+      </view>
+      <!-- <image mode="aspectFit" class="login-logo" src="/static/icons/login_logo@2x.png"></image> -->
+      <view class="login-form">
+        <text-input
+          :placeholder="accountText"
+          style="margin-bottom: 16px"
+          type="email"
+          :value="formState.account"
+          @change="onFormChange('account', $event)"
+        ></text-input>
+        <text-input
+          :placeholder="passwordText"
+          style="margin-bottom: 16px"
+          type="password"
+          :value="formState.password"
+          @change="onFormChange('password', $event)"
+        ></text-input>
+        <view style="width: 100%; flex-direction: row">
+          <view style="flex: 1; margin-right: 8px">
+            <text style="color: red; font-size: 12px; line-height: 18px" v-if="!!errorMsg">{{ errorMsg }}</text>
+          </view>
+          <text style="font-size: 12px; line-height: 17px; color: #aaa; text-decoration-line: underline" @click="onGotoForgotPassword">{{
+            forgotPasswordText
+          }}</text>
+        </view>
+      </view>
+      <submit-button :disabled="!formState.account || !formState.password" :submitting="submitting" @submit="onSubmit">{{ loginText }}</submit-button>
+      <view style="flex-direction: row; align-items: center; margin-top: 16px">
+        <text style="font-size: 14px; line-height: 20px; color: #fff">{{ haveAnAccountText }}</text>
+        <text style="font-size: 14px; line-height: 20px; color: #ff23b8; margin-left: 12px" @click="onGotoRegister">{{ registerText }}</text>
+      </view>
+      <third-party-login></third-party-login>
+    </scroll-view>
+  </bg-panel>
+</template>
+
+<script setup lang="uts">
+import { computed, reactive, ref } from "vue";
+import { useSubmitRequest } from "@/hooks";
+import BgPanel from "./widgets/bg-panel.uvue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import TextInput from "./widgets/text-input.uvue";
+import SubmitButton from "./widgets/submit-button.uvue";
+import ThirdPartyLogin from "@/components/account/third-party-login.uvue";
+import { tokenStorage, user } from "@/store/user.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+import { logoutAigf } from "@/api/index.uts";
+
+const frCreatorText = computed(() => $i18n_t("account.frCreator"));
+const accountText = computed(() => $i18n_t("profile.username"));
+const passwordText = computed(() => $i18n_t("common.password"));
+const forgotPasswordText = computed(() => $i18n_t("account.forgotPassword"));
+const loginText = computed(() => $i18n_t("common.login"));
+const haveAnAccountText = computed(() => $i18n_t("account.haveAnAccount"));
+const registerText = computed(() => $i18n_t("common.register"));
+
+type FormState = {
+  account?: string;
+  password?: string;
+};
+
+const emit = defineEmits<{
+  (e: "close"): void;
+}>();
+
+const redirectConfig = ref<{ from?: string; to?: string; action?: string; toAction?: string; fromAction?: string; successRedirectOnly?: boolean }>({});
+const errorMsg = ref<string>("");
+const formState = reactive<FormState>({});
+
+onLoad(({ from, to, action, toAction, fromAction, successRedirectOnly }) => {
+  user.value = null;
+  tokenStorage.set("token", "");
+  redirectConfig.value = {
+    from: from || "",
+    to: to || "",
+    action: action,
+    toAction: toAction,
+    fromAction: fromAction,
+    successRedirectOnly: successRedirectOnly === "true",
+  };
+});
+
+const $logoutAigf = async () => {
+  const res = await logoutAigf();
+  if (res.success) {
+    execGTagEvent("aigf_leave", { pts: res.data ? res.data.balance.toString() : "0", type: "login" } as AnyObject);
+  }
+};
+
+const navigate = (config: { to?: string; toAction?: string; action?: string }) => {
+  if (!config.to) return;
+
+  const action = config.toAction || config.action || "navigateTo";
+  const options = { url: config.to };
+
+  switch (action) {
+    case "href":
+      window.location.href = options.url;
+      break;
+    case "navigateTo":
+      uni.navigateTo(options);
+      break;
+    case "redirectTo":
+      uni.redirectTo(options);
+      break;
+    case "reLaunch":
+      uni.reLaunch(options);
+      break;
+    case "switchTab":
+      uni.switchTab(options);
+      break;
+    default:
+      uni.navigateTo(options);
+      break;
+  }
+};
+
+const { submitRequest, submitting } = useSubmitRequest({
+  url: `auth/login`,
+  customErrorHanlder(err) {
+    errorMsg.value = err.message;
+  },
+  onSuccess(result) {
+    tokenStorage.set<string>("token", result.data.accessToken);
+    user.value = result.data.user;
+
+    uni.$emit("login:close");
+    uni.$emit("refresh:balance");
+
+    // GA 埋点上报: 登录成功
+    execGTagEvent("login", { result: "success" } as AnyObject);
+
+    /** 根据不同路由拦截器的action,适配业务处理 */
+    if (!!redirectConfig.value.to) {
+      navigate(redirectConfig.value);
+    } else {
+      uni.redirectTo({
+        url: "/pages/index/index?tabbar=home", // 重定向到首页
+      });
+    }
+    $logoutAigf();
+  },
+  onFail(err: any) {
+    // GA 埋点上报: 登录失败
+    execGTagEvent("login", { result: "fail", error_code: err?.code } as AnyObject);
+  },
+});
+
+const onClose = () => {
+  const { from, fromAction, action, successRedirectOnly } = redirectConfig.value;
+  uni.$emit("login:close", from ? { from, action: fromAction || action || "navigateTo" } : null);
+  if (successRedirectOnly) {
+    return;
+  }
+  if (!!redirectConfig.value.to) {
+    navigate(redirectConfig.value);
+  } else {
+    uni.redirectTo({
+      url: "/pages/index/index?tabbar=home", // 重定向到首页
+    });
+  }
+};
+
+const onFormChange = (field: string, val: string) => {
+  formState[field] = val;
+};
+
+const validateFormData = (): boolean => {
+  if (!formState.account || !formState.password) {
+    return false;
+  }
+
+  return true;
+};
+
+const onSubmit = () => {
+  const isPass = validateFormData();
+  if (!isPass) {
+    return;
+  }
+
+  submitRequest({
+    username: formState.account,
+    password: formState.password,
+    remember: true,
+  });
+};
+
+const onGotoRegister = () => {
+  errorMsg.value = "";
+  formState.account = null;
+  formState.password = null;
+  uni.$emit("login:close");
+  setTimeout(() => {
+    uni.$emit("login:show", { page: "register", ...redirectConfig.value });
+  }, 20);
+  // uni.$emit("login:show", { page: 'register', ...redirectConfig.value });
+};
+
+const onGotoForgotPassword = () => {
+  uni.navigateTo({
+    url: "/pages/account/forgot-password",
+  });
+};
+</script>
+
+<style scoped>
+.login-container {
+  flex: 1;
+  align-items: center;
+  max-width: 750px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.login-logo {
+  width: 276px;
+  height: 154px;
+  margin-top: 48px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.login-header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  padding-top: 24px;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
+}
+
+.login-title-centered {
+  flex: 1;
+  text-align: center;
+  font-family: "Baloo Thambi 2-ExtraBold";
+  font-size: 26px;
+  line-height: 40px;
+  color: #fff;
+}
+
+.login-header-spacer {
+  width: 20px; /* Assuming the icon font is 20px, this acts as a balance */
+}
+
+.login-form {
+  margin: 24px 0;
+  width: 100%;
+}
+</style>

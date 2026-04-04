@@ -1,0 +1,55 @@
+<template>
+  <image
+    class="fr-spin"
+    :class="{ 'fr-spinning': props.spinning }"
+    :style="props.size ? `width: ${props.size}px; height: ${props.size}px;` : ''"
+    :src="iconPath"
+  ></image>
+</template>
+
+<script setup lang="uts">
+type ButtonType = "default" | "primary";
+
+const props = withDefaults(defineProps<{ size?: number; iconPath?: string; type?: ButtonType; spinning?: boolean }>(), { spinning: true });
+
+const iconPath = computed((): string.ImageURIString => {
+  if (props.iconPath != null) {
+    return props.iconPath;
+  }
+
+  switch (props.type) {
+    case "primary":
+      return "/static/loading@2x.png";
+    case "default":
+    default:
+      return "/static/loading@2x_default.png";
+  }
+});
+</script>
+
+<style scoped>
+.fr-spin {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+}
+
+/* #ifdef WEB */
+.fr-spinning {
+  animation: loading 3s linear infinite;
+}
+/* #endif */
+
+/* #ifdef WEB */
+@keyframes loading {
+  /*以百分比来规定改变发生的时间 也可以通过"from"和"to",等价于0% 和 100%*/
+  0% {
+    /*rotate(2D旋转) scale(放大或者缩小) translate(移动) skew(翻转)*/
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+/* #endif */
+</style>

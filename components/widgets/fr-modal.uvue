@@ -1,0 +1,51 @@
+<template>
+  <teleport to="uni-app">
+    <transition mode="out-in" appear>
+      <view v-if="props.visible" class="fr-modal-mask" @click="onMaskClick">
+        <view class="fr-modal-content">
+          <slot></slot>
+        </view>
+      </view>
+    </transition>
+  </teleport>
+</template>
+
+<script setup lang="uts">
+type Props = {
+  visible?: boolean;
+  maskClosable?: boolean;
+};
+
+const props = withDefaults(defineProps<Props>(), { visible: false, maskClosable: false });
+const emit = defineEmits<{
+  (e: "close"): void;
+}>();
+
+const onMaskClick = () => {
+  if (props.maskClosable) {
+    emit("close");
+  }
+};
+</script>
+
+<style scoped>
+.fr-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5000;
+  background-color: rgba(0, 0, 0, 0.5);
+
+  display: flex;
+  flex-direction: column;
+}
+
+.fr-modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+}
+</style>

@@ -1,0 +1,54 @@
+/** 头像 */
+export { default as FrAvatar } from "./fr-avatar.uvue";
+/** 页面导航栏 */
+export { default as FrPageNavbar } from "./fr-page-navbar.uvue";
+/** 页面 */
+export { default as FrPage } from "./fr-page.uvue";
+/** 滚动列表 */
+export { default as FrScrollList } from "./fr-scroll-list.uvue";
+/** 分组滚动列表 */
+export { default as FrSectionList } from "./fr-section-list.uvue";
+/** 瀑布列表 */
+export { default as FrWaterflowList } from "./fr-waterflow-list.uvue";
+/** 更多状态 */
+export { default as FrMoreStatus } from "./fr-more-status.uvue";
+/** 加载动画 */
+export { default as FrSpin } from "./fr-spin.uvue";
+/** Tab标签 */
+export { default as FrTabs } from "./fr-tabs.uvue";
+/** Section Tab标签 */
+export { default as FrSectionTabs } from "./fr-section-tabs.uvue";
+/** 文档：段落 */
+export { default as FrTypographyParagraph } from "./fr-typography-paragraph.uvue";
+/** 文档：特殊字体标题 */
+export { default as FrTypographySymbol } from "./fr-typography-symbol.uvue";
+/** 文档：标题 */
+export { default as FrTypographyTitle } from "./fr-typography-title.uvue";
+/** 文档：文本 */
+export { default as FrTypographyText } from "./fr-typography-text.uvue";
+/** 按钮 */
+export { default as FrButton } from "./fr-button.uvue";
+/** 弹窗 */
+export { default as FrModal } from "./fr-modal.uvue";
+/** 输入框 */
+export { default as FrInput } from "./fr-input.uvue";
+/** 多列布局 */
+export { default as FrColumn } from "./fr-column.uvue";
+/** 徽标 */
+export { default as FrBadge } from "./fr-badge.uvue";
+/** 空提示 */
+export { default as FrEmpty } from "./fr-empty.uvue";
+/** 图片上传 */
+export { default as FrImageUploader } from "./fr-image-uploader.uvue";
+/** 图片 */
+export { default as FrImage } from "./fr-image.uvue";
+/** 视频上传 */
+export { default as FrVideoUploader } from "./fr-video-uploader.uvue";
+/** 视频 */
+export { default as FrVideo } from "./fr-video.uvue";
+/** 抽屉 */
+export { default as FrDrawer } from "./fr-drawer.uvue";
+/** 自动列表 */
+export { default as FrAdaptiveList } from "./fr-adaptive-list.uvue";
+/** 自动视图 */
+export { default as FrAdaptiveView } from "./fr-adaptive-view.uvue";

@@ -1,0 +1,118 @@
+<template>
+  <view class="zone-container">
+    <scroll-view class="scroll-view" direction="horizontal" :show-scrollbar="false"
+    <!-- #ifdef WEB -->
+    @mousedown="handleMouseDown"
+    @mouseup="handleMouseUp" 
+    @mousemove="handleMouseMove"
+    @mouseleave="handleMouseUp"
+    <!-- #endif -->
+    >
+      <view class="item" :class="{'item-wide': props.isWideScreen}" v-for="(item, index) in props.data" :key="index" @click="handleItemClick(item)">
+        <image class="item-image" :class="{'item-image-wide': props.isWideScreen}" mode="aspectFill" :src="getAbsoluteMediaUrl(item.image)"></image>
+        <text class="item-title">{{ item.displayName[i18n.global.locale.value] }}</text>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref } from "vue";
+import { CategoryItem } from '../../types/index';
+import i18n, { fmtBackendLang } from "@/locale/index.uts";
+import { execGTagEvent } from "@/utils/ga.uts";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+const props = defineProps<{
+	data: CategoryItem[];
+    isWideScreen?: boolean;
+}>();
+
+
+<!-- #ifdef WEB -->
+// WEB平台鼠标拖动滚动处理
+const isDragging = ref<boolean>(false)
+const startX = ref<number>(0)
+const scrollLeft = ref<number>(0)
+let scrollElement: HTMLElement | null = null
+
+function handleMouseDown(e: MouseEvent) {
+	isDragging.value = true
+	startX.value = e.pageX
+	scrollElement = e.currentTarget as HTMLElement
+	if (scrollElement != null) {
+		scrollLeft.value = scrollElement.scrollLeft
+		scrollElement.style.cursor = 'grabbing'
+		scrollElement.style.userSelect = 'none'
+	}
+}
+
+function handleMouseUp() {
+	isDragging.value = false
+	if (scrollElement) {
+		scrollElement.style.cursor = 'grab'
+		scrollElement.style.removeProperty('user-select')
+	}
+}
+
+function handleMouseMove(e: MouseEvent) {
+	if (!isDragging.value) return
+	e.preventDefault()
+	const x = e.pageX
+	const walk = (x - startX.value) * 2 // 拖动速度系数
+	if (scrollElement) {
+		scrollElement.scrollLeft = scrollLeft.value - walk
+	}
+}
+<!-- #endif -->
+
+function handleItemClick(item: CategoryItem) {
+	execGTagEvent('zones', { name: item.name } as AnyObject);
+
+	uni.navigateTo({
+		url: `/pages/zones?tab=${item.name}`
+	})
+}
+</script>
+
+<style>
+.zone-container {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.scroll-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 16px;
+  width: 70px;
+}
+
+.item-wide { /* Double the size for wide screen */
+  width: 140px;
+  margin-right: 32px; /* Adjust margin as well */
+}
+
+.item-image {
+  width: 70px;
+  height: 70px;
+  border-radius: 5px;
+  margin-bottom: 8px;
+}
+
+.item-image-wide { /* Double the size for wide screen */
+  width: 140px;
+  height: 140px;
+}
+
+.item-title {
+  font-size: 14px;
+  color: #cccccc;
+}
+</style>

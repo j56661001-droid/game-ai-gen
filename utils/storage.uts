@@ -1,0 +1,44 @@
+const FR_STORAGE_NAME_SPACE_KEY = "fr.";
+
+export class FRStorage {
+  namespace: string = FR_STORAGE_NAME_SPACE_KEY;
+
+  constructor(ns?: string) {
+    if (ns != null) {
+      this.namespace = ns;
+    }
+  }
+
+  set<V = any>(field: string, value: V) {
+    try {
+      uni.setStorageSync(`${this.namespace}${field}`, JSON.stringify(value));
+    } catch (err) {
+      console.error("setStorageSync: ", err);
+    }
+  }
+
+  get<V = any>(field: string) {
+    try {
+      const value = uni.getStorageSync(`${this.namespace}${field}`);
+      return value ? JSON.parse(value) : value;
+    } catch (err) {
+      console.error("getStorageSync: ", err);
+    }
+  }
+
+  remove(field: string) {
+    try {
+      uni.removeStorageSync(`${this.namespace}${field}`);
+    } catch (err) {
+      console.error("removeStorageSync: ", err);
+    }
+  }
+
+  clear() {
+    try {
+      uni.clearStorageSync();
+    } catch (err) {
+      console.error("clearStorageSync: ", err);
+    }
+  }
+}

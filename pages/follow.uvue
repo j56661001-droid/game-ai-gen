@@ -1,0 +1,497 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <!-- 顶部导航和搜索栏 -->
+      <view class="header">
+        <view class="header-row">
+          <IconFont
+            name="arrowleft"
+            :size="16"
+            color="#ffffff"
+            style="margin-right: 16px"
+            @click="
+              () => {
+                goBack('/pages/profile/personal?userId=' + userId);
+              }
+            "
+            :btnSize="30"
+          ></IconFont>
+          <text class="title">{{ displayTitle }}</text>
+        </view>
+        <view class="header-row search-row">
+          <view class="search-bar">
+            <view @click="goToSearch()">
+              <IconFont name="search" :size="16" style="margin-right: 16px" color="rgba(255,255,255,0.4)" />
+            </view>
+            <input class="search-input" v-model="searchText" type="text" :placeholder="searchPlaceholderText" placeholder-style="color: #888;" @confirm="onSearchConfirm" @input="onSearchInput"/>
+            <text class="clear-icon" @click="clearSearch" v-if="searchText.length > 0">✕</text>
+          </view>
+          <view class="filter">
+            <!-- <text class="filter-text">Most Visited</text> -->
+            <IconFont name="downarrow" :size="4" color="#FF23B8" />
+          </view>
+        </view>
+      </view>
+
+      <!-- 用户列表 -->
+      <scroll-view scroll-y class="user-list-scroll" @scrolltolower="loadFollowingData(false)">
+        <view v-if="userList.length == 0" class="empty-container">
+          <FrEmpty />
+        </view>
+        <view v-for="(othUser, index) in userList" :key="index" class="list-item">
+          <!-- 头像及徽章 -->
+          <view class="avatar-container" @click="goToUserProfile(othUser.id)">
+            <FrAvatar :size="48" :url="othUser.avatar" />
+            <image v-if="false" class="badge" src="/static/icons/v_small@2x.png"></image>
+          </view>
+          <!-- 用户信息 -->
+          <view class="user-info">
+            <text class="user-name">{{ othUser.username }}</text>
+            <text class="user-followers">{{ $i18n_t("common.followersWithCount", { count: othUser.followersCount }) }}</text>
+          </view>
+          <view class="actions-container">
+            <view :class="['follow-button', othUser.isFollowing ? 'following' : '']" @click="toggleFollow(index)">
+              <text class="button-text">{{
+                othUser.isFollowing ? followingText : pageType == "followers" && shouldShowMoreIcon ? followBackText : followText
+              }}</text>
+            </view>
+            <IconFont v-if="shouldShowMoreIcon" name="more" :size="4" color="#ffffff" style="margin-left: 16px" @click="openActionSheet(othUser)" />
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 移除粉丝操作表 -->
+      <view v-if="isActionSheetVisible" class="action-sheet-overlay">
+        <text class="close-button" @click="closeActionSheet">×</text>
+        <view class="action-sheet-button" @click="removeFollower">
+          <IconFont name="deluser" :size="18" />
+          <text class="buttonText">{{ removeFollowerText }}</text>
+        </view>
+      </view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { FrAvatar, FrEmpty } from "@/components/widgets";
+import { ref, computed, onMounted } from "vue";
+import { isMyId, user } from "../store/user";
+import { UserItem, UserListResponse, ApiResponse } from "../types/index";
+import { getFollowing, getFollowers, followUser, unfollowUser, delFollower } from "../api/social.uts";
+import { goBack } from "../utils/page";
+import { $i18n_t } from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { checkLock, setLock } from "@/utils/debounce.uts";
+
+const searchPlaceholderText = computed(() => $i18n_t("follow.searchPlaceholder"));
+
+const followingText = computed(() => $i18n_t("follow.following"));
+const followBackText = computed(() => $i18n_t("follow.followBack"));
+const followText = computed(() => $i18n_t("common.follow"));
+const removeFollowerText = computed(() => $i18n_t("follow.removeFollower"));
+
+const searchText = ref("");
+const username = ref("");
+const userId = ref("");
+const pageType = ref("");
+
+const isActionSheetVisible = ref(false);
+const selectedUser = ref<UserItem | null>(null);
+
+const userList = ref<UserItem[]>([]);
+const userListCache = ref<UserItem[]>([]);
+const page = ref(1);
+const hasMore = ref(true);
+
+const clearSearch = () => {
+  searchText.value = "";
+  userList.value = userListCache.value;
+};
+
+const goToSearch = () => {
+  uni.navigateTo({ url: "/pages/search" });
+};
+
+const loadFollowingData = async (refresh: boolean = false) => {
+  if (refresh) {
+    page.value = 1;
+    userList.value = [];
+  }
+
+  if (!hasMore.value && !refresh) return;
+
+  if (userId.value) {
+    let res: UserListResponse | null = null;
+    if (pageType.value == "followers") {
+      res = await getFollowers(userId.value, page.value);
+    } else {
+      res = await getFollowing(userId.value, page.value);
+    }
+
+    if (res != null && res.success && res.data != null) {
+      userList.value.push(...res.data);
+      hasMore.value = res.meta.pagination.has_next;
+      if (hasMore.value) {
+        page.value++;
+      }
+    }
+  }
+
+  userListCache.value = userList.value;
+};
+
+onLoad((options: OnLoadOptions) => {
+  if (options["username"] != null) {
+    username.value = options["username"] as string;
+  }
+
+  if (options["userId"] != null) {
+    userId.value = options["userId"];
+  } else if (user.value != null) {
+    userId.value = user.value.id;
+    username.value = user.value.username;
+  }
+
+  if (options["type"] != null) {
+    pageType.value = options["type"] as string;
+  }
+
+  loadFollowingData(true);
+});
+
+const goToUserProfile = (id: string) => {
+  uni.navigateTo({ url: `/pages/profile/personal?userId=${id}` });
+};
+
+const displayTitle = computed(() => {
+  if (isMyId(userId.value)) {
+    return pageType.value == "followers" ? $i18n_t("follow.myFollowers") : $i18n_t("follow.myFollowing");
+  } else {
+    return pageType.value == "followers"
+      ? $i18n_t("follow.othersFollowers", { username: username.value })
+      : $i18n_t("follow.othersFollowing", { username: username.value });
+  }
+});
+
+async function toggleFollow(index: number) {
+  if (!checkLock("user_follow")) {
+    return;
+  }
+  setLock("user_follow");
+  try {
+    const othUser = userList.value[index];
+    if (othUser != null) {
+      if (othUser.isFollowing) {
+        const res: ApiResponse<any> | null = await unfollowUser(othUser.id);
+        if (res != null && res.success) {
+          othUser.isFollowing = false;
+          othUser.followersCount -= 1;
+          uni.$emit("followStateChanged");
+          // console.log(`User ${othUser.username}'s follow status has been toggled to: ${othUser.isFollowing}`);
+        } else {
+          console.error("Failed to unfollow");
+        }
+      } else {
+        const res: ApiResponse<any> | null = await followUser(othUser.id);
+        if (res != null && res.success) {
+          othUser.isFollowing = true;
+          othUser.followersCount += 1;
+          uni.$emit("followStateChanged");
+          // console.log(`User ${othUser.username}'s follow status has been toggled to: ${othUser.isFollowing}`);
+        } else {
+          console.error("Failed to follow");
+        }
+      }
+    }
+  } catch (error) {
+  } finally {
+    setLock("user_follow", -1);
+  }
+}
+
+const openActionSheet = (user: UserItem) => {
+  selectedUser.value = user;
+  isActionSheetVisible.value = true;
+};
+
+const closeActionSheet = (): void => {
+  isActionSheetVisible.value = false;
+  selectedUser.value = null;
+};
+
+const shouldShowMoreIcon = computed(() => {
+  if (user.value == null) return false;
+  const shouldShow = pageType.value == "followers" && user.value.id == userId.value;
+  return shouldShow;
+});
+
+const removeFollower = async () => {
+  if (!checkLock("remove_follower")) {
+    return;
+  }
+  setLock("remove_follower");
+  try {
+    if (selectedUser.value != null) {
+      const res: ApiResponse<any> | null = await delFollower(selectedUser.value.id);
+      if (res != null && res.success) {
+        uni.showToast({
+          title: "Remove Successfully",
+          icon: "none",
+          position: "bottom",
+        });
+        const index = userList.value.findIndex((u) => u.id == selectedUser.value!.id);
+        if (index != -1) {
+          userList.value.splice(index, 1);
+        }
+        uni.$emit("followStateChanged");
+      } else {
+        console.error("Failed to remove follower");
+      }
+      closeActionSheet();
+    }
+  } catch (error) {
+  } finally {
+    setLock("remove_follower", -1);
+  }
+};
+
+const filterUserList = (keyword) => {
+  const lowerCaseKeyword = keyword.toLowerCase();
+  userList.value = userListCache.value.filter((item) => item.username.toLowerCase().includes(lowerCaseKeyword));
+}
+
+const onSearchConfirm = (e) => {
+  filterUserList(e.detail.value);
+}
+
+const onSearchInput = (e) => {
+  filterUserList(e.detail.value);
+}
+</script>
+
+<style scoped>
+/* 页面整体容器 */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.search-row {
+  margin-top: 10px;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+/* 搜索栏 */
+.search-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #2c2c2e;
+  border-radius: 20px;
+  padding: 0 12px;
+  height: 36px;
+}
+
+.search-icon {
+  font-size: 16px;
+  color: #8e8e93;
+  margin-right: 8px;
+}
+
+.search-input {
+  flex: 1;
+  height: 100%;
+  color: #ffffff;
+  font-size: 16px;
+  background-color: transparent;
+  border: none;
+}
+
+.clear-icon {
+  font-size: 12px;
+  color: #8e8e93;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+}
+
+/* 筛选器 */
+.filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 10px;
+}
+
+.filter-text {
+  font-size: 14px;
+  margin-right: 2px;
+  color: #ff23b8;
+}
+
+.filter-arrow {
+  font-size: 14px;
+  transform: scaleY(0.6); /* 使V形箭头更扁平 */
+  color: #ff23b8;
+}
+
+/* 用户列表滚动区域 */
+.user-list-scroll {
+  flex: 1;
+  height: 0; /* 这是flex布局下实现内部滚动的关键 */
+}
+
+.empty-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+/* 列表项 */
+.list-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 16px;
+}
+
+/* 头像容器 */
+.avatar-container {
+  position: relative;
+  width: 48px;
+  height: 54px;
+  border-radius: 24px;
+  margin-right: 12px;
+}
+
+/* 'V' 认证徽章 */
+.badge {
+  position: absolute;
+  bottom: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+}
+
+/* 用户信息区域 */
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.user-name {
+  font-size: 16px;
+  font-weight: 400;
+  color: #ffffff;
+}
+
+.user-followers {
+  font-size: 13px;
+  color: #8e8e93;
+  margin-top: 3px;
+}
+
+.actions-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+/* 关注按钮样式 */
+.follow-button {
+  background-color: #ff23b8;
+  border-radius: 15px;
+  padding: 5px 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.follow-button.following {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.button-text {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* 操作表样式 */
+.action-sheet-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 126px;
+  bottom: 0px;
+  background-color: #181818;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+}
+
+.close-button {
+  position: absolute;
+  right: 20px;
+  top: 10px;
+  text-align: center;
+  line-height: 24px;
+  color: #808080;
+}
+
+.action-sheet-button {
+  background-color: rgba(255, 255, 255, 0.1);
+  width: 80%;
+  height: 42px;
+  margin-top: 12px;
+  border-radius: 12px;
+  flex-direction: row;
+  justify-content: center; /* 水平居中 */
+  align-items: center; /* 垂直居中 */
+  line-height: 50px;
+}
+
+.buttonText {
+  color: #fff;
+  font-size: 14px;
+  text-align: center;
+  margin-left: 12px;
+}
+</style>

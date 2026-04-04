@@ -1,0 +1,85 @@
+import { upload, request } from "./request";
+import { ApiResponse, FileInfo, FileUploadRequest, PostItem, GenerationedItem, PublishPostPayload, LibraryRequestParams, OfficialLibraryResponse } from "../types/index.uts";
+
+export function fileUpload(data: FileUploadRequest, fileUpload: boolean = false): Promise<ApiResponse<FileInfo>> | null {
+  return upload({
+    url: `files/upload`,
+    name: "file",
+    filePath: data.file,
+    formData: {
+      category: data.category
+    },
+  }, fileUpload);
+}
+//弃用
+export function postAIGeneration(id: string, content: string): Promise<ApiResponse<PostItem>> | null {
+  return request({
+    url: `ai-generations/${id}/post`,
+    method: "POST",
+    data: {
+      id: id,
+      content: content
+    },
+  });
+}
+
+export function publishPost(data: PublishPostPayload): Promise<ApiResponse<PostItem>> | null {
+  return request({
+    url: `posts`,
+    method: "POST",
+    data
+  });
+}
+
+export function getAIGenerationById(id: string): Promise<ApiResponse<GenerationedItem>> | null {
+  return request({
+    url: `ai-generations/${id}`,
+    method: "GET",
+  });
+}
+
+export function setAIGenerationCover(id: string, data: {cover: string}): Promise<ApiResponse<GenerationedItem>> | null {
+  return request({
+    url: `ai-generations/${id}/cover`,
+    method: 'PUT',
+    data
+  })
+}
+
+
+export function deleteAIGeneration(id: string): Promise<ApiResponse<any>> | null {
+  return request({
+    url: `ai-generations/${id}`,
+    method: "DELETE",
+  });
+}
+
+export async function delPostByid(postid:string): Promise<ApiResponse<any> | null> {
+  return await request<ApiResponse<any>>({
+    url: `posts/${postid}`,
+    method: "DELETE",
+  });
+}
+
+/**
+ * key: privacy_policy | terms_service
+ */
+export async function getSettings(key: string): Promise<ApiResponse<any> | null>{
+  return await request<ApiResponse<any> | null>({
+    url: `settings/public/${key}`,
+    method: "GET",
+    customErrorHanlder:  (_: any) => {},
+  });
+}
+
+/**
+ * 获取官方媒体库
+ * @param id 工具id
+ */
+export function getOfficialLibrary(params: LibraryRequestParams): Promise<ApiResponse<OfficialLibraryResponse>> | null {
+  return request<ApiResponse<OfficialLibraryResponse>>({
+    url: `/ai-tools/${params.id}/library`,
+    method: "GET",
+    data: params,
+  });
+}

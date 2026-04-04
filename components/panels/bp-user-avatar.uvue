@@ -1,0 +1,69 @@
+<template>
+  <view class="bp-user-avatar">
+    <template v-if="isLogined">
+      <fr-avatar :url="userAvatar" :size="40" />
+      <template v-if="!isGuest">
+        <credits-balance-icon :showBackground="false" style="padding: 0 12px"></credits-balance-icon>
+      </template>
+      <template v-else>
+        <text style="padding: 0 12px; color: #fff;" @click="uni.$emit('login:show')">{{ $i18n_t('common.guest') }}</text>
+      </template>
+      <fr-image v-if="isVerified" src="/static/icons/v_small@2x.png" class="bp-user-verified" />
+      <view class="topup-button" @click="openExternalTopupPage('bp-user-avartar')">
+        <IconFont name="follow" :size="12" color="#fff" />
+      </view>
+    </template>
+    <template v-else>
+      <fr-image src="/static/icons/home_logo@2x.png" style="height: 18.5px; width: 118px; margin-left: 12px" />
+      <!-- <fr-typography-symbol style="margin: 0 12px">SESEAI</fr-typography-symbol> -->
+    </template>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { user } from "@/store/user";
+import FrAvatar from "../widgets/fr-avatar.uvue";
+import FrImage from "../widgets/fr-image.uvue";
+import { FrTypographySymbol } from "../widgets";
+import CreditsBalanceIcon from "@/pages/publish/panel/credits-balance-icon.uvue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { openExternalTopupPage } from "@/utils/navigator.uts";
+import { $i18n_t } from "@/locale/index.uts";
+
+const isLogined = computed((): boolean => user.value != null);
+const userAvatar = computed((): string | null => (user.value?.avatar != null ? user.value.avatar : null));
+const isVerified = computed((): boolean => !!user.value?.isVerified);
+const isGuest = computed((): boolean => user.value?.accountType === 'guest');
+</script>
+
+<style scoped>
+.bp-user-avatar {
+  position: relative;
+  height: 40px;
+  flex-direction: row;
+  align-items: center;
+  background-color: #1a1a1a;
+  border-radius: 20px;
+  padding: 0 10px 0 5px;
+}
+
+.bp-user-verified {
+  position: absolute;
+  left: 11px;
+  bottom: -8px;
+  width: 18px;
+  height: 18px;
+  background-color: transparent;
+}
+
+.topup-button {
+  margin-left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: #ef0099; /* Example background color */
+}
+</style>

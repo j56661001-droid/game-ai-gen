@@ -1,0 +1,725 @@
+<script setup lang="uts">
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import CreditsBalanceIcon from "../publish/panel/credits-balance-icon.uvue";
+import { goBack } from "@/utils/page.uts";
+import DailyItem from "./components/daily-item.uvue";
+import CheckinButton from "./components/checkin-button.uvue";
+import { IconType } from "@/types/daily-checkin.uts";
+import CheckinToast from "./components/checkin-toast.uvue";
+import { DailyCheckinItem } from "@/types/daily-checkin.uts";
+import { getDailyCheckinApi, checkinApi, retroactiveCheckinApi, getCheckinRulesApi } from "@/api/daily-checkin.uts";
+import { $i18n_t } from "@/locale/index.uts";
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+import { user, userInited, creditsBalance } from "@/store/user.uts";
+import { getUrlParameter } from "@/utils/index.uts";
+import { execGTagEvent } from "@/utils/ga.uts";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+// 默认数据
+const defaultDailyCheckinData: DailyCheckinItem[] = Array.from({ length: 30 }, (_, index) => ({
+  points: 5,
+  days: index + 1,
+  active: false,
+  icon: (index + 1) % 7 === 0 ? IconType.GIFT : index === 29 ? IconType.TROPHY : IconType.NONE,
+  locked: true,
+}));
+
+type LoadingType = {
+  getDailyCheckin: boolean;
+  checkin: boolean;
+};
+
+enum ButtonStatus {
+  COMPLETED = "completed",
+  RETROACTIVE = "retroactive",
+  GO_RETROACTIVE = "goRetroactive",
+  SIGN_IN = "signIn",
+  DISABLED_SIGN_IN = "disabledSignIn",
+}
+
+const ButtonText = computed(() => ({
+  [ButtonStatus.COMPLETED]: $i18n_t("dailyCheckin.buttonCompleted"),
+  [ButtonStatus.RETROACTIVE]: $i18n_t("dailyCheckin.buttonRetroactive"),
+  [ButtonStatus.GO_RETROACTIVE]: $i18n_t("dailyCheckin.buttonGoRetroactive"),
+  [ButtonStatus.SIGN_IN]: $i18n_t("dailyCheckin.buttonSignIn"),
+  [ButtonStatus.DISABLED_SIGN_IN]: $i18n_t("dailyCheckin.buttonDisabledSignIn"),
+}));
+
+const checkinToastRef = ref<InstanceType<typeof CheckinToast>>(); // 自定义toast提示
+const selectedDays = ref<number | null>(null); // 选中的天数
+const buttonStatus = ref<ButtonStatus>(ButtonStatus.SIGN_IN); // 按钮状态
+const today = ref<number>(1); // 当前天数
+const dailyCheckinData = ref<DailyCheckinItem[]>(defaultDailyCheckinData); // 30天数据
+const retroactiveCheckinCount = ref<number>(0); // 补签次数
+const continuousDays = ref<number>(0); // 连续签到天数
+const loading = ref<LoadingType>(false); // 加载状态
+const shouldShake = ref<boolean>(false); // 是否抖动
+const shakeTransform = ref<string>("translateX(0px)"); // 抖动transform值
+const isLogin = ref<boolean>(false); // 是否登陆
+
+const from = getUrlParameter("from", location.search);
+
+// 签到规则
+const checkinRules = ref<string>("");
+
+/**
+ * 初始化数据
+ */
+const initializeData = () => {
+  if (!user.value) return;//user.value?.accountType === "guest"
+
+  isLogin.value = true;
+  getDailyCheckin();
+  getActiviteRules(); // 获取活动规则
+};
+
+/**
+ * 初始化
+ */
+onMounted(() => {
+  execGTagEvent("checkin_enter", { pts: creditsBalance.value.toString(), category: from } as AnyObject);
+
+  // 监听 userInited，确保在用户信息初始化完成后再加载数据
+  watch(
+    userInited,
+    (newValue: boolean) => newValue && initializeData(),
+    { immediate: true }, // immediate: true 确保在组件挂载时立即执行一次，如果 userInited 已经为 true
+  );
+
+  // 监听登录成功事件
+  uni.$on("login:close", () => initializeData());
+});
+
+/**
+ * 组件卸载时清理事件监听
+ */
+onUnmounted(() => {
+  uni.$off("login:close");
+  execGTagEvent("checkin_leave", { pts: creditsBalance.value.toString() } as AnyObject);
+});
+
+// 监听selectedDays、dailyCheckinData变化
+watch([selectedDays, dailyCheckinData], () => {
+  updateButtonStatus();
+});
+
+/**
+ * 辅助方法：更新loading
+ */
+const updateLoading = (obj: Partial<LoadingType>) => {
+  loading.value = {
+    ...loading.value,
+    ...obj,
+  };
+};
+
+/**
+ * 辅助方法，更新按钮状态
+ */
+const updateButtonStatus = () => {
+  // 显示完成：全部签到
+  if (dailyCheckinData.value.every((item) => item.active)) {
+    buttonStatus.value = ButtonStatus.COMPLETED;
+    return;
+  }
+
+  const todayItem = dailyCheckinData.value.find((item) => item.today);
+  // 显示签到：今日未签到
+  if (!todayItem?.active) {
+    buttonStatus.value = ButtonStatus.SIGN_IN;
+    return;
+  }
+
+  // 显示灰色签到：没有未签到日期
+  if (dailyCheckinData.value.filter((item) => item.days < today.value).every((item) => item.active)) {
+    buttonStatus.value = ButtonStatus.DISABLED_SIGN_IN;
+    return;
+  }
+
+  const selectedItem = dailyCheckinData.value.find((item) => item.days === selectedDays.value);
+  // 显示补签：选中日期未签到
+  if (selectedItem && !selectedItem.active && selectedItem.days < today.value) {
+    buttonStatus.value = ButtonStatus.RETROACTIVE;
+    return;
+  }
+  // 显示去补签：没选中日期或者选中已签到日期，
+  buttonStatus.value = ButtonStatus.GO_RETROACTIVE;
+};
+
+/**
+ * 获取活动规则
+ */
+const getActiviteRules = async () => {
+  // 获取签到规则
+  try {
+    const res = await getCheckinRulesApi();
+
+    if (!res.data || !res.data.rules?.length) {
+      // 抛出错误
+      throw new Error($i18n_t("dailyCheckin.getRulesFailed"));
+    }
+
+    // 转换格式
+    const rulesObj: any = { cycleMakeupCount: res.data?.cycle_makeup_count };
+    res.data.rules.forEach((rule) => {
+      // 每日签到规则
+      if (rule.rule_type === "daily") {
+        rulesObj.daily = rule.reward_amount;
+        return;
+      }
+      // 连续7天签到规则
+      if (rule.rule_type === "continuous" && rule.days === 7) {
+        rulesObj.continuous7 = rule.reward_amount;
+        return;
+      }
+      // 连续30天签到规则
+      if (rule.rule_type === "continuous" && rule.days === 30) {
+        rulesObj.continuous30 = rule.reward_amount;
+      }
+    });
+
+    checkinRules.value = [
+      $i18n_t("dailyCheckin.ruleDaily", { points: rulesObj.daily }),
+      $i18n_t("dailyCheckin.ruleContinuous", { days7_points: rulesObj.continuous7, days30_points: rulesObj.continuous30 }),
+      $i18n_t("dailyCheckin.ruleCycleMakeupCount", { count: rulesObj.cycleMakeupCount }),
+    ].join("<br />");
+  } catch (error) {
+    console.error(error);
+    uni.showToast({
+      title: error?.message || $i18n_t("dailyCheckin.getRulesFailed"),
+      icon: "none",
+    });
+  }
+};
+
+/**
+ * 获取日历数据
+ */
+const getDailyCheckin = async () => {
+  try {
+    updateLoading({ getDailyCheckin: true });
+    const res = await getDailyCheckinApi();
+
+    if (!res?.success || !res?.data) {
+      throw new Error(res?.error?.message || $i18n_t("dailyCheckin.getCalendarDataFailed"));
+    }
+
+    const daysList = res.data.days;
+    // 没有数据时，使用默认日历
+    if (daysList.length === 0) {
+      return;
+    }
+
+    // 获取日期, yyyy-mm-dd
+    const today_date = new Date();
+    const today_date_string =
+      today_date.getFullYear() + "-" + (today_date.getMonth() + 1).toString().padStart(2, "0") + "-" + today_date.getDate().toString().padStart(2, "0");
+
+    const newDailyCheckinData: DailyCheckinItem[] = daysList.map((item: DailyCheckinDays, index: number) => {
+      const _days = index + 1;
+      const newItem: DailyCheckinItem = {
+        days: _days,
+        date: item.date,
+        points: item.reward_points,
+        active: item.is_signed_in,
+      };
+      // 是否获得特殊奖励日
+      if (item.has_special_reward) {
+        // 30天奖励图标
+        if (_days === 30) {
+          newItem.icon = IconType.TROPHY;
+          newItem.locked = !daysList.every((day) => day.is_signed_in); // 30天内是否全部active=true
+        } else {
+          // 7天奖励图标
+          newItem.icon = IconType.GIFT;
+          newItem.locked = !daysList.slice(_days - 7, _days).every((day) => day.is_signed_in); // 是否已获得7天奖励
+        }
+      }
+
+      // 是否是今天
+      if (newItem.date === today_date_string) {
+        newItem.today = true;
+      }
+      // 是否选中
+      if (newItem.days === selectedDays.value) {
+        newItem.selected = true;
+      }
+      return newItem;
+    });
+
+    // 更新签到数据
+    dailyCheckinData.value = newDailyCheckinData;
+
+    // 设置今日日期
+    today.value = newDailyCheckinData.find((item) => item.today)?.days || 1;
+
+    // 更新连续签到天数
+    continuousDays.value = res.data.continuous_days || 0;
+
+    // 剩余补签次数
+    retroactiveCheckinCount.value = res.data.remaining_makeup_count || 0;
+  } catch (error) {
+    console.error(error);
+    uni.showToast({
+      title: res?.error?.message || error?.message || $i18n_t("dailyCheckin.getCalendarDataFailed"),
+      icon: "none",
+    });
+  } finally {
+    updateLoading({ getDailyCheckin: false });
+  }
+};
+
+/**
+ * 签到 / 补签
+ */
+const checkin = async (retroactiveDate: string | null = null) => {
+  try {
+    updateLoading({ checkin: true });
+    const res = retroactiveDate ? await retroactiveCheckinApi(retroactiveDate) : await checkinApi();
+    const _data = res?.data?.record;
+    // 签到失败
+    if (!res?.success || !res?.data || !_data) {
+      uni.showToast({
+        title: res?.message || $i18n_t("dailyCheckin.checkinFailed"),
+        icon: "none",
+      });
+      return;
+    }
+
+    // 获得积分
+    const pointsEarned = _data.total_reward_points || 0;
+
+    // 签到成功
+    checkinToastRef.value?.show({
+      points: pointsEarned,
+      isTotal: !!_data.extra_reward_points, // 额外奖励非0，就是共计奖励
+    });
+    uni.$emit("refresh:balance"); // 刷新积分
+
+    // 修改连续签到天数
+    if (res.data.record?.continuous_days) continuousDays.value = res.data.record?.continuous_days;
+
+    // 更新剩余补签次数
+    retroactiveCheckinCount.value = res.data.remaining_makeups;
+
+    // 修改日历状态
+    // 找到需要更新的项的索引
+    const targetIndex = dailyCheckinData.value.findIndex((item) => item.date === retroactiveDate);
+    const finalIndex = targetIndex !== -1 ? targetIndex : dailyCheckinData.value.findIndex((item) => item.today);
+
+    if (finalIndex !== -1) {
+      // 创建新对象替换原对象，确保响应式更新
+      const targetItem = dailyCheckinData.value[finalIndex];
+      dailyCheckinData.value[finalIndex] = {
+        ...targetItem,
+        active: true,
+        points: pointsEarned || targetItem.points,
+      };
+      selectedDays.value = null;
+    }
+
+    // 埋点上报
+    res.data.record?.reward_details?.forEach((item: CheckinRewardDetail) => {
+      let _type = "daily";
+      if (item.rule_type === "continuous") {
+        _type = dailyCheckinData.value.every((day) => day.active) ? "30days" : "7days";
+      }
+      execGTagEvent("checkin_reward", { pts: item.reward_amount.toString(), type: _type } as AnyObject);
+    });
+
+    // 补签埋点
+    if (targetIndex !== -1) {
+      const serial = dailyCheckinData.value[finalIndex]?.days?.toString();
+      execGTagEvent("checkin_recheck", { serial: serial || "" } as AnyObject);
+    }
+
+    // 更新按钮状态
+    updateButtonStatus();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    updateLoading({ checkin: false });
+  }
+};
+
+/**
+ * 关闭签到页面
+ */
+const closeDailyCheckin = () => {
+  goBack();
+};
+
+/**
+ * 点击item事件
+ * @param item 点击的item
+ */
+const handleDailyItemClick = (item: DailyCheckinItem) => {
+  // 激活item
+  selectedDays.value = selectedDays.value === item.days ? null : item.days;
+};
+
+/**
+ * 触发抖动动画
+ */
+const triggerShake = () => {
+  shouldShake.value = true;
+  // 抖动动画：左右抖动3次
+  const shakeSteps = ["translateX(-5px)", "translateX(5px)", "translateX(-4px)", "translateX(4px)", "translateX(-3px)", "translateX(3px)", "translateX(0px)"];
+  let stepIndex = 0;
+  const shakeInterval = setInterval(() => {
+    if (stepIndex < shakeSteps.length) {
+      shakeTransform.value = shakeSteps[stepIndex];
+      stepIndex++;
+    } else {
+      clearInterval(shakeInterval);
+      shouldShake.value = false;
+      shakeTransform.value = "translateX(0px)";
+    }
+  }, 80); // 每80ms改变一次，总共约0.56秒
+};
+
+/**
+ * 点击按钮事件
+ */
+const handleCheckinButtonClick = () => {
+  if (!isLogin.value) {
+    uni.$emit("login:show", { to: "/pages/daily-checkin/index" });
+    return;
+  }
+
+  if (buttonStatus.value === ButtonStatus.COMPLETED || buttonStatus.value === ButtonStatus.DISABLED_SIGN_IN) {
+    return;
+  }
+
+  // 去补签
+  if (buttonStatus.value === ButtonStatus.GO_RETROACTIVE) {
+    selectedDays.value = dailyCheckinData.value.find((item) => !item.active)?.days;
+    return;
+  }
+
+  // 补签逻辑
+  if (buttonStatus.value === ButtonStatus.RETROACTIVE) {
+    if (retroactiveCheckinCount.value === 0) {
+      // 触发抖动动画
+      triggerShake();
+      return;
+    }
+    // 补签逻辑
+    if (selectedDays.value) {
+      const data = dailyCheckinData.value.find((item) => item.days === selectedDays.value);
+      checkin(data?.date);
+    } else {
+      uni.showToast({
+        title: $i18n_t("dailyCheckin.noSelectedDate"),
+        icon: "none",
+      });
+    }
+    return;
+  }
+
+  // 签到逻辑
+  if (buttonStatus.value === ButtonStatus.SIGN_IN) {
+    // 签到逻辑
+    checkin();
+    return;
+  }
+};
+</script>
+
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <view class="daily-checkin-container">
+        <view class="bg-gradient-container" />
+        <image src="/static/bg-calendar.png" class="bg-calendar" mode="widthFix" />
+
+        <view class="daily-checkin-header">
+          <!-- 关闭按钮 -->
+          <view class="close-button">
+            <IconFont name="arrowleft" :size="16" color="#fff" @click="closeDailyCheckin" :btnSize="40" />
+          </view>
+
+          <!-- 标题 -->
+          <view class="title"> {{ $i18n_t("dailyCheckin.title") }} </view>
+
+          <!-- 积分 -->
+          <credits-balance-icon class="credits-balance points"></credits-balance-icon>
+        </view>
+
+        <!-- 滚动布局 -->
+        <scroll-view scroll-y="true" class="scroll-view">
+          <!-- 连续签到天数 -->
+          <view class="continuous-checkin-days"
+            >{{ $i18n_t("dailyCheckin.continuousCheckinDays") }}<span>{{ continuousDays }}</span
+            >{{ $i18n_t("dailyCheckin.days") }}</view
+          >
+
+          <!-- loading -->
+          <view v-if="loading.getDailyCheckin" class="loading-container">
+            <fr-spin style="margin: 16px 0; color: #fff" :size="30" />
+            <text>{{ $i18n_t("common.loading_") }}</text>
+          </view>
+
+          <!-- 签到列表 -->
+          <view class="daily-checkin-list">
+            <view class="daily-checkin-item-container">
+              <!-- 背景灰色线条 -->
+              <view v-for="i in 5" :key="i" class="bg-gray-line" :style="{ top: (65 + 30) * (i - 1) + 20 + 'px' }"></view>
+              <view
+                v-for="i in 4"
+                :key="i"
+                class="bg-gray-round"
+                :class="{ 'round-right': i % 2 !== 0, 'round-left': i % 2 === 0 }"
+                :style="{ top: (65 + 30) * (i - 1) + 20 + 'px' }"
+              ></view>
+
+              <!-- 签到列表 -->
+              <view v-for="i in 5" :key="i" class="item-gap-y">
+                <daily-item
+                  v-for="item in dailyCheckinData.slice((i - 1) * 7, i * 7)"
+                  :key="item.days"
+                  :points="item.points"
+                  :days="item.days"
+                  :icon="item.icon"
+                  :locked="item.locked"
+                  :active="item.active"
+                  :today="item.today"
+                  :selected="selectedDays === item.days"
+                  @click="handleDailyItemClick"
+                  :class="{ 'item-gap-x': item.days % 7 !== 1 }"
+                />
+              </view>
+            </view>
+          </view>
+
+          <!-- 签到按钮 -->
+          <checkin-button
+            :completed="buttonStatus === ButtonStatus.COMPLETED"
+            :text="isLogin ? ButtonText[buttonStatus] : $i18n_t('dailyCheckin.buttonGoLogin')"
+            :disabled="buttonStatus === ButtonStatus.DISABLED_SIGN_IN"
+            :loading="loading.checkin"
+            @click="handleCheckinButtonClick"
+          />
+
+          <!-- 补签次数 -->
+          <view class="retroactive-checkin-tip" :style="{ transform: shakeTransform }">
+            <image src="/static/icons/retroactive-checkin.png" class="retroactive-checkin-icon" mode="widthFix" />
+            <text>{{ $i18n_t("dailyCheckin.remainingRetroactiveCount") }}{{ retroactiveCheckinCount }}</text>
+          </view>
+
+          <!-- 底部线条 -->
+          <view class="bottom-line"></view>
+
+          <!-- 规则说明 -->
+          <view class="rules-container">
+            <text class="rules-title">{{ $i18n_t("dailyCheckin.rulesTitle") }}</text>
+            <rich-text :nodes="checkinRules || $i18n_t('dailyCheckin.emptyRule')" class="rules-content"></rich-text>
+          </view>
+        </scroll-view>
+      </view>
+
+      <!-- 自定义toast提示 -->
+      <checkin-toast ref="checkinToastRef" />
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<style scoped>
+.daily-checkin-container {
+  position: relative;
+  height: 100%;
+}
+
+.bg-gradient-container {
+  display: flex;
+  flex-direction: column;
+  height: 170px;
+  /* width: 393px; */
+  background: linear-gradient(180deg, #ff4543 0%, rgba(255, 69, 67, 0) 100%);
+  color: #fff;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.bg-calendar {
+  width: 206px;
+  height: 245px;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.daily-checkin-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 16px 10px;
+}
+
+.close-button {
+  background-color: rgba(0, 0, 0, 0.3);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.points {
+  margin-left: 12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  width: auto;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #000;
+  flex-direction: row;
+}
+
+.continuous-checkin-days {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  /* margin-left: 12px; */
+  padding: 14px 16px 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.continuous-checkin-days span {
+  color: #ffe016;
+  margin: 0 5px;
+}
+
+.scroll-view {
+  flex: 1;
+  /* overflow-y: auto; */
+}
+
+.daily-checkin-list {
+  display: flex;
+  margin: 0 auto;
+
+  width: 100%;
+  /* #ifndef APP */
+  max-width: 500px;
+  min-width: 320px;
+  /* #endif */
+}
+
+.daily-checkin-item-container {
+  margin: 20px 16px;
+  overflow: visible;
+  position: relative;
+}
+
+.item-gap-x {
+  margin-left: calc((100% - 40px * 7) / 6);
+}
+
+.item-gap-y {
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: row;
+  overflow: visible;
+}
+
+.bg-gray-line {
+  height: 10px;
+  width: 100%;
+  background-color: #434343b5;
+  border-radius: 5px;
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+.bg-gray-round {
+  width: 95px;
+  height: 105px;
+  position: absolute;
+  border: 10px solid #434343b5;
+  transform: translateY(-5px);
+}
+
+.round-right {
+  border-left: none;
+  border-top-right-radius: 50%;
+  border-bottom-right-radius: 50%;
+  right: -10px;
+}
+.round-left {
+  border-right: none;
+  border-top-left-radius: 50%;
+  border-bottom-left-radius: 50%;
+  left: -10px;
+}
+
+.retroactive-checkin-tip {
+  font-size: 14px;
+  color: #ffffffcc;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  transition: transform 0.08s ease-in-out;
+}
+
+.retroactive-checkin-icon {
+  width: 17px;
+  height: 17px;
+  margin-right: 16px;
+}
+
+.bottom-line {
+  height: 1px;
+  width: calc(100% - 32px);
+  margin: 16px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.rules-container {
+  font-size: 14px;
+  color: #fff;
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rules-title {
+  margin-bottom: 12px;
+}
+
+.rules-content {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 20px;
+}
+
+.loading-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* gap: 15px; */
+  z-index: 1000;
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+</style>

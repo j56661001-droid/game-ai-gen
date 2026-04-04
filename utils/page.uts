@@ -1,0 +1,16 @@
+export const goBack = (fallback?: string) => {
+  let pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack();
+  } else {
+    if (fallback != null) {
+      uni.redirectTo({
+        url: fallback,
+      });
+    } else {
+      uni.redirectTo({
+        url: "/pages/index/index",
+      });
+    }
+  }
+};

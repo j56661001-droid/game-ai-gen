@@ -1,0 +1,42 @@
+<template>
+  <view v-if="column > 1" class="fr-column-container">
+    <template v-for="col in columnNodes" :key="col.index">
+      <view v-if="col.index != 0" :style="gapSizeStyle"></view>
+      <view style="flex: 1">
+        <slot :index="col.index"></slot>
+      </view>
+    </template>
+  </view>
+  <slot v-else :index="0"></slot>
+</template>
+
+<script setup lang="uts">
+type ColNode = {
+  index: number;
+};
+
+const props = withDefaults(defineProps<{ column?: number; gapSize?: number }>(), { column: 1, gapSize: 16 });
+
+const columnNodes = computed(() => {
+  let nodes: ColNode[] = [];
+  let size = props.column;
+  for (let i = 0; i < size; i++) {
+    nodes.push({
+      index: i,
+    });
+  }
+
+  return nodes;
+});
+
+const gapSizeStyle = computed(() => {
+  return `width: ${props.gapSize}px`;
+});
+</script>
+
+<style scoped>
+.fr-column-container {
+  flex-direction: row;
+  align-items: stretch;
+}
+</style>

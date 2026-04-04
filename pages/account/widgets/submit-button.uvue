@@ -1,0 +1,49 @@
+<template>
+  <button :disabled="props.disabled || props.submitting" class="submit-button" :class="{ 'submit-button_disabled': props.disabled }" @click="onSubmit">
+    <fr-spin v-show="props.submitting" style="margin-right: 8px" />
+    <text class="submit-button_title">
+      <slot> </slot>
+    </text>
+  </button>
+</template>
+
+<script setup lang="uts">
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+
+const props = defineProps<{
+  disabled?: boolean;
+  submitting?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: "submit"): void;
+}>();
+
+const onSubmit = () => {
+  emit("submit");
+};
+</script>
+
+<style scoped>
+.submit-button {
+  height: 50px;
+  width: 100%;
+  border-radius: 25px;
+  background: linear-gradient(132deg, #ff00d9ff 0%, #fff500 100%);
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.submit-button_title {
+  font-size: 16px;
+  color: #fff;
+}
+
+.submit-button_disabled {
+  /* opacity: 0.6; */
+  background: linear-gradient(132deg, #660356 0%, #666200 100%);
+}
+</style>

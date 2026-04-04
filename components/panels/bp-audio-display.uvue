@@ -1,0 +1,73 @@
+<template>
+  <fr-audio v-show="!isLoading" :src="props.src" :mode="props.mode" @load="onLoad" @error="onError" @pause="onPause" @play="onPlay" @click="onClick"></fr-audio>
+  <view v-if="isLoading" class="fr-audio-loading" @click="onClick">
+    <fr-spin></fr-spin>
+  </view>
+</template>
+
+<script setup lang="uts">
+import FrAudio from "../widgets/fr-audio.uvue";
+import FrSpin from "../widgets/fr-spin.uvue";
+
+type Props = {
+  src: string.AudioURIString;
+  mode?: "readonly";
+};
+
+const props = defineProps<Props>();
+const emit = defineEmits<{
+  (e: "load"): void;
+  (e: "play"): void;
+  (e: "pause"): void;
+  (e: "error", event: ICreateInnerAudioContextFail): void;
+  (e: "click", v: UniPointerEvent): void;
+}>();
+
+const isLoading = ref<boolean>(false);
+
+watch(
+  () => props.src,
+  (src: string) => {
+    if (typeof src == "string" && src != "" && props.mode != "readonly") {
+      isLoading.value = true;
+    }
+  },
+  { immediate: true },
+);
+
+const onPlay = () => {
+  emit("play");
+};
+
+const onPause = () => {
+  emit("pause");
+};
+
+const onLoad = () => {
+  isLoading.value = false;
+
+  emit("load");
+};
+
+const onError = () => {
+  isLoading.value = false;
+
+  emit("error");
+};
+
+const onClick = (e: UniPointerEvent) => {
+  emit("click", e);
+};
+</script>
+
+<style scoped>
+.fr-audio-loading {
+  height: 100%;
+  min-height: 40px;
+  padding: 12px 16px;
+
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+</style>

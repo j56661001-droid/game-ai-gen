@@ -1,0 +1,555 @@
+<template>
+  <bp-navigation-bar-title style="height: 100%">
+    <PCSideBar>
+      <scroll-view class="container" direction="vertical">
+        <view class="container-content">
+          <!-- 背景图：礼物 -->
+          <image class="bg-gift" src="/static/task-center-bg2.png" mode="aspectFit"></image>
+          <!-- 顶部导航栏 -->
+          <view class="header">
+            <view class="header-row">
+              <IconFont
+                name="arrowleft"
+                :size="15.8"
+                :btnSize="30"
+                color="#ffffff"
+                style="border-radius: 100%; background-color: rgba(0, 0, 0, 0.3)"
+                @click="goBack()"
+              ></IconFont>
+              <text class="title">{{ $i18n_t("task_center.title") }}</text>
+              <credits-balance-icon v-if="isCurrentUser" class="credits-balance points"></credits-balance-icon>
+            </view>
+          </view>
+          <!-- 积分表 -->
+          <view class="points-table">
+            <view class="points-table-left">
+              <view class="points-table-left-num">{{ points?.pointsEarned }}</view>
+              <view class="points-table-left-text">{{ $i18n_t("task_center.points_earned") }}</view>
+            </view>
+            <view class="points-table-divider"></view>
+            <view class="points-table-right">
+              <view class="points-table-right-num">{{ points?.pointsMissing }}</view>
+              <view class="points-table-right-text">{{ $i18n_t("task_center.points_lost") }}</view>
+            </view>
+          </view>
+          <!-- 任务完成度 -->
+          <view class="task-progress">
+            <view class="task-progress-title">{{ $i18n_t("task_center.task_progress") }}</view>
+            <view class="task-progress-num">
+              <text class="task-progress-num-content">{{ $i18n_t("task_center.today_progress") }}</text>
+              {{ completedSteps }}/3
+            </view>
+            <view class="task-progress-stars">
+              <image v-for="n in 3 - completedSteps" :key="n" src="/static/svg/task-center-stars0.svg" mode="widthFix" style="width: 34px; height: 32px" />
+              <image v-for="n in completedSteps" :key="n" src="/static/svg/task-center-stars1.svg" mode="widthFix" style="width: 34px; height: 32px" />
+            </view>
+            <view class="task-progress-btn" @click="generateIdeas">{{ $i18n_t("task_center.generate_ideas") }} </view>
+          </view>
+          <!-- 今日任务list -->
+          <view class="todays-task">
+            <view class="todays-task-title">{{ $i18n_t("task_center.todays_task") }}</view>
+            <view class="todays-task-list">
+              <view :class="['todays-task-list-item', { dailyBonus: item.taskType === 'daily_bonus' }]" v-for="(item, index) in list" :key="index">
+                <image v-if="index === 2" class="todays-task-list-item-hot" src="/static/task-center-hot.png" mode="widthFix" />
+                <view class="todays-task-list-item-title">
+                  <text class="todays-task-list-item-title1"
+                    >{{ getTaskItemTitle(item.taskType)[0] }} <text v-if="getTaskItemTitle(item.taskType)[1]">{{ item.current }}/{{ item.target }}</text></text
+                  >
+                  <text v-if="getTaskItemTitle(item.taskType)[1]" class="todays-task-list-item-title2">{{
+                    getTaskItemTitle(item.taskType, item.target)[1]
+                  }}</text>
+                  <text class="todays-task-list-item-title3">+ {{ item.reward }}{{ $i18n_t("task_center.points") }}</text>
+                </view>
+                <view
+                  :class="['todays-task-list-item-btn', 'toComplete', { dailyBonus: item.taskType === 'daily_bonus' }]"
+                  v-if="!item.isCompleted"
+                  @click="() => handleTaskClick(item)"
+                >
+                  {{ item.taskType === "daily_bonus" ? $i18n_t("task_center.unlocked") : $i18n_t("task_center.to_complete") }}
+                </view>
+                <view
+                  :class="['todays-task-list-item-btn', 'rewards', { dailyBonus: item.taskType === 'daily_bonus' }]"
+                  v-if="item.isCompleted && !item.isClaimed"
+                  @click="() => handleTaskClick(item, index)"
+                >
+                  {{ $i18n_t("task_center.rewards") }}
+                </view>
+                <view
+                  :class="['todays-task-list-item-btn', 'received', { dailyBonus: item.taskType === 'daily_bonus' }]"
+                  v-if="item.isClaimed"
+                  @click="() => handleTaskClick(item)"
+                >
+                  {{ $i18n_t("task_center.received") }}
+                </view>
+              </view>
+              <!-- 空状态处理 -->
+              <view class="todays-task-list-empty" v-if="list.length === 0">
+                <text>{{ $i18n_t("task_center.no_data") }}</text>
+              </view>
+            </view>
+          </view>
+          <!-- 积分说明 -->
+          <view class="illustrate">
+            <view class="illustrate-title">{{ $i18n_t("task_center.illustrate") }}</view>
+            <view class="illustrate-item">{{ $i18n_t("task_center.illustrate_1") }}</view>
+            <view class="illustrate-item">{{ $i18n_t("task_center.illustrate_2") }}</view>
+            <view class="illustrate-item">{{ $i18n_t("task_center.illustrate_3") }}</view>
+            <view class="illustrate-item">{{ $i18n_t("task_center.illustrate_4") }}</view>
+          </view>
+        </view>
+      </scroll-view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import { user, creditsBalance } from "@/store/user";
+import { execGTagEvent, getUrlParameter } from "@/utils/index.uts";
+import CreditsBalanceIcon from "../publish/panel/credits-balance-icon.uvue";
+import { getTaskRewards, getTodayTaskList, getPoints } from "../../api/home.uts";
+import { UserItem, TaskItem, ApiResponse, PointsData } from "@/types/index.uts"; // 导入 ApiResponse
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+
+const from = getUrlParameter("from", location.search);
+const currentPath = location.pathname + location.search + location.hash;
+const userProfile = ref<UserItem>({
+  id: "",
+  username: "",
+  avatar: "",
+  email: "",
+  bio: "",
+  followersCount: 0,
+  followingCount: 0,
+  videoLikeCount: 0,
+  photoLikeCount: 0,
+  nickname: "",
+  isFollowing: false,
+  postsCount: 0,
+  location: "",
+  createdAt: "",
+});
+const list = ref<TaskItem[]>([]);
+const points = ref<PointsData | null>(null);
+const isCurrentUser = computed<boolean>(() => userProfile.value.id == user.value?.id);
+const completedSteps = computed<boolean>(() => list.value.filter((item) => item.isClaimed).length);
+
+const initializeData = async () => {
+  try {
+    const [pointsRes, taskListRes] = await Promise.all([getPoints(), getTodayTaskList()]);
+    points.value = pointsRes.data;
+    list.value = taskListRes.data.state.tasks;
+  } catch (error) {
+    console.error("Failed to load data:", error);
+  }
+};
+// 任务标题和描述
+const getTaskItemTitle = (taskType: string, target = 0) => {
+  const obj = {
+    view_video: [$i18n_t("task_center.view_video_main_title"), $i18n_t("task_center.view_video_sub_title", { num: target })], // 浏览视频
+    view_image: [$i18n_t("task_center.view_image_main_title"), $i18n_t("task_center.view_image_sub_title", { num: target })], // 浏览图片
+    view_post: [$i18n_t("task_center.view_post_main_title"), $i18n_t("task_center.view_post_sub_title", { num: target })], // 浏览帖子
+    comment: [$i18n_t("task_center.comment_main_title"), $i18n_t("task_center.comment_sub_title", { num: target })], // 发表评论
+    like: [$i18n_t("task_center.like_main_title"), $i18n_t("task_center.like_sub_title", { num: target })], // 点赞
+    favorite: [$i18n_t("task_center.favorite_main_title"), $i18n_t("task_center.favorite_sub_title", { num: target })], // 收藏
+    publish_post: [$i18n_t("task_center.publish_post_main_title"), $i18n_t("task_center.publish_post_sub_title", { num: target })], // 发表帖子
+    gen_image: [$i18n_t("task_center.gen_image_main_title"), $i18n_t("task_center.gen_image_sub_title", { num: target })], // 生成图片
+    gen_video: [$i18n_t("task_center.gen_video_main_title"), $i18n_t("task_center.gen_video_sub_title", { num: target })], // 生成视频
+    gen_any: [$i18n_t("task_center.gen_any_main_title"), $i18n_t("task_center.gen_any_sub_title", { num: target })], // 生成任何
+    daily_bonus: [$i18n_t("task_center.daily_bonus_main_title")], // 每日完成所有任务奖励
+  };
+  return obj[taskType];
+};
+const generateIdeas = () => {
+  console.log("使用积分生成创意");
+  if (user.value == null) {//|| user.value.accountType === "guest"
+    return uni.$emit("login:show", { page: "register", to: currentPath, action: "redirectTo" });
+  }
+  uni.redirectTo({ url: "/pages/index/index?tabbar=publish" });
+};
+const handleTaskClick = async (item: TaskItem, index: number) => {
+  if (user.value == null) {// || user.value.accountType === "guest"
+    return uni.$emit("login:show", { page: "register", to: currentPath, action: "redirectTo" });
+  }
+  // 去完成
+  if (!item.isCompleted) {
+    const obj = {
+      view: "/pages/index/index?tabbar=home",
+      interact: "/pages/index/index?tabbar=video",
+      generate: "/pages/index/index?tabbar=publish",
+    };
+    obj[item.category] && uni.redirectTo({ url: obj[item.category] });
+    return;
+  }
+  // 领取奖励
+  if (item.isCompleted && !item.isClaimed) {
+    try {
+      const res = await getTaskRewards(item.taskType);
+      execGTagEvent("misson_reward", { pts: item.reward, serial: String(index + 1) });
+      uni.showToast({
+        title: $i18n_t("task_center.obtained_reward"),
+        icon: "success",
+        duration: 3500,
+      });
+      initializeData();
+    } catch (error) {
+      console.error("Failed to load data:", error);
+    }
+  }
+};
+onLoad(async (options: OnLoadOptions) => {
+  const userId = options["userId"];
+  if (userId != null && userId.length > 0) {
+    userProfile.value.id = userId;
+  } else {
+    userProfile.value.id = user.value?.id || "";
+  }
+});
+onMounted(() => {
+  initializeData();
+  execGTagEvent("misson_enter", { pts: creditsBalance.value.toString(), from: from || "unknown" });
+});
+onUnmounted(() => {
+  execGTagEvent("misson_leave", { pts: creditsBalance.value.toString() });
+});
+</script>
+
+<style lang="scss">
+.container {
+  display: flex;
+  flex-direction: column;
+  background-color: #000000;
+  color: #ffffff;
+  height: 100%;
+}
+
+.container-content {
+  padding: 0 15px;
+  background-image: url("/static/task-center-bg1.png");
+  background-repeat: no-repeat;
+  background-position: top;
+  background-size: 100% 447px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.bg-gift {
+  position: absolute;
+  left: -15px;
+  top: 193px;
+  width: 172px;
+  height: 243px;
+  z-index: 1;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+
+  .header-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+
+    .title {
+      flex: 1;
+      font-size: 17px;
+      font-weight: bold;
+      color: #ffffff;
+      text-align: left;
+      margin-left: 10px;
+      line-height: 18px;
+    }
+
+    .points {
+      margin-right: 6px;
+    }
+  }
+}
+
+.points-table {
+  margin-top: 31px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+
+  &-left,
+  &-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 400;
+    color: #ffffff;
+    line-height: 20px;
+    font-size: 14px;
+    font-family:
+      PingFang SC,
+      PingFang SC;
+
+    &-num {
+      font-weight: 600;
+      font-size: 22px;
+      line-height: 25px;
+      height: 30px;
+    }
+    &-text {
+      font-size: 14px;
+    }
+  }
+
+  &-left-num {
+    color: #45ff00;
+  }
+
+  &-divider {
+    width: 1px;
+    height: 50px;
+    background-color: #fff;
+    opacity: 0.2;
+  }
+
+  &-right-num {
+    color: #ffffff;
+  }
+}
+
+.task-progress {
+  width: 100%;
+  height: 186px;
+  border-radius: 12px 12px 12px 12px;
+  background-color: rgba(255, 255, 255, 0.2);
+  margin-top: 25px;
+  margin-left: auto;
+  margin-right: auto;
+
+  &-title {
+    height: 22px;
+    font-weight: 600;
+    font-size: 16px;
+    color: #ebff00;
+    line-height: 25px;
+    text-align: right;
+    font-style: normal;
+    text-transform: none;
+    margin-right: 29px;
+    margin-top: 21px;
+    margin-bottom: 3px;
+  }
+
+  &-num {
+    height: 17px;
+    font-weight: 400;
+    font-size: 12px;
+    color: #ffffff;
+    line-height: 25px;
+    text-align: right;
+    font-style: normal;
+    text-transform: none;
+    margin-right: 29px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: end;
+
+    &-content {
+      margin-right: 8px;
+      opacity: 0.6;
+      font-size: 12px;
+    }
+  }
+
+  &-stars {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: end;
+    margin-right: 29px;
+    margin-top: 11px;
+    gap: 9px;
+  }
+
+  &-btn {
+    width: 175px;
+    height: 38px;
+    background: #ff23b8;
+    box-shadow: 0px 6px 6px 1px rgba(255, 35, 184, 0.4);
+    border-radius: 30px 30px 30px 30px;
+    border: 1px solid #ff23b8;
+
+    font-weight: 600;
+    font-size: 14px;
+    color: #ffffff;
+    line-height: 38px;
+    text-align: center;
+    font-style: normal;
+    text-transform: none;
+
+    margin-left: auto;
+    margin-right: 17px;
+    margin-top: 20px;
+  }
+}
+
+.todays-task {
+  margin-bottom: 40px;
+
+  &-title {
+    height: 22px;
+    font-weight: 600;
+    font-size: 16px;
+    color: #ffffff;
+    line-height: 22px;
+    margin-top: 76px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  &-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    overflow: visible;
+
+    &-item.dailyBonus {
+      background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+    }
+
+    &-item {
+      width: 100%;
+      background: linear-gradient(91deg, #1e1e1e 0%, rgba(70, 70, 70, 0.17) 100%);
+      border-radius: 12px 12px 12px 12px;
+      padding: 16px 0 16px 16px;
+      display: flex;
+      flex-direction: row;
+      overflow: visible;
+      align-items: center;
+      position: relative;
+
+      &-hot {
+        width: 35px;
+        height: 17px;
+        position: absolute;
+        top: -4px;
+        left: 16px;
+      }
+
+      &-title {
+        flex: 1;
+      }
+
+      &-title1 {
+        font-weight: 600;
+        font-size: 14px;
+        color: #ffffff;
+        // height: 20px;
+      }
+
+      &-title2 {
+        font-weight: 400;
+        font-size: 13px;
+        color: #ffffff;
+        // height: 18px;
+        opacity: 0.4;
+      }
+
+      &-title3 {
+        font-weight: 600;
+        font-size: 14px;
+        color: #45ff02;
+        height: 20px;
+        margin-top: 8px;
+      }
+
+      &-btn {
+        width: 120px;
+        height: 38px;
+        border-radius: 30px 30px 30px 30px;
+        margin-right: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      &-btn.toComplete {
+        background: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        color: #000000;
+        line-height: 25px;
+      }
+
+      &-btn.rewards {
+        background: #ffe016;
+        font-weight: 600;
+        font-size: 14px;
+        color: #000000;
+        line-height: 25px;
+      }
+
+      &-btn.received {
+        background: #2f2f2f;
+        font-weight: 600;
+        font-size: 14px;
+        color: #ffffff;
+        line-height: 25px;
+      }
+
+      &-btn.toComplete.dailyBonus {
+        background: rgba(255, 255, 255, 0.4);
+        color: #333333;
+      }
+
+      &-btn.rewards.dailyBonus {
+        background: #df30c3;
+        color: #ffffff;
+      }
+
+      &-btn.received.dailyBonus {
+        background: rgba(255, 255, 255, 0.4);
+        color: #333333;
+      }
+    }
+
+    &-empty {
+      margin-top: 20px;
+      font-weight: 400;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.4);
+      line-height: 44px;
+    }
+  }
+}
+
+.illustrate {
+  font-weight: 400;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 20px;
+  margin-left: 16px;
+  margin-bottom: 38px;
+
+  &-title {
+    height: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 1);
+    line-height: 20px;
+    margin-bottom: 12px;
+  }
+
+  &-item {
+    font-size: 12px;
+  }
+}
+</style>

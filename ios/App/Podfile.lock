@@ -1,0 +1,51 @@
+PODS:
+  - Capacitor (7.4.3):
+    - CapacitorCordova
+  - CapacitorClipboard (7.0.2):
+    - Capacitor
+  - CapacitorCordova (7.4.3)
+  - CapacitorFilesystem (7.1.4):
+    - Capacitor
+    - IONFilesystemLib (~> 1.0.1)
+  - CapacitorFileTransfer (1.0.5):
+    - Capacitor
+    - IONFileTransferLib (~> 1.0.1)
+  - IONFilesystemLib (1.0.1)
+  - IONFileTransferLib (1.0.1)
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorClipboard (from `../../node_modules/@capacitor/clipboard`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorFileTransfer (from `../../node_modules/@capacitor/file-transfer`)"
+
+SPEC REPOS:
+  trunk:
+    - IONFilesystemLib
+    - IONFileTransferLib
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorClipboard:
+    :path: "../../node_modules/@capacitor/clipboard"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorFilesystem:
+    :path: "../../node_modules/@capacitor/filesystem"
+  CapacitorFileTransfer:
+    :path: "../../node_modules/@capacitor/file-transfer"
+
+SPEC CHECKSUMS:
+  Capacitor: 28d6c01026a9a3f7156529498ec1f389a2a28dbc
+  CapacitorClipboard: 7e227702976d4435a5a40df54f65e154d0dfc1f3
+  CapacitorCordova: 435121e81a2df4d0034f0fb11fcefab5104cfdb5
+  CapacitorFilesystem: f9bd850c41e048180e5dc0cbb90f2033ede9d2cc
+  CapacitorFileTransfer: 10ebf2c246d5e579d6c32aa995f0317154c13f66
+  IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
+  IONFileTransferLib: b268561ab0ba7f386eea228c4986b55ba0146ca9
+
+PODFILE CHECKSUM: 5bb9f49b06e749aaee70d2730dae7632ae468289
+
+COCOAPODS: 1.16.2

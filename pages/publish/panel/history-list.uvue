@@ -1,0 +1,380 @@
+<template>
+  <fr-scroll-list
+    record-key="id"
+    :data-source="result.records"
+    :refresher-enabled="true"
+    :loading="loading"
+    :pagination="result.pagination"
+    :column="props.columns"
+    @refresh="onRefresh"
+    @loadmore="onLoadMore"
+  >
+    <template #record="{ record }">
+      <view class="card">
+        <view style="flex-direction: row">
+          <view class="image-container" @click="onView(record)">
+            <template v-if="record.status == 'completed'">
+              <template v-if="getCoverInfo(record).type !== 'none'">
+                <fr-video
+                  v-if="getCoverInfo(record).type === 'video'"
+                  class="card-img"
+                  :controls="false"
+                  :disabled="true"
+                  :src="getCoverInfo(record).src"
+                />
+                <fr-image
+                  v-else-if="getCoverInfo(record).type === 'image'"
+                  class="card-img"
+                  mode="aspectFit"
+                  :src="getCoverInfo(record).src"
+                  fallback="/static/icons/welcome@2x.png"
+                />
+              </template>
+              <template v-else>
+                <view v-if="record.contentType == 'text'" class="card-img cover-info">
+                  <fr-image style="width: 60%; height: 60%" src="/static/icons/text@2x.png" />
+                </view>
+                <view v-else-if="record.contentType == 'audio'" class="card-img cover-info">
+                  <fr-image style="width: 60%; height: 60%" src="/static/icons/audio@2x.png" />
+                </view>
+                <view v-else class="card-img cover-info">
+                  <fr-image style="width: 60%; height: 60%" src="/static/icons/welcome@2x.png" />
+                </view>
+              </template>
+              <IconFont v-if="record.resultUrls && record.resultUrls.length > 1" name="layer" class="layer-icon" :size="14" />
+            </template>
+            <template v-else style="position: relative">
+              <fr-image mode="aspectFit" v-if="record.aiTool?.coverMimeType == 'image'" class="card-img" :src="record.aiTool.cover" />
+              <fr-image mode="aspectFit" v-if="record.aiTool?.coverMimeType == 'audio'" class="card-img" :src="record.aiTool.cover" />
+              <fr-image mode="aspectFit" v-if="record.aiTool?.coverMimeType == 'text'" class="card-img" :src="record.aiTool.cover" />
+              <fr-video
+                v-else-if="record.aiTool?.coverMimeType == 'video'"
+                class="card-img"
+                :show-center-play-btn="false"
+                :controls="false"
+                :disabled="true"
+                :src="record.aiTool.cover"
+              />
+              <view v-else class="card-img cover-info">
+                <fr-image style="width: 60%; height: 60%" src="/static/icons/welcome@2x.png" />
+              </view>
+            </template>
+          </view>
+          <view style="flex: 1; min-width: 0">
+            <fr-typography-title>{{ fmtBackendLang(record.aiTool?.displayName) }}</fr-typography-title>
+            <text style="margin: 2px 0; color: #666; font-size: 12px">{{ fmtTimeDisplay(record.createdAt, "YYYY/MM/DD HH:mm:ss") }}</text>
+            <fr-typography-paragraph :lines="4">
+              {{ record.generationParameters?.prompt }}
+            </fr-typography-paragraph>
+          </view>
+        </view>
+        <view
+          v-if="record.status == 'processing' || record.status == 'pending'"
+          style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 16px"
+        >
+          <view style="flex-direction: row; align-items: center">
+            <image class="processing-loading" src="/static/loading@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: #fff; margin: 0 6px">{{ $i18n_t("common.processing") }}...</text>
+            <text style="font-size: 12px; line-height: 17px; color: #707070">{{ $i18n_t("common.pleaseWait") }}</text>
+          </view>
+        </view>
+        <view v-else-if="record.status == 'completed'" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 16px">
+          <view v-if="record.isPublished" style="flex-direction: row; align-items: center">
+            <image class="finished-icon" src="/static/published@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: #fff; margin: 0 6px">{{ $i18n_t("common.published") }}</text>
+          </view>
+          <view v-else-if="record.auditStatus == 'pending'" style="flex-direction: row; align-items: center">
+            <image class="processing-loading" src="/static/loading@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: yellow; margin: 0 6px">{{ $i18n_t("publish.audit_pending") }}</text>
+          </view>
+          <!-- <view v-else-if="record.auditStatus == 'passed'" style="flex-direction: row; align-items: center">
+            <image class="finished-icon" src="/static/finished@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: green; margin: 0 6px">{{ $i18n_t("publish.audit_passed") }}</text>
+          </view> -->
+          <view v-else-if="record.auditStatus == 'rejected'" style="flex-direction: row; align-items: center">
+            <image class="finished-icon" src="/static/failed@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: red; margin: 0 6px">{{ $i18n_t("publish.audit_rejected") }}</text>
+          </view>
+          <view v-else style="flex-direction: row; align-items: center">
+            <image class="finished-icon" src="/static/finished@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: #fff; margin: 0 6px">{{ $i18n_t("common.finished") }}</text>
+          </view>
+          <view style="flex-direction: row; align-items: center">
+            <button
+              style="
+                height: 30px;
+                line-height: 30px;
+                padding: 0 20px;
+                color: #fff;
+                background-color: transparent;
+                font-size: 12px;
+                border: 1px solid #707070;
+                border-radius: 15px;
+                margin-right: 8px;
+              "
+              @click="onDelete(record)"
+            >
+              {{ $i18n_t("common.delete") }}
+            </button>
+            <button
+              style="height: 30px; line-height: 30px; padding: 0 20px; color: #fff; font-size: 12px; background-color: #ff00d8; border-radius: 15px"
+              @click="onView(record)"
+            >
+              {{ $i18n_t("common.view") }}
+            </button>
+          </view>
+        </view>
+        <view v-else-if="record.status == 'failed'" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 16px">
+          <view style="flex-direction: row; align-items: center">
+            <image class="finished-icon" src="/static/failed@2x.png"></image>
+            <text style="font-size: 12px; line-height: 17px; color: red; margin: 0 6px">{{ $i18n_t("publish.creativeFailure") }}</text>
+          </view>
+          <view style="flex-direction: row; align-items: center">
+            <button
+              style="
+                height: 30px;
+                line-height: 30px;
+                padding: 0 20px;
+                color: #fff;
+                font-size: 12px;
+                border: 1px solid #707070;
+                background-color: transparent;
+                border-radius: 15px;
+                margin-right: 8px;
+              "
+              @click="onCancel(record)"
+            >
+              {{ $i18n_t("common.cancel") }}
+            </button>
+            <button
+              style="
+                height: 30px;
+                line-height: 30px;
+                padding: 0 20px;
+                color: #ff00d8;
+                background-color: transparent;
+                font-size: 12px;
+                border: 1px solid #ff00d8;
+                border-radius: 15px;
+              "
+              @click="onRetry(record)"
+            >
+              {{ $i18n_t("publish.tryAgain") }}
+            </button>
+          </view>
+        </view>
+      </view>
+    </template>
+  </fr-scroll-list>
+</template>
+
+<script setup lang="uts">
+import IconFont from "@/components/IconFont/IconFont.uvue";
+import { $i18n_t, fmtBackendLang } from "@/locale/index.uts";
+import { FrScrollList, FrEmpty, FrTypographyTitle, FrTypographyParagraph, FrImage, FrVideo } from "@/components/widgets/index.uts";
+import { useLoadListRequest, LoadListRequestOptions, useSubmitRequest, SubmitRequestOptions } from "@/hooks";
+import { GenerationedItem } from "@/types/resource.uts";
+import { setGenerationedItemList, appStore } from "@/store/index.uts";
+import { ERequestState } from "@/types/index.uts";
+import { fmtTimeDisplay } from "@/utils/index.uts";
+
+const getCoverInfo = computed(() => {
+  return (record: any) => {
+    let src = null;
+    let type: 'image' | 'video' | 'none' = 'none';
+
+    if (record.cover) { // User-provided cover, usually image
+      src = record.cover;
+      type = 'image';
+    } else if (record.aiTool.cover) { // AI tool cover, check its mimeType
+      src = record.aiTool.cover;
+      if (record.aiTool.coverMimeType && record.aiTool.coverMimeType.startsWith('video')) {
+        type = 'video';
+      } else {
+        type = 'image'; // Default to image if mimeType is not video or not specified
+      }
+    } else if (record.resultUrls?.[0] != null) { // First result URL
+        src = record.resultUrls[0];
+        if (record.mimeType && record.mimeType.startsWith('video')) { // Use record's mimeType for result
+            type = 'video';
+        } else if (record.contentType === 'video') { // Fallback to contentType
+            type = 'video';
+        } else {
+            type = 'image'; // Default to image
+        }
+    }
+
+    return { src, type };
+  };
+});
+
+const props = defineProps<{
+  status: string;
+  reload: boolean;
+  columns: number;
+}>();
+
+const { loadListRequest, reloadListRequest, result, loading } = useLoadListRequest({
+  url: `ai-generations/history`,
+  defaultParams: {
+    status: props.status == "processing" ? [props.status, "failed", "pending"] : [props.status],
+  },
+} as LoadListRequestOptions);
+
+const { submitRequest: deleteRequest, submitting: deleting } = useSubmitRequest({
+  url: (p) => `ai-generations/${p.id}`,
+  method: "DELETE",
+  showLoading: true,
+  onSuccess: () => {
+    reloadListRequest();
+  },
+} as SubmitRequestOptions);
+
+const { submitRequest: retryRequest, submitting: retrying } = useSubmitRequest({
+  url: (p) => `ai-generations/${p.id}/retry`,
+  method: "POST",
+  showLoading: true,
+  onSuccess: () => {
+    uni.$emit("reload:processing");
+  },
+} as SubmitRequestOptions);
+
+watch(
+  () => props.reload,
+  (reload) => {
+    if (reload == true) {
+      loadListRequest({ page: 1 });
+    }
+  },
+);
+
+const refreshRecords = () => {
+  loadListRequest({ page: 1 });
+};
+
+onMounted(() => {
+  loadListRequest({ page: 1 });
+
+  uni.$on("refresh:records", refreshRecords);
+  uni.$on("coverUpdated", (updatedItem: GenerationedItem) => {
+    const index = result.records?.findIndex((record: GenerationedItem) => record.id == updatedItem.id);
+    if (index != -1) {
+      result.records[index].cover = updatedItem.cover;
+    }
+  });
+});
+
+onUnmounted(() => {
+  uni.$off("refresh:records", refreshRecords);
+  uni.$off("coverUpdated");
+});
+
+const onRefresh = () => {
+  loadListRequest({ page: 1 });
+};
+
+const onLoadMore = ({ page }) => {
+  loadListRequest({ page });
+};
+
+const onView = (item: GenerationedItem) => {
+  if (item.status != "completed") return;
+  setGenerationedItemList(result.records as GenerationedItem[]);
+  uni.navigateTo({
+    url: `/pages/publish/publish?id=${item.id}`,
+  });
+};
+
+const onRetry = (item: GenerationedItem) => {
+  retryRequest({ id: item.id });
+  // uni.redirectTo({
+  //   url: `/pages/publish/ai-generator?generationID=${item.id}`,
+  // });
+};
+
+const onDelete = (item: GenerationedItem) => {
+  uni.showModal({
+    title: $i18n_t("common.prompt"),
+    content: $i18n_t("common.confirmDelete"),
+    confirmText: $i18n_t("common.confirm"),
+    cancelText: $i18n_t("common.cancel"),
+    success: (res) => {
+      if (res.confirm) {
+        deleteRequest({ id: item.id });
+      }
+    },
+  });
+};
+
+const onCancel = (item: GenerationedItem) => {
+  deleteRequest({ id: item.id });
+};
+</script>
+
+<style scoped>
+.card {
+  padding: 16px;
+  border-radius: 8px;
+  background-color: #1a1a1a;
+  margin: auto 24px;
+}
+
+.image-container {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  margin-right: 12px;
+}
+
+.card-img {
+  width: 86px;
+  height: 86px;
+  border-radius: 4px;
+  background-color: #2b2b2b;
+}
+
+.layer-icon {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+}
+
+.cover-info {
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-info :deep(.fr-image) {
+  background-color: transparent;
+}
+
+.finished-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.failed-icon {
+}
+
+.processing-loading {
+  width: 20px;
+  height: 20px;
+
+  /* #ifdef WEB */
+  animation: loading 3s linear infinite;
+  /* #endif */
+}
+
+/* #ifdef WEB */
+@keyframes loading {
+  /*以百分比来规定改变发生的时间 也可以通过"from"和"to",等价于0% 和 100%*/
+  0% {
+    /*rotate(2D旋转) scale(放大或者缩小) translate(移动) skew(翻转)*/
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+/* #endif */
+</style>

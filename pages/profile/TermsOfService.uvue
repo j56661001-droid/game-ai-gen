@@ -1,0 +1,88 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <!-- 顶部导航栏 -->
+      <view class="header">
+        <view class="header-row">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ privacyPolicyText }}</text>
+        </view>
+      </view>
+      <scroll-view scroll-y class="content-scroll">
+        <text class="content">{{ privacyPolicyContentText }}</text>
+      </scroll-view>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { goBack } from "@/utils/page";
+import { $i18n_t } from "@/locale/index.uts";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+import { getSettings } from "@/api/file";
+import { ref, computed, onMounted } from "vue";
+
+const privacyPolicyText = computed(() => $i18n_t("profile.termsOfService"));
+const privacyPolicyContentText = ref("");
+
+onMounted(async () => {
+  const res = await getSettings("terms_service");
+  if (res && res.data) {
+    privacyPolicyContentText.value = res.data.value;
+  }
+});
+
+
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+.content-scroll {
+  flex: 1;
+  height: 0; /* 这是flex布局下实现内部滚动的关键 */
+  box-sizing: border-box;
+}
+
+.content {
+  padding: 0 16px 24px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 24px;
+  color: rgba(255, 255, 255, 0.5);
+}
+</style>

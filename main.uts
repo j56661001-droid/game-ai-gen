@@ -1,0 +1,13 @@
+import App from "./App.uvue";
+import i18n from "./locale/index.uts";
+import { createSSRApp } from "vue";
+
+export function createApp() {
+  const app = createSSRApp(App);
+
+  app.use(i18n);
+
+  return {
+    app,
+  };
+}

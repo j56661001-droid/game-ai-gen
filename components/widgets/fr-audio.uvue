@@ -1,0 +1,314 @@
+<template>
+  <view v-if="props.mode == 'readonly'" class="fr-audio-readonly" :style="audioBGColorStyle" @click="onClick">
+    <view class="fr-audio-readonly-content">
+      <view style="position: relative; overflow: unset">
+        <image class="fr-audio-readonly-bg" src="/static/audio-play-bg.png" />
+        <image class="fr-audio-readonly-pointer" src="/static/audio-play-pointer.png" />
+        <image class="fr-audio-readonly-icon" src="/static/icons/welcome@2x.png" />
+      </view>
+    </view>
+  </view>
+  <view v-else class="fr-audio" :style="audioBGColorStyle" @click="onClick">
+    <view class="fr-audio-control" @click="onTogglePlay">
+      <fr-spin :spinning="!state.paused" class="fr-audio-control-bg" icon-path="/static/audio-play-bg.png"></fr-spin>
+      <image class="fr-audio-control-pointer" src="/static/audio-play-pointer.png" />
+      <view v-if="state.paused" style="width: 56px; height: 56px; border-radius: 28px; background-color: #ff23b8; align-items: center; justify-content: center">
+        <icon-font name="play" :size="16" color="#fff"></icon-font>
+      </view>
+      <icon-font v-else name="pause_filled" :size="56" color="#fff"></icon-font>
+    </view>
+    <view class="fr-audio-progress">
+      <text class="fr-audio-time">{{ state.currentTime }}</text>
+      <view class="fr-audio-slider">
+        <slider
+          style="width: 100%"
+          activeBackgroundColor="#fff"
+          backgroundColor="rgba(255,255,255,0.3)"
+          foreColor="#fff"
+          :value="state.progress"
+          :step="0.01"
+          :min="0"
+          :max="100"
+          :block-size="8"
+          @changing="onSliderChanging"
+        ></slider>
+      </view>
+      <text class="fr-audio-time">{{ state.totalTime }}</text>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { fmtTimeStr, parseAudioBGColor } from "@/utils";
+import IconFont from "../IconFont/IconFont.uvue";
+import { dayjs } from "@/uni_modules/kux-dayjs";
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+import { isCapacitor, getDomainFromUrl } from "@/utils/platform.uts";
+import { getAbsoluteMediaUrl } from "@/api/request.uts";
+
+type Props = {
+  src: string.AudioURIString;
+  loop?: boolean;
+  autoplay?: boolean;
+  mode?: "readonly";
+};
+
+const props = withDefaults(defineProps<Props>(), { loop: false, autoplay: false });
+const emit = defineEmits<{
+  (e: "play", result: any): void;
+  (e: "pause", result: any): void;
+  (e: "stop", result: any): void;
+  (e: "ended", result: any): void;
+  (e: "timeupdate", result: any): void;
+  (e: "waiting", result: any): void;
+  (e: "load", result: any): void;
+  (e: "error", error: ICreateInnerAudioContextFail): void;
+  (e: "click", v: UniPointerEvent): void;
+}>();
+
+const audioCtx = ref<InnerAudioContext>(uni.createInnerAudioContext());
+const state = reactive<{ currentTime: string; totalTime: string; progress: number; paused: boolean }>({
+  currentTime: "00:00",
+  totalTime: "00:00",
+  progress: 0,
+  paused: true,
+});
+
+const audioBGColorStyle = computed((): string => {
+  return `background: ${parseAudioBGColor(props.src)}`;
+});
+
+watch(
+  () => props.src,
+  (src: string.AudioURIString) => {
+    if (props.mode == "readonly") {
+      return;
+    }
+
+    if (src != null && src != "") {
+      audioCtx.value.src = getAbsoluteMediaUrl(src) as string;
+      audioCtx.value.loop = props.loop;
+      audioCtx.value.autoplay = props.autoplay;
+    }
+  },
+  {
+    immediate: true,
+  },
+);
+
+const setAudioStatus = () => {
+  state.progress = parseFloat(((audioCtx.value.currentTime / audioCtx.value.duration) * 100).toFixed(2));
+  state.currentTime = fmtTimeStr(audioCtx.value.currentTime);
+  state.paused = audioCtx.value.paused;
+};
+
+const resetAudioStatus = () => {
+  state.progress = 0;
+  state.currentTime = "00:00";
+  state.paused = audioCtx.value.paused;
+  audioCtx.value.currentTime = 0;
+};
+
+const onSliderChanging = (e: UniSliderChangeEvent) => {
+  // e.stopPropagation();
+
+  state.progress = e.detail.value || 0;
+  audioCtx.value.seek((state.progress * audioCtx.value.duration) / 100);
+};
+
+onMounted(() => {
+  if (props.mode == "readonly") {
+    return;
+  }
+
+  audioCtx.value.onCanplay((result) => {
+    setAudioStatus();
+    state.totalTime = fmtTimeStr(audioCtx.value.duration);
+    emit("load", result);
+    // console.log("audio canplay: ", result);
+  });
+  audioCtx.value.onPlay((result) => {
+    setAudioStatus();
+    emit("play", result);
+    // console.log("audio play: ", result);
+  });
+  audioCtx.value.onPause((result) => {
+    setAudioStatus();
+    emit("pause", result);
+    // console.log("audio pause: ", result);
+  });
+  audioCtx.value.onWaiting((result) => {
+    setAudioStatus();
+    emit("waiting", result);
+    // console.log("audio pause: ", result);
+  });
+  audioCtx.value.onStop((result) => {
+    setAudioStatus();
+    emit("stop", result);
+    // console.log("audio stop: ", result);
+  });
+  audioCtx.value.onTimeUpdate((result) => {
+    setAudioStatus();
+    emit("timeupdate", result);
+    // console.log("audio timeupdate: ", result, audioCtx.value);
+  });
+  audioCtx.value.onEnded((result) => {
+    resetAudioStatus();
+    emit("ended", result);
+    // console.log("audio ended: ", result);
+  });
+  audioCtx.value.onError((result: ICreateInnerAudioContextFail) => {
+    setAudioStatus();
+    emit("error", result);
+    // console.log("audio error: ", result);
+  });
+});
+
+onUnmounted(() => {
+  if (props.mode == "readonly") {
+    return;
+  }
+
+  audioCtx.value.destroy();
+});
+
+const onTogglePlay = (e: UniPointerEvent) => {
+  e.stopPropagation();
+
+  if (audioCtx.value.paused) {
+    audioCtx.value.play();
+  } else {
+    audioCtx.value.pause();
+  }
+};
+
+const onClick = (e: UniPointerEvent) => {
+  emit("click", e);
+};
+
+defineExpose({
+  play() {
+    audioCtx.value.play();
+  },
+  pause() {
+    audioCtx.value.pause();
+  },
+  stop() {
+    audioCtx.value.stop();
+  },
+  seek(postion: number) {
+    audioCtx.value.seek(postion);
+  },
+});
+</script>
+
+<style scoped>
+.fr-audio {
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+
+  padding: 8px 8px;
+}
+
+.fr-audio-readonly {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  border-radius: 4px;
+}
+
+.fr-audio-readonly-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fr-audio-readonly-bg {
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+}
+
+.fr-audio-readonly-icon {
+  position: absolute;
+  top: 19px;
+  left: 19px;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+}
+
+.fr-audio-readonly-pointer {
+  position: absolute;
+  top: -10px;
+  right: -2px;
+  width: 16px;
+  height: 40px;
+}
+
+.fr-audio-control {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  border-radius: 64px;
+
+  align-items: center;
+  justify-content: center;
+  /* background-color: #1a1a1a; */
+}
+
+.fr-audio-control {
+  overflow: unset;
+}
+
+.fr-audio-control-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.fr-audio-control-pointer {
+  position: absolute;
+  top: -30px;
+  right: -4px;
+  width: 38px;
+  height: 90px;
+}
+
+.fr-audio-progress {
+  width: 60%;
+  height: 32px;
+  border-radius: 16px;
+  min-width: 128px;
+  padding: 0 16px;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 30px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.fr-audio-slider {
+  /* position: relative; */
+  flex: 1;
+  margin: 0 8px;
+}
+
+.fr-audio-slider :deep(.uni-slider-track) {
+  height: 4px;
+}
+
+.fr-audio-time {
+  font-size: 12px;
+  color: #fff;
+}
+</style>

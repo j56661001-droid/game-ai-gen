@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="14" height="14" viewBox="0 0 14 14">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="矩形_50001" data-name="矩形 50001" width="14" height="14" transform="translate(38.977 513.031)" fill="#fff" stroke="#707070" stroke-width="1"/>
+    </clipPath>
+  </defs>
+  <g id="蒙版组_479" data-name="蒙版组 479" transform="translate(-38.977 -513.031)" clip-path="url(#clip-path)">
+    <g id="添加快捷方式" transform="translate(39.197 513)">
+      <path id="路径_220366" data-name="路径 220366" d="M5.083,2.29A1.507,1.507,0,0,0,3.576,3.8V6.81a.5.5,0,1,1-1,0V3.8A2.511,2.511,0,0,1,5.083,1.286h7.031a.5.5,0,0,1,.418.224l3.013,4.52a.5.5,0,0,1,.084.278v6.529a2.511,2.511,0,0,1-2.511,2.511H7.092a.5.5,0,0,1,0-1h6.027a1.507,1.507,0,0,0,1.507-1.507V6.46l-2.78-4.17Z" transform="translate(-2.069 -1.286)" fill="#fff"/>
+      <path id="路径_220367" data-name="路径 220367" d="M11.815,1.34a.5.5,0,0,1,.56.176l3.013,4.5a.5.5,0,0,1-.4.8H11.973a.5.5,0,0,1-.5-.5v-4.5a.5.5,0,0,1,.344-.477Zm.661,2.112V5.812h2.009ZM7.453,13.346V8.323l-5.525,1,2.144.714A3.37,3.37,0,0,0,2.933,14.35l.5,1v-.309a4,4,0,0,1,2.387-3.656l1.631,1.956Z" transform="translate(-1.929 -1.292)" fill="#fff"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,438 @@
+<template>
+  <div class="ios-tutorial-card">
+    <header class="card-header">
+      <h2 class="card-title">
+        <span class="icon">📱</span>
+        {{ $i18n_t("pwa_install.ios.title") }}
+      </h2>
+    </header>
+
+    <div class="tutorial-content">
+      
+      <!-- 步骤 1: 点击分享按钮 (包含 Safari 和 Chrome 两种情况) -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">1</span>
+          {{ $i18n_t("pwa_install.ios.step1") }}
+        </p>
+
+        <div class="browsers-container">
+          <!-- Safari 模拟 -->
+          <div class="browser-mockup safari-mockup">
+            <div class="browser-label">{{ $i18n_t('common.browser_safari') }}</div>
+            <div class="safari-bottom-bar">
+              <div class="icon-placeholder left">&lt;</div>
+              <div class="icon-placeholder left">&gt;</div>
+              
+              <!-- 核心：分享按钮 -->
+              <div class="share-icon-wrapper">
+                <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                  <polyline points="16 6 12 2 8 6"></polyline>
+                  <line x1="12" y1="2" x2="12" y2="15"></line>
+                </svg>
+                <div class="tap-indicator"></div>
+              </div>
+              
+              <div class="icon-placeholder right">📖</div>
+              <div class="icon-placeholder right">❐</div>
+            </div>
+          </div>
+
+          <!-- Chrome 模拟 -->
+          <div class="browser-mockup chrome-mockup">
+            <div class="browser-label">{{ $i18n_t('common.browser_chrome') }}</div>
+            <div class="chrome-top-bar">
+              <div class="url-bar">
+                <span class="lock-icon">🔒</span>
+                <span class="domain-text">{{ currentDomain }}</span>
+                
+                <!-- 核心：分享按钮 -->
+                <div class="share-icon-wrapper small">
+                  <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                    <polyline points="16 6 12 2 8 6"></polyline>
+                    <line x1="12" y1="2" x2="12" y2="15"></line>
+                  </svg>
+                  <div class="tap-indicator"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤 2: 找到“添加到主屏幕” -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">2</span>
+          {{ $i18n_t("pwa_install.ios.step2") }}
+        </p>
+        
+        <!-- CSS 模拟 iOS 分享菜单列表 -->
+        <div class="ios-menu-mockup">
+          <div class="menu-item">
+            <span class="menu-icon copy">📄</span>
+            <span class="menu-text">{{ $i18n_t("common.copyLink") }}</span>
+          </div>
+          <!-- 高亮项 -->
+          <div class="menu-item highlight-item">
+            <div class="menu-icon add-square">
+              <span>{{ $i18n_t('common.plus_sign') }}</span>
+            </div>
+            <span class="menu-text">{{ $i18n_t("pwa_install.ios.add_to_home") }}</span>
+            <div class="check-indicator"></div>
+          </div>
+          <div class="menu-item">
+            <span class="menu-icon bookmark">🔖</span>
+            <span class="menu-text">{{ $i18n_t("common.bookmark") }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤 3: 确认添加 -->
+      <div class="step-item">
+        <p class="step-text">
+          <span class="step-number">3</span>
+          {{ $i18n_t("pwa_install.ios.step3") }}
+        </p>
+
+        <!-- CSS 模拟 iOS 顶部确认栏 -->
+        <div class="ios-confirm-mockup">
+          <div class="confirm-header">
+            <span class="cancel-btn">{{ $i18n_t("common.cancel") }}</span>
+            <span class="confirm-title">{{ $i18n_t("pwa_install.ios.add_to_home_short") }}</span>
+            <span class="add-btn">
+              {{ $i18n_t("common.add") }}
+              <div class="tap-indicator"></div>
+            </span>
+          </div>
+          
+          <div class="confirm-body">
+             <img src="/static/icons/welcome@2x.png" class="preview-icon"/>
+            <div class="preview-info">
+              <div class="preview-name">{{ $i18n_t("account.frCreator") }}</div>
+              <div class="preview-url">{{ currentDomain }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { defineProps } from 'vue';
+import { $i18n_t } from "@/locale";
+
+defineProps<{
+  currentDomain: string;
+  appName?: string;
+}>();
+</script>
+
+<style scoped>
+/* --- 基础卡片样式 --- */
+.ios-tutorial-card {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid #f2f2f2;
+  max-width: 500px; /* 手机端显示无需太宽 */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.card-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #f0f0f5;
+  padding-bottom: 12px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-item {
+  margin-bottom: 36px;
+}
+.step-item:last-child {
+  margin-bottom: 0;
+}
+
+.step-text {
+  font-size: 15px;
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+.step-number {
+  background-color: #007aff; /* iOS Blue */
+  color: white;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* --- 浏览器模拟容器 --- */
+.browsers-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.browser-mockup {
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f9f9f9;
+}
+
+.browser-label {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  padding: 4px 0;
+  background: #f0f0f0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+/* --- Step 1: Safari 底部栏样式 --- */
+.safari-bottom-bar {
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.icon-placeholder {
+  font-size: 20px;
+  color: #007aff;
+  opacity: 0.5; /* 非激活状态淡一点 */
+}
+
+.share-icon-wrapper {
+  position: relative;
+  color: #007aff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.share-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* --- Step 1: Chrome 顶部栏样式 --- */
+.chrome-top-bar {
+  background-color: #333; /* Chrome Dark Theme Header */
+  padding: 10px;
+}
+
+.url-bar {
+  background-color: #202124;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 13px;
+  position: relative;
+}
+
+.lock-icon {
+  margin-right: 6px;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+
+.domain-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 30px;
+}
+
+.share-icon-wrapper.small {
+  position: absolute;
+  right: 12px;
+  color: #a8c7fa; /* Chrome blueish tint */
+}
+.share-icon-wrapper.small .share-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* --- 红色/蓝色脉冲圆圈动画 --- */
+.tap-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ff3b30; /* iOS Red for notice */
+  border-radius: 50%;
+  animation: pulse-ring 2s infinite;
+  pointer-events: none;
+}
+.add-btn .tap-indicator {
+  border-color: #fff; /* 蓝色背景上用白色圈 */
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+}
+
+@keyframes pulse-ring {
+  0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+}
+
+/* --- Step 2: iOS 菜单模拟 --- */
+.ios-menu-mockup {
+  background: #f2f2f7;
+  border-radius: 12px;
+  padding: 0 16px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #d1d1d6;
+  color: #000;
+}
+.menu-item:last-child {
+  border-bottom: none;
+}
+
+.menu-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  font-size: 18px;
+}
+.menu-text {
+  font-size: 16px;
+  flex: 1;
+}
+
+/* 高亮选中项 */
+.highlight-item {
+  background-color: rgba(0, 0, 0, 0.05); /* 模拟按下 */
+  margin: 0 -16px; /* 抵消父级padding */
+  padding: 12px 16px;
+}
+.add-square {
+  background-color: #999;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: bold;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* --- Step 3: 确认弹窗模拟 --- */
+.ios-confirm-mockup {
+  background-color: #1c1c1e; /* Dark Mode Mockup for contrast */
+  color: white;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+.confirm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #2c2c2e;
+  border-bottom: 0.5px solid #3a3a3c;
+}
+
+.confirm-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.cancel-btn {
+  color: #0a84ff;
+  font-size: 16px;
+}
+
+.add-btn {
+  color: #0a84ff;
+  font-size: 16px;
+  font-weight: 600;
+  position: relative;
+}
+
+.confirm-body {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: #1c1c1e;
+}
+
+.preview-icon {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(to bottom, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #333;
+  font-weight: bold;
+}
+
+.preview-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-name {
+  font-size: 16px;
+  font-weight: 500;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3a3a3c;
+}
+
+.preview-url {
+  font-size: 14px;
+  color: #8e8e93;
+}
+</style>

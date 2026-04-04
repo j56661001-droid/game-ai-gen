@@ -1,0 +1,138 @@
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+import FrSpin from "@/components/widgets/fr-spin.uvue";
+
+type Props = {
+  disabled?: boolean;
+  loading?: boolean;
+  block?: boolean;
+  completed?: boolean;
+  text?: string;
+};
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  (e: 'click'): void;
+}>();
+
+const handleClick = () => {
+  emit('click');
+};
+</script>
+
+<template>
+  <view class="checkin-button-container">
+    <button 
+      class="button-container" 
+      :class="{ 'checkin-completed': completed, 'disabled': disabled }" 
+      :disabled="disabled"
+      @click="handleClick"
+    >
+      <fr-spin v-if="loading" class="loading" :size="20" />
+
+      <view v-if="completed" class="completed-container">
+        <text class="completed-text">
+          {{ $i18n_t("dailyCheckin.buttonCompleted") }}
+          <image src="/static/icons/party-popper@2x.png" class="party-popper" mode="widthFix" />
+        </text>
+        <text class="update-tips">
+          {{ $i18n_t("dailyCheckin.taskUpdateTomorrow") }}
+        </text>
+      </view>
+      <text v-else class="button-text">{{ text || $i18n_t("dailyCheckin.buttonSignIn") }}</text>
+    </button>
+  </view>
+</template>
+
+<style scoped>
+.checkin-button-container {
+  padding: 0 16px;
+  overflow: visible;
+}
+
+.button-container {
+  border-radius: 25px;
+  width: 100%;
+  height: 50px;
+  line-height: 50px;
+  background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: transform 100ms linear;
+  overflow: visible;
+}
+
+.button-text {
+  /* width: 100%; */
+  text-align: center;
+}
+
+.button-container.disabled {
+  background: #373737;
+  color: #B5B5B5;
+}
+
+.button-container:active {
+  transform: scale(0.99);
+}
+
+/* 完成所有签到 */
+.checkin-completed {
+  background: linear-gradient(134deg, rgba(255, 0, 216, 0.4) 0%, rgba(255, 245, 0, 0.4) 100%);
+}
+
+.checkin-completed:active, .disabled:active {
+  transform: none;
+}
+
+.loading {
+  color: #fff;
+  /* position: absolute; */
+  /* left: 10px; */
+  margin-right: 10px;
+}
+
+.completed-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.completed-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffe016;
+  text-align: center;
+  line-height: 16px;
+  margin: 0 30px 4px;
+  position: relative;
+  overflow: visible;
+}
+
+.update-tips {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  position: relative;
+  overflow: visible;
+}
+
+.party-popper {
+  width: 63px;
+  height: 66px;
+  position: absolute;
+  bottom: -16px;
+  right: 0px;
+  transform: translate(100%);
+}
+</style>

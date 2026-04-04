@@ -1,0 +1,23 @@
+<template>
+  <fr-scroll-list refresher-enabled record-key="id" :loading="loading" :data-source="result.records" :pagination="result.pagination"></fr-scroll-list>
+</template>
+
+<script setup lang="uts">
+import { useLoadListRequest, LoadListRequestOptions } from "@/hooks";
+import FrScrollList from "@/components/widgets/fr-scroll-list.uvue";
+
+type Props = {
+  column?: number;
+  pageSize?: number;
+  url: string;
+};
+
+const props = withDefaults(defineProps<Props>(), { column: 1 });
+
+const { loadListRequest, result, loading } = useLoadListRequest({
+  url: props.url,
+  pageSize: props.pageSize,
+} as LoadListRequestOptions);
+</script>
+
+<style scoped></style>

@@ -1,0 +1,25 @@
+<template>
+  <text class="fr-typography-text">
+    <slot></slot>
+  </text>
+</template>
+
+<script setup lang="uts"></script>
+
+<style scoped>
+.fr-typography-text {
+  font-size: 12px;
+  line-height: 17px;
+  color: #707070;
+
+  /* #ifdef APP */
+  lines: 1;
+  /* #endif */
+
+  /* #ifdef WEB */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* #endif */
+}
+</style>

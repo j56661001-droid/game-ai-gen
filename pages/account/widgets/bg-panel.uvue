@@ -1,0 +1,93 @@
+<template>
+  <view class="bg-panel-container">
+    <image mode="widthFix" class="bg-panel-img" src="/static/login_bg.webp"></image>
+    <view class="bg-panel-content">
+      <view class="bg-panel-body">
+        <slot></slot>
+      </view>
+      <view class="bg-panel-footer">
+        <text class="bg-panel-footer-text">{{ loginIndicatesText }}</text>
+        <view style="flex-direction: row; align-items: center">
+          <text class="bg-panel-footer-light-text" @click="onGoToUserSA">{{ userServicesAgreementText }}</text>
+          <text class="bg-panel-footer-text">{{ andText }}</text>
+          <text class="bg-panel-footer-light-text" @click="onGotoUserPP">{{ userPrivacyPolicyText }}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { $i18n_t } from "@/locale/index.uts";
+
+const loginIndicatesText = computed(() => $i18n_t("account.loginIndicates"));
+const userServicesAgreementText = computed(() => $i18n_t("account.userServicesAgreement"));
+const andText = computed(() => $i18n_t("common.and"));
+const userPrivacyPolicyText = computed(() => $i18n_t("account.userPrivacyPolicy"));
+
+const props = defineProps<{
+  hideFooter?: boolean;
+}>();
+
+const onGoToUserSA = () => {
+  uni.navigateTo({
+    url: `/pages/profile/TermsOfService`,
+  });
+};
+
+const onGotoUserPP = () => {
+  uni.navigateTo({
+    url: `/pages/profile/PrivacyPolicy`,
+  });
+};
+</script>
+
+<style scoped>
+.bg-panel-container {
+  flex: 1;
+  position: relative;
+  background-color: #000;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+}
+
+.bg-panel-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bg-panel-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #000000 0%, rgba(0, 0, 0, 0.5) 100%);
+  padding: 16px;
+}
+
+.bg-panel-body {
+  flex: 1;
+}
+
+.bg-panel-footer {
+  margin-top: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg-panel-footer-text {
+  font-size: 12px;
+  line-height: 20px;
+  color: #fff;
+}
+
+.bg-panel-footer-light-text {
+  font-size: 12px;
+  color: #ff23b8;
+  line-height: 20px;
+}
+</style>

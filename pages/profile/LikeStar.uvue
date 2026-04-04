@@ -1,0 +1,131 @@
+<template>
+  <view class="mask" @click="handleMaskClick">
+    <view class="popup-container">
+      <image class="likestar-icon" mode="aspectFit" src="/static/icons/likestar@2x.png"></image>
+      <view class="content-wrapper">
+        <text class="username">{{ username }}</text>
+        <text class="likes-count">{{ photoLikeCount }}</text>
+        <text class="desc">{{ likesReceivedFromImageText }}</text>
+        <view class="divider"></view>
+        <text class="likes-count">{{ videoLikeCount }}</text>
+        <text class="desc">{{ likesReceivedFromVideoText }}</text>
+        <button class="got-it-button" @click="handleGotItClick">{{ gotItText }}</button>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { computed } from 'vue';
+import { $i18n_t } from "@/locale/index.uts";
+
+const likesReceivedFromImageText = computed(() => $i18n_t("profile.likesReceivedFromImage"));
+const likesReceivedFromVideoText = computed(() => $i18n_t("profile.likesReceivedFromVideo"));
+const gotItText = computed(() => $i18n_t("profile.gotIt"));
+
+// 定义组件 props
+type Props = {
+  username: string;
+  videoLikeCount: number;
+  photoLikeCount: number;
+};
+
+const props = defineProps<Props>();
+
+const emit = defineEmits(['close']);
+
+const handleMaskClick = (event: UniPointerEvent) => {
+  if (event.target == event.currentTarget) {
+    emit('close');
+  }
+};
+
+const handleGotItClick = () => {
+  emit('close');
+};
+</script>
+
+<style scoped>
+.mask {
+  position: absolute;;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5); 
+  display: flex;
+  justify-content: center; 
+  align-items: center; 
+  z-index: 299; 
+}
+
+.popup-container {
+  width: 345px;
+  height: 348px;
+  background-image: linear-gradient(to bottom right, #FF00D8, #FFF500);
+  border-radius: 16px; 
+  overflow: visible; 
+  display: flex;
+  flex-direction: column; 
+  align-items: center; 
+  padding: 20px; 
+  box-sizing: border-box; 
+}
+
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;; 
+  align-items: center;
+  flex: 1; 
+  width: 100%; 
+  margin-top: 60px; 
+}
+
+.divider {
+  width: 80%; 
+  height: 1px; 
+  background-color: rgba(255, 255, 255, 0.2); 
+  margin: 16px 0; 
+}
+
+.likestar-icon {
+  scale: 0.5; 
+  position: absolute;
+  top: -130px; 
+  
+}
+
+.username {
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+  
+  margin-bottom: 10px;
+}
+
+.likes-count {
+  font-size: 20px;
+  color: #fff;
+  font-weight: bold;
+}
+
+.desc{
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+
+}
+
+.got-it-button {
+  width: 193px;
+  height: 40px;
+  background-color: #fff; 
+  color: #FF23B8;
+  font-size: 16px;
+  border-radius: 20px; 
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 24px;
+}
+</style>

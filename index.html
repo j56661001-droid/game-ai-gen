@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      var coverSupport = "CSS" in window && typeof CSS.supports == "function" && (CSS.supports("top: env(a)") || CSS.supports("top: constant(a)"));
+      document.write(
+        '<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0' +
+          (coverSupport ? ", viewport-fit=cover" : "") +
+          '" />',
+      );
+    </script>
+    <title>SESE AI</title>
+    <script src="/static/js/fp.min.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
+
+    <meta
+      name="description"
+      content="AI 生成圖片, 免費 AI 圖片生成, AI 圖片生成器, AI 圖片創作工具, AI 圖片生成網站, AI 圖片設計應用, AI 圖片生成教學, AI 生成藝術圖片, AI 圖片編輯平台, AI 生成圖片免費試用, AI 圖片生成推薦下載, AI 圖片生成工具2025"
+    />
+    <link rel="icon" href="/static/logo.ico" type="image/x-icon" />
+    <!--preload-links-->
+    <!--app-context-->
+  </head>
+  <!-- Google tag (gtag.js) -->
+  <script>
+    const DEFAULT_GID = "G-938FRNGZ27";
+    // Define global gtag function
+    window.gtag = function () {};
+
+    async function initGoogleAnalytics() {
+      let gid = DEFAULT_GID;
+      try {
+        // Fetch G-ID from backend API
+        // Extract subdomain as code
+        const hostname = window.location.hostname;
+        const domainParts = hostname.split(".");
+        const code = domainParts.length > 2 ? domainParts[0] : "";
+
+        const response = await fetch(`/api/settings/public/gaid${code ? "." + code : ""}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            gid = data.data.value;
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to fetch Google Analytics ID, using default:", error);
+        // 使用默认 GID，不抛出错误
+      }
+
+      // Load Google Analytics script with the determined GID
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${gid}`;
+      document.head.appendChild(script);
+
+      // Execute Google Analytics initialization after script loads successfully
+      script.onload = function () {
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          dataLayer.push(arguments);
+        };
+        gtag("js", new Date());
+        gtag("config", gid);
+      };
+    }
+    // Initialize Google Analytics
+    initGoogleAnalytics();
+  </script>
+  <style>
+    body::after {
+      content: none;
+    }
+  </style>
+  <body style="background-color: black">
+    <div id="app"><!--app-html--></div>
+    <script src="/static/qrcode.min.js"></script>
+    <script type="module" src="/main"></script>
+    <script>
+      document.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+      });
+    </script>
+  </body>
+</html>

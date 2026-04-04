@@ -1,0 +1,1273 @@
+<template>
+  <bp-navigation-bar-title>
+    <PCSideBar>
+      <scroll-view class="container" direction="vertical" @scrolltolower="loadMoreHistory">
+        <view class="container-content">
+          <view class="header">
+            <view class="header-arrow-left" @click="goBack()">
+              <image class="header-arrow-left-icon" src="/static/arrow-left.png" />
+            </view>
+            <text class="header-title">{{ $i18n_t("user_return.title") }}</text>
+            <credits-balance-icon v-if="isCurrentUser" class="credits-balance header-points"></credits-balance-icon>
+          </view>
+          <view class="welcome">
+            <view class="welcome-box1">
+              <view class="welcome-box1-bg">Welcome back.</view>
+              <image class="welcome-box1-bg1" src="/static/user-return-bg2.png" />
+              <image class="welcome-box1-bg2" src="/static/user-return-bg3.png" />
+              <image class="welcome-box1-bg3" src="/static/user-return-bg4.png" />
+              <view class="welcome-title1">{{ $i18n_t("user_return.welcome") }}</view>
+              <view class="welcome-title2">{{ $i18n_t("user_return.sub_welcome") }}</view>
+              <view class="welcome-title3">
+                <image class="welcome-title3-hourglass-icon" src="/static/hourglass.png" />
+                {{ $i18n_t("user_return.time_left") }}
+              </view>
+              <view class="welcome-countdown">
+                <text class="welcome-countdown-item">{{ calculateTimeRemaining(createdTime).days }}</text>
+                {{ $i18n_t("user_return.time_left_day") }}
+                <text class="welcome-countdown-item">{{ calculateTimeRemaining(createdTime).hours }}</text>
+                {{ $i18n_t("user_return.time_left_hour") }}
+                <text class="welcome-countdown-item">{{ calculateTimeRemaining(createdTime).minutes }}</text>
+                {{ $i18n_t("user_return.time_left_minute") }}
+              </view>
+            </view>
+            <view class="welcome-box2">
+              <view class="welcome-title4">{{ $i18n_t("user_return.unique_reward") }}</view>
+              <view class="welcome-title5">{{ $i18n_t("user_return.welcome_point") }}</view>
+              <view class="welcome-points">
+                <image class="welcome-points-flash-icon" src="/static/icons/flash@2x.png" />
+                {{ baseRewardData?.point || 0 }}
+              </view>
+              <view class="welcome-title6">{{ $i18n_t("user_return.welcome_point_desc") }}</view>
+              <view
+                :class="['welcome-btn', baseRewardData?.status === 2 ? '' : 'welcome-btn-claim']"
+                @click="() => baseRewardData?.status === 1 && handleTaskClick(baseRewardData)"
+              >
+                <fr-spin type="primary" style="position: absolute; left: 42%; top: 21%" v-if="baseRewardData.loading" />
+                <image class="welcome-btn-gift-icon" src="/static/gift.png" />
+                <text class="welcome-btn-text">{{ baseRewardData?.status === 2 ? $i18n_t("user_return.btn_claimed") : $i18n_t("user_return.btn_claim") }}</text>
+              </view>
+            </view>
+          </view>
+          <view class="tabs">
+            <view class="tabs-header">
+              <view class="tab-item" :class="{ 'tab-active': activeTab === 'tasks' }" @click="switchTab('tasks')">
+                <text>{{ $i18n_t("user_return.tab_title1") }}</text>
+                <view class="tab-indicator" v-if="activeTab === 'tasks'"></view>
+              </view>
+              <view class="tab-item" :class="{ 'tab-active': activeTab === 'rewards' }" @click="switchTab('rewards')">
+                <text>{{ $i18n_t("user_return.tab_title2") }}</text>
+                <view class="tab-indicator" v-if="activeTab === 'rewards'"></view>
+              </view>
+            </view>
+            <view class="tabs-content">
+              <view v-if="activeTab === 'tasks'" class="tab-invite-task">
+                <view class="invite-task-title">
+                  <image class="invite-user-icon" src="/static/invite-user.png" />
+                  <text>{{ $i18n_t("user_return.tab_title1") }}</text>
+                </view>
+                <view class="invite-task-progress">
+                  <view class="invite-task-progress-title">
+                    <text class="invite-task-progress-title-text1">{{ $i18n_t("user_return.invite_progress") }}</text>
+                    <text class="invite-task-progress-title-text2">{{ $i18n_t("user_return.invite_progress_desc", { num: requiredCount }) }}</text>
+                  </view>
+                  <view class="invite-task-progress-point">
+                    <view class="invite-task-progress-point-bar1"></view>
+                    <view class="invite-task-progress-point-bar2"></view>
+                    <view class="invite-task-progress-point-bar3"></view>
+                    <view v-for="(item, index) in swapLastTwoItems(list)" :key="index" class="invite-task-progress-point-item">
+                      <view v-if="item.status === 2" class="invite-task-progress-point-item-icon1">
+                        <image class="invite-task-progress-point-item-icon1-success" src="/static/success-icon.png" />
+                      </view>
+                      <view v-else class="invite-task-progress-point-item-icon2">
+                        <image class="invite-task-progress-point-item-icon2-user" src="/static/user-icon.png" />
+                      </view>
+                      <text class="invite-task-progress-point-item-title">{{
+                        item.rewardLevel === 0 ? $i18n_t("user_return.step_start") : $i18n_t("user_return.step_num", { num: item.requairedNum })
+                      }}</text>
+                      <text class="invite-task-progress-point-item-subtitle">{{ item.point }}{{ $i18n_t("user_return.points") }}</text>
+                    </view>
+                  </view>
+                </view>
+                <view class="invite-task-tips">
+                  <text class="invite-task-tips-icon">!</text>
+                  <text class="invite-task-tips-text">{{ $i18n_t("user_return.tips") }}</text>
+                </view>
+                <view class="invite-task-copy">
+                  <view class="invite-task-copy-title">{{ $i18n_t("user_return.link") }}</view>
+                  <view class="invite-task-copy-content">
+                    <text class="invite-task-copy-content-text">{{ shareLink }}</text>
+                    <view class="invite-task-copy-content-btn" @click="copyToClipboard(shareLink)">{{ $i18n_t("user_return.copy") }}</view>
+                  </view>
+                  <view class="invite-task-copy-subtitle">{{ $i18n_t("user_return.link_desc") }}</view>
+                </view>
+                <view class="invite-task-copy">
+                  <view class="invite-task-copy-title">{{ $i18n_t("user_return.code") }}</view>
+                  <view class="invite-task-copy-content">
+                    <text class="invite-task-copy-content-text">
+                      {{ $i18n_t("user_return.code_desc1") }}
+                      <text class="invite-task-copy-content-text-code">{{ inviteCode }}</text>
+                    </text>
+                    <view class="invite-task-copy-content-btn" @click="copyToClipboard(inviteCode)">{{ $i18n_t("user_return.copy") }}</view>
+                  </view>
+                  <view class="invite-task-copy-subtitle">{{ $i18n_t("user_return.code_desc2") }}</view>
+                </view>
+                <view class="invite-task-reward">
+                  <view class="invite-task-reward-title">
+                    <image class="invite-task-reward-title-icon" src="/static/rewards-icon.png" />
+                    <view class="invite-task-reward-title-text">{{ $i18n_t("user_return.reward_title1") }}</view>
+                  </view>
+                  <view class="invite-task-reward-list">
+                    <view class="invite-task-reward-item" v-for="(item, index) in list" :key="index">
+                      <text class="invite-task-reward-item-title">
+                        {{ item.rewardLevel === 0 ? $i18n_t("user_return.reward_title2") : $i18n_t("user_return.reward_title3", { num: item.requairedNum }) }}
+                      </text>
+                      <text class="invite-task-reward-item-num">{{ item.point }}</text>
+                      <text class="invite-task-reward-item-subtitle">
+                        <text class="invite-task-reward-item-subtitle-zero" v-if="item.rewardLevel === 0">{{ $i18n_t("user_return.btn_claim_now") }}</text>
+                        <template v-else>{{ $i18n_t("user_return.reward_title3", { num: item.requairedNum }) }}</template>
+                      </text>
+                      <view v-if="item.status === 0" class="invite-task-reward-item-btn0">{{ $i18n_t("user_return.btn_unmet") }}</view>
+                      <view v-if="item.status === 1" class="invite-task-reward-item-btn1" @click="() => handleTaskClick(item)">
+                        <fr-spin type="primary" style="position: absolute; left: 42%; top: 21%" v-if="item.loading" />
+                        {{ $i18n_t("user_return.btn_claim") }}
+                      </view>
+                      <view v-if="item.status === 2" class="invite-task-reward-item-btn2">{{ $i18n_t("user_return.btn_claimed") }}</view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+              <view v-if="activeTab === 'rewards'" class="tab-invite-history">
+                <view class="tab-invite-history-title">
+                  <image class="tab-invite-history-title-icon" src="/static/invite-icon.png" />
+                  <text class="tab-invite-history-title-text">{{ $i18n_t("user_return.tab_title2") }}</text>
+                </view>
+                <view class="tab-invite-history-item" v-for="(item, index) in history" :key="index">
+                  <image class="tab-invite-history-item-left" :src="item.avatar || '/static/defaultAvatar.png'"></image>
+                  <view class="tab-invite-history-item-right">
+                    <text class="tab-invite-history-item-right-title1">{{ item.username }}</text>
+                    <text class="tab-invite-history-item-right-title2"
+                      >{{ $i18n_t("user_return.register_email") }}{{ item.status === "rewarded" ? item.emailAddress : $i18n_t("user_return.no_email") }}</text
+                    >
+                    <text class="tab-invite-history-item-right-title3">{{ $i18n_t("user_return.register_time") }}{{ item.createdAt.split("T")[0] }}</text>
+                    <view class="tab-invite-history-item-right-btn1" v-if="item.emailVerified">{{ $i18n_t("user_return.email_linked") }}</view>
+                    <view class="tab-invite-history-item-right-btn2" v-else>{{ $i18n_t("user_return.email_unlinked") }}</view>
+                  </view>
+                </view>
+                <!-- 兜底显示 -->
+                <view v-if="history.length === 0" class="tab-invite-history-empty">
+                  <text class="tab-invite-history-empty-text">{{ $i18n_t("user_return.no_history") }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </PCSideBar>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import { user, creditsBalance } from "@/store/user";
+import { execGTagEvent, getUrlParameter } from "@/utils/index.uts";
+import CreditsBalanceIcon from "../publish/panel/credits-balance-icon.uvue";
+import { getReturnUserRewards, claimRewards } from "../../api/home.uts";
+import { UserItem, ApiResponse, ClaimRewardsData } from "@/types/index.uts"; // 导入 ApiResponse
+import { getDomainFromUrl, isTelegramMiniApp } from "@/utils/platform.uts"; // Import isTelegramMiniApp
+import { appStore } from "@/store/index.uts"; // Import appStore
+import { config } from "@/api/request.uts";
+import type { ReferralCenterData, InvitationHistoryItem } from "@/types/affiliate.uts";
+import { getAffiliateSummary, getAffiliateHistory } from "@/api/affiliate.uts";
+import { FrSpin } from "@/components/widgets";
+import PCSideBar from "@/components/PCSideBar/index.uvue";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+
+const from = getUrlParameter("from", location.search); // Add this line to get the 'from' parameter
+const userProfile = ref<UserItem>({
+  id: "",
+  username: "",
+  avatar: "",
+  email: "",
+  bio: "",
+  followersCount: 0,
+  followingCount: 0,
+  videoLikeCount: 0,
+  photoLikeCount: 0,
+  nickname: "",
+  isFollowing: false,
+  postsCount: 0,
+  location: "",
+  createdAt: "",
+});
+const activeTab = ref<"tasks" | "rewards">("tasks");
+const list = ref([]);
+const requiredCount = ref<num>(0);
+const shareLink = ref<String>();
+const createdTime = ref<String>();
+const isTgMiniApp = ref<boolean>(false);
+const inviteCode = ref<String>();
+const history = ref<InvitationHistoryItem[]>([]);
+const page = ref(1);
+const pageSize = 5;
+const loading = ref(false);
+const hasMore = ref(true);
+
+const baseRewardData = computed<num>(() => {
+  return list.value.filter((item) => item.rewardLevel === 0)[0];
+});
+
+const isCurrentUser = computed<boolean>(() => {
+  return userProfile.value.id == user.value?.id;
+});
+
+// 数组交换最后两项的方法
+const swapLastTwoItems = (arr) => {
+  const clonedArray = [...arr];
+  if (clonedArray.length >= 2) {
+    const len = clonedArray.length;
+    [clonedArray[len - 1], clonedArray[len - 2]] = [clonedArray[len - 2], clonedArray[len - 1]];
+  }
+  return clonedArray;
+};
+
+// 计算剩余时间
+const calculateTimeRemaining = (timeString) => {
+  const initialTime = new Date(timeString);
+  // 计算初始时间 + 6天后的时间
+  const targetTime = new Date(initialTime.getTime() + 6 * 24 * 60 * 60 * 1000);
+  // 获取当前时间
+  const currentTime = new Date();
+  // 计算时间差（毫秒）
+  const timeDiff = targetTime.getTime() - currentTime.getTime();
+  // 如果目标时间已经过去，返回负数表示已过期
+  if (timeDiff <= 0) {
+    return {
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      isExpired: true,
+    };
+  }
+  // 计算天、小时、分钟
+  const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+  return {
+    days,
+    hours,
+    minutes,
+    isExpired: false,
+  };
+};
+
+const switchTab = (tab: "tasks" | "rewards") => {
+  activeTab.value = tab;
+};
+
+const copyToClipboard = (value: string) => {
+  uni.setClipboardData({
+    data: value,
+    success: () => {
+      uni.showToast({
+        title: $i18n_t("user_return.code_cussess"),
+        icon: "none",
+      });
+    },
+  });
+};
+
+const handleTaskClick = async (item) => {
+  try {
+    item.loading = true;
+    const res = await claimRewards(userProfile.value.id, item.rewardLevel);
+    item.loading = false;
+    //领取成功
+    uni.showToast({
+      title: $i18n_t("task_center.obtained_reward"),
+      icon: "success",
+      duration: 3500,
+    });
+    initializeData();
+    execGTagEvent("returning_reward", { pts: creditsBalance.value.toString(), serial: String(item.rewardLevel) } as AnyObject);
+  } catch (error) {
+    item.loading = false;
+    console.error("Failed to load banner list:", error);
+  }
+};
+
+const loadMoreHistory = async () => {
+  if (loading.value || !hasMore.value || activeTab.value !== "rewards") {
+    return;
+  }
+  loading.value = true;
+  page.value++;
+  try {
+    const res = await getReturnUserRewards(userProfile.value.id, page.value, pageSize);
+    const newHistory = res.data?.usersOutput || [];
+    history.value.push(...newHistory);
+    if (newHistory.length < pageSize) {
+      hasMore.value = false;
+    }
+  } catch (error) {
+    console.error("Failed to fetch more history:", error);
+    page.value--; // revert page increase on error
+  } finally {
+    loading.value = false;
+  }
+};
+
+const initializeData = async () => {
+  try {
+    await getAffiliateSummary(); // 应后端要求刷新接口，不做其他处理
+    const res = await getReturnUserRewards(userProfile.value?.id, page.value, pageSize);
+    if (res != null && res.success && res.data != null) {
+      page.value = 1;
+      hasMore.value = true;
+      loading.value = true;
+      const data = res.data;
+      const historyData = data?.usersOutput || [];
+      list.value = data?.claimRecords || [];
+      requiredCount.value = data?.requiredCount || 0;
+      createdTime.value = data?.createdAt;
+      history.value = historyData;
+      if (historyData.length < pageSize) {
+        hasMore.value = false;
+      }
+      // 邀请码&邀请链接
+      inviteCode.value = data?.inviteCode;
+      if (isTgMiniApp.value && appStore.value.botUsername && appStore.value.appName) {
+        shareLink.value = `https://t.me/${appStore.value.botUsername}/${appStore.value.appName}?startapp=${data?.inviteCode}`;
+      } else {
+        shareLink.value = `${effectiveDomain.value}/pages/index/index?promotional_code=${data?.inviteCode}`;
+      }
+    } else {
+      console.error("Failed to load banner list:", pointsRes?.error?.message);
+    }
+  } catch (error) {
+    console.error("Failed to fetch affiliate data:", error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const effectiveDomain = computed(() => {
+  if (typeof window !== "undefined" && window.location && window.location.protocol) {
+    const protocol = window.location.protocol;
+    if (protocol === "http:" || protocol === "https:") {
+      return `${protocol}//${window.location.hostname}`;
+    }
+  }
+  return getDomainFromUrl(config.baseUrl); // Fallback for non-browser environments or if window is undefined
+});
+
+onLoad(async (options: OnLoadOptions) => {
+  const userId = options["userId"];
+  if (userId != null && userId.length > 0) {
+    userProfile.value.id = userId;
+  } else {
+    userProfile.value.id = user.value?.id || "";
+  }
+});
+
+onMounted(() => {
+  isTgMiniApp.value = isTelegramMiniApp();
+  initializeData();
+  execGTagEvent("returninguser_enter", { pts: creditsBalance.value.toString(), from: from || "unknown" } as AnyObject);
+});
+onUnmounted(() => {
+  execGTagEvent("returninguser_leave", { pts: creditsBalance.value.toString() } as AnyObject);
+});
+</script>
+
+<style lang="scss">
+.container {
+  color: white;
+  height: 100vh;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  &-content {
+    background: linear-gradient(180deg, #ff23b8 0%, rgba(255, 69, 67, 0) 100%);
+    background-size: 100% 845px; /* 宽度100% 高度100px */
+    background-repeat: no-repeat; /* 不重复 */
+    // width: 390px;
+    width: 100%;
+    .header {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      padding: 19px 24px 12px;
+      &-arrow-left {
+        width: 40px;
+        height: 40px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 16px;
+        &-icon {
+          width: 19px;
+          height: 19px;
+        }
+      }
+      &-title {
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 17px;
+        color: #ffffff;
+        line-height: 25px;
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+      }
+      &-points {
+        margin-left: auto;
+      }
+    }
+    .welcome {
+      width: 100%;
+      // height: 464px;
+      margin-top: 12px;
+      // background-image: url("/static/user-return-bg.png");
+      // background-repeat: no-repeat;
+      // background-position: top;
+      // background-size: 100% auto;
+      &-box1 {
+        margin-left: 24px;
+        margin-right: 24px;
+        height: 366px;
+        background: linear-gradient(180deg, #ff00d8 0%, #fff500 100%);
+        box-shadow: inset 0px 0 20px 1px #fffdf0;
+        border-radius: 24px 24px 24px 24px;
+        position: relative;
+        overflow: visible;
+        &-bg {
+          position: absolute;
+          left: 24px;
+          top: 39px;
+          height: 34px;
+          font-weight: bold;
+          font-family:
+            Open Sans,
+            Open Sans;
+          font-weight: normal;
+          font-size: 25px;
+          color: rgba(255, 255, 255, 0.2);
+          line-height: 34px;
+          text-align: center;
+          font-style: normal;
+          text-transform: none;
+        }
+        &-bg1 {
+          position: absolute;
+          width: 119px;
+          height: 189px;
+          right: 0;
+          top: 29px;
+        }
+        &-bg2 {
+          position: absolute;
+          width: 139px;
+          height: 90px;
+          right: -24px;
+          top: 55px;
+        }
+        &-bg3 {
+          position: absolute;
+          width: 177px;
+          height: 37px;
+          left: -24px;
+          top: 140px;
+        }
+      }
+      &-box2 {
+        margin-left: 48px;
+        margin-right: 48px;
+        margin-top: -177px;
+        height: 276px;
+        background: #ffffff;
+        box-shadow: inset 0px 4px 30px 1px rgba(255, 35, 184, 0.29);
+        border-radius: 24px 24px 24px 24px;
+        // background-image: url("/static/user-return-bg1.png");
+        // background-repeat: no-repeat;
+        // background-position: top;
+        // background-size: 100% auto;
+      }
+      &-title1 {
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 24px;
+        color: #ffffff;
+        text-align: left;
+        font-style: normal;
+        text-transform: none;
+        margin-top: 29px;
+        margin-left: 24px;
+      }
+      &-title2 {
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 400;
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.8);
+        font-style: normal;
+        text-transform: none;
+        margin-left: 24px;
+      }
+      &-title3 {
+        margin-top: 22px;
+        margin-left: 24px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 14px;
+        color: #ffffff;
+        text-align: left;
+        font-style: normal;
+        text-transform: none;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        &-hourglass-icon {
+          width: 13px;
+          height: 13px;
+          margin-right: 4px;
+        }
+      }
+      &-countdown {
+        width: 342px;
+        margin-left: 24px;
+        margin-top: 7px;
+        height: 37px;
+        background: linear-gradient(
+          270deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.2) 25%,
+          rgba(235, 255, 0, 0.2) 50%,
+          rgba(255, 255, 255, 0.2) 75%,
+          rgba(255, 255, 255, 0) 100%
+        );
+        border-radius: 0px 0px 0px 0px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 18px;
+        color: #ffffff;
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        &-item {
+          color: #ffe016;
+          margin-right: 4px;
+        }
+        &-item:not(:first-child) {
+          margin-left: 4px;
+        }
+      }
+      &-title4 {
+        height: 22px;
+        line-height: 22px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 16px;
+        color: #000000;
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+        margin-top: 24px;
+      }
+      &-title5 {
+        height: 18px;
+        line-height: 18px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.8);
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+        margin-top: 48px;
+      }
+      &-points {
+        margin-top: 4px;
+        height: 46px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 600;
+        font-size: 33px;
+        color: #000000;
+        line-height: 46px;
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        &-flash-icon {
+          width: 17px;
+          height: 17px;
+          margin-right: 6px;
+          margin-left: -6px;
+        }
+      }
+      &-title6 {
+        width: 300px;
+        margin-left: auto;
+        margin-right: auto;
+        padding-left: 20px;
+        padding-right: 20px;
+        overflow: visible;
+        height: 18px;
+        line-height: 18px;
+        font-family:
+          PingFang SC,
+          PingFang SC;
+        font-weight: 400;
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.3);
+        text-align: center;
+        font-style: normal;
+        text-transform: none;
+        margin-top: 7px;
+      }
+      &-btn {
+        margin-bottom: 24px;
+        margin-top: 17px;
+        width: 199px;
+        height: 50px;
+        background: #080808;
+        border-radius: 37px 37px 37px 37px;
+        margin-left: auto;
+        margin-right: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: row;
+        &-gift-icon {
+          width: 16px;
+          height: 16px;
+          margin-right: 8px;
+        }
+        &-text {
+          padding-top: 2px;
+          font-family:
+            PingFang SC,
+            PingFang SC;
+          font-weight: 600;
+          font-size: 16px;
+          color: #ffffff;
+          line-height: 25px;
+          text-align: left;
+          font-style: normal;
+          text-transform: none;
+        }
+      }
+      &-btn.welcome-btn-claim {
+        background: linear-gradient(134deg, #ff00d8 0%, #fff500 100%);
+      }
+    }
+    .tabs {
+      margin-top: 32px;
+      &-header {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        margin-bottom: 25px;
+        .tab-item {
+          font-family:
+            PingFang SC,
+            PingFang SC;
+          font-weight: 600;
+          font-size: 16px;
+          color: rgba(255, 255, 255, 0.6);
+          line-height: 25px;
+          text-align: center;
+          font-style: normal;
+          text-transform: none;
+          &.tab-active {
+            color: #ffffff;
+          }
+          .tab-indicator {
+            width: 64px;
+            height: 3px;
+            background: #ff23b8;
+            border-radius: 2px 2px 2px 2px;
+            margin-top: 10px;
+          }
+        }
+      }
+      &-content {
+        padding: 0 24px;
+        .tab-invite-task {
+          .invite-task-title {
+            display: flex;
+            align-items: center;
+            flex-direction: row;
+            height: 20px;
+            font-family:
+              PingFang SC,
+              PingFang SC;
+            font-weight: 600;
+            font-size: 14px;
+            color: #ffffff;
+            line-height: 25px;
+            text-align: left;
+            font-style: normal;
+            text-transform: none;
+            margin-bottom: 16px;
+            .invite-user-icon {
+              width: 18px;
+              height: 18px;
+              margin-right: 8px;
+            }
+          }
+          .invite-task-progress {
+            height: 269px;
+            background: #222222;
+            border-radius: 12px 12px 12px 12px;
+            &-title {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              flex-direction: row;
+              padding: 16px;
+              &-text1 {
+                height: 20px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 14px;
+                color: #ffffff;
+                line-height: 25px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+              }
+              &-text2 {
+                height: 20px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 14px;
+                color: #ffe016;
+                line-height: 25px;
+                text-align: right;
+                font-style: normal;
+                text-transform: none;
+              }
+            }
+            &-point {
+              display: flex;
+              flex-direction: row;
+              flex-wrap: wrap;
+              justify-content: space-between;
+              row-gap: 27px;
+              column-gap: 34px;
+              padding: 8px 16px 24px;
+              &-bar1 {
+                // width: 274px;
+                height: 7px;
+                background: linear-gradient(130deg, #ff00d8 0%, #fff500 100%);
+                border-radius: 13px 13px 13px 13px;
+                opacity: 0.4;
+                position: absolute;
+                top: 24px;
+                // left: 30px;
+                width: 80%;
+                left: 10%;
+              }
+              &-bar2 {
+                // width: 274px;
+                height: 7px;
+                background: linear-gradient(130deg, #ff00d8 0%, #fff500 100%);
+                border-radius: 13px 13px 13px 13px;
+                opacity: 0.4;
+                position: absolute;
+                bottom: 82px;
+                // left: 30px;
+                width: 80%;
+                left: 10%;
+              }
+              &-bar3 {
+                width: 7px;
+                height: 122px;
+                background: #554a00;
+                border-radius: 13px 13px 13px 13px;
+                position: absolute;
+                top: 24px;
+                // right: 37px;
+                right: 12%;
+              }
+              &-item {
+                flex: 0 0 calc(25% - 25.5px); /* 25%宽度减去部分间隙 */
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                &:nth-child(4n + 1) {
+                  margin-right: 0; /* 每行第一个不设置右边距 */
+                }
+                &:nth-child(4n) {
+                  margin-left: 0; /* 每行最后一个不设置左边距 */
+                }
+                &-icon1 {
+                  width: 36px;
+                  height: 36px;
+                  background: #ffffff;
+                  border-radius: 50%;
+                  margin-bottom: 7px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  &-success {
+                    width: 24px;
+                    height: 24px;
+                  }
+                }
+                &-icon2 {
+                  width: 36px;
+                  height: 36px;
+                  background: #6c6c6c;
+                  border-radius: 50%;
+                  margin-bottom: 7px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  &-user {
+                    width: 18px;
+                    height: 18px;
+                  }
+                }
+                &-title {
+                  height: 17px;
+                  font-family:
+                    PingFang SC,
+                    PingFang SC;
+                  font-weight: 400;
+                  font-size: 12px;
+                  color: #ffffff;
+                  line-height: 17px;
+                  text-align: center;
+                  font-style: normal;
+                  text-transform: none;
+                }
+                &-subtitle {
+                  height: 20px;
+                  font-family:
+                    PingFang SC,
+                    PingFang SC;
+                  font-weight: 600;
+                  font-size: 14px;
+                  color: #ffe016;
+                  line-height: 20px;
+                  text-align: center;
+                  font-style: normal;
+                  text-transform: none;
+                }
+              }
+            }
+          }
+          .invite-task-tips {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: row;
+            margin-top: 12px;
+            margin-bottom: 24px;
+            &-icon {
+              width: 17px;
+              height: 17px;
+              border-radius: 0px 0px 0px 0px;
+              border: 2px solid #ff7823;
+              color: #ff7823;
+              border-radius: 50%;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 12px;
+              margin-right: 9px;
+            }
+            &-text {
+              height: 17px;
+              font-family:
+                PingFang SC,
+                PingFang SC;
+              font-weight: 400;
+              font-size: 12px;
+              color: #ff7823;
+              line-height: 19px;
+              text-align: center;
+              font-style: normal;
+              text-transform: none;
+            }
+          }
+          .invite-task-copy {
+            background: #222222;
+            border-radius: 12px 12px 12px 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+            &-title {
+              height: 20px;
+              font-family:
+                PingFang SC,
+                PingFang SC;
+              font-weight: 600;
+              font-size: 14px;
+              color: #ffffff;
+              line-height: 17px;
+              text-align: left;
+              font-style: normal;
+              text-transform: none;
+            }
+            &-content {
+              margin-top: 16px;
+              margin-bottom: 12px;
+              height: 50px;
+              background: #434343;
+              border-radius: 30px 30px 30px 30px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              flex-direction: row;
+              &-text {
+                flex: 1;
+                height: 17px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 400;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 17px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+                margin-left: 20px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: calc(100% - 80px);
+                &-code {
+                  height: 19px;
+                  font-family:
+                    Open Sans,
+                    Open Sans;
+                  font-weight: bold;
+                  font-size: 14px;
+                  color: #ffe016;
+                  text-align: left;
+                  font-style: normal;
+                  text-transform: none;
+                  margin-left: 12px;
+                }
+              }
+              &-btn {
+                width: 65px;
+                height: 38px;
+                background: #ff23b8;
+                border-radius: 30px 30px 30px 30px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 39px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+                margin-right: 6px;
+                margin-left: auto;
+                text-align: center;
+              }
+            }
+            &-subtitle {
+              height: 17px;
+              font-family:
+                PingFang SC,
+                PingFang SC;
+              font-weight: 400;
+              font-size: 12px;
+              color: rgba(255, 255, 255, 0.5);
+              line-height: 17px;
+              text-align: center;
+              font-style: normal;
+              text-transform: none;
+            }
+          }
+          .invite-task-reward {
+            margin-top: 8px;
+            &-title {
+              display: flex;
+              align-items: center;
+              flex-direction: row;
+              margin-bottom: 16px;
+              &-icon {
+                width: 18px;
+                height: 18px;
+                margin-right: 8px;
+              }
+              &-text {
+                height: 20px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 14px;
+                color: #ffffff;
+                line-height: 22px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+              }
+            }
+            &-list {
+              display: flex;
+              flex-direction: row;
+              flex-wrap: wrap;
+              column-gap: 7px;
+              row-gap: 12px;
+              margin-bottom: 31px;
+            }
+            &-item {
+              width: 166px;
+              height: 158px;
+              background: #222222;
+              border-radius: 12px 12px 12px 12px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              background-image: url("/static/flash-bg.png");
+              background-repeat: no-repeat;
+              background-position: bottom right;
+              background-size: 79px 78px;
+              &-title {
+                margin-top: 16px;
+                height: 17px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 17px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+              }
+              &-num {
+                margin-top: 4px;
+                height: 33px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 24px;
+                color: #ffffff;
+                line-height: 33px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+              }
+              &-subtitle {
+                margin-top: 8px;
+                height: 17px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 400;
+                font-size: 12px;
+                color: #02ff9e;
+                line-height: 17px;
+                text-align: center;
+                font-style: normal;
+                text-transform: none;
+                &-zero {
+                  color: #ffe016;
+                }
+              }
+              &-btn0,
+              &-btn1,
+              &-btn2 {
+                margin-top: 10px;
+                width: 116px;
+                height: 38px;
+                border-radius: 30px 30px 30px 30px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 38px;
+                font-style: normal;
+                text-transform: none;
+                text-align: center;
+              }
+              &-btn0 {
+                background: #696969;
+              }
+              &-btn1 {
+                background: linear-gradient(132deg, #ff00d8 0%, #fff500 100%);
+              }
+              &-btn2 {
+                background: #000000;
+              }
+            }
+          }
+        }
+        .tab-invite-history {
+          margin-bottom: 33px;
+          &-title {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            &-icon {
+              margin-right: 8px;
+              width: 18px;
+              height: 18px;
+            }
+            &-text {
+              height: 20px;
+              font-family:
+                PingFang SC,
+                PingFang SC;
+              font-weight: 600;
+              font-size: 14px;
+              color: #ffffff;
+              line-height: 20px;
+              text-align: left;
+              font-style: normal;
+              text-transform: none;
+            }
+          }
+          &-item {
+            margin-top: 16px;
+            // width: 342px;
+            height: 140px;
+            background: #222222;
+            border-radius: 12px 12px 12px 12px;
+            display: flex;
+            flex-direction: row;
+            padding: 16px;
+            &-left {
+              width: 69px;
+              height: 69px;
+              background: #ffffff;
+              border-radius: 50%;
+              margin-right: 16px;
+            }
+            &-right {
+              &-title1 {
+                height: 20px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 600;
+                font-size: 14px;
+                color: #ffffff;
+                line-height: 20px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+              }
+              &-title2 {
+                height: 17px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 400;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 17px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+                margin-top: 8px;
+              }
+              &-title3 {
+                height: 17px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 400;
+                font-size: 12px;
+                color: #ffffff;
+                line-height: 17px;
+                text-align: left;
+                font-style: normal;
+                text-transform: none;
+                margin-top: 2px;
+              }
+              &-btn1,
+              &-btn2 {
+                margin-top: 12px;
+                width: 87px;
+                height: 33px;
+                border-radius: 9px 9px 9px 9px;
+                font-family:
+                  PingFang SC,
+                  PingFang SC;
+                font-weight: 400;
+                font-size: 12px;
+                line-height: 33px;
+                text-align: center;
+                font-style: normal;
+                text-transform: none;
+              }
+              &-btn1 {
+                color: #0ad688;
+                background: rgba(10, 214, 136, 0.1);
+              }
+              &-btn2 {
+                color: #ffc400;
+                background: rgba(255, 196, 0, 0.1);
+              }
+            }
+          }
+          &-empty {
+            padding-top: 40px;
+            padding-bottom: 40px;
+            &-text {
+              height: 17px;
+              font-family:
+                PingFang SC,
+                PingFang SC;
+              font-weight: 400;
+              font-size: 12px;
+              color: rgba(255, 255, 255, 0.4);
+              line-height: 17px;
+              text-align: center;
+              font-style: normal;
+              text-transform: none;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+</style>

@@ -1,0 +1,591 @@
+<template>
+  <view class="comments-container" :style="{ height: containerHeight + 'px' }">
+    <view class="comments-header" ref="headerRef" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+      <view class="drag-handle"></view>
+      <text class="comments-count">{{ props.data?.commentsCount != null ? props.data?.commentsCount : 0 }} {{ $i18n_t("common.comments") }}</text>
+      <view class="close-button-wrapper" @click="onCloseHandle">
+        <icon-font name="close" :size="8" color="#ddd" />
+      </view>
+    </view>
+    <fr-scroll-list
+      :data-source="result.records"
+      :pagination="result.pagination"
+      :loading="loading"
+      class="comments-list"
+      item-style="margin-bottom: 0;"
+      @loadmore="onLoadMoreComments"
+    >
+      <template #record="{ record: comment }">
+        <view class="comment-item">
+          <fr-avatar class="avatar" :url="comment.author.avatar"></fr-avatar>
+          <view class="comment-content">
+            <text class="username">{{ comment.author.username }}</text>
+            <fr-typography-paragraph class="text">{{ comment.content }}</fr-typography-paragraph>
+            <view class="comment-actions">
+              <view class="comment-info">
+                <text class="time">{{ fmtDateDisplay(comment.createdAt) }}</text>
+                <text class="reply-button" @click="replyToComment(comment)">{{ $i18n_t("account.reply") }}</text>
+              </view>
+              <icon-font name="like" class="like-button" :color="comment.isLiked ? '#FF23B8' : '#ffffff'" @click="toggleCommentLike(comment)" />
+            </view>
+            <view v-if="hasReplies(comment) && !commentExpandMap[comment.id]" class="view-replies" @click="toggleReplies(comment)">
+              <text class="view-replies-text">{{
+                $i18n_t("account.viewMoreReplies", { count: comment.repliesCount != null ? comment.repliesCount : 0 })
+              }}</text>
+            </view>
+            <!-- ADDED: Replies List -->
+            <replies-comments
+              v-if="commentExpandMap[comment.id] != null"
+              v-show="commentExpandMap[comment.id]"
+              :comment="comment"
+              @reply="replyToReply"
+              @toggle:like="toggleReplyLike"
+              @toggle:replies="toggleReplies"
+            ></replies-comments>
+          </view>
+        </view>
+      </template>
+    </fr-scroll-list>
+    <view class="comment-input-area" ref="footerRef">
+      <input
+        ref="commentInputRef"
+        class="comment-input"
+        confirm-type="send"
+        :placeholder="
+          commentInputFocus && replyComment != null
+            ? `@${replyComment.author.username}: ${$i18n_t('account.addReply')}...`
+            : `${$i18n_t('common.addComment')}...`
+        "
+        v-model="commentInput"
+        @confirm="onInputConfirm"
+        @focus="onToggleInputFocus(true)"
+        @blur="onToggleInputFocus(false)"
+      />
+      <view
+        style="height: 26px; justify-content: center; padding: 0 12px; background-color: #ff23b8; border-radius: 18px; margin-right: 5px"
+        @click="sendComment"
+      >
+        <icon-font name="send_filled" :size="18" color="#fff"></icon-font>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { Ref, computed, onMounted, ref } from "vue";
+import IconFont from "../IconFont/IconFont.uvue";
+import { PostItem, Comment, UserItem } from "../../types/index.uts";
+import RepliesComments from "./replies-comments.uvue";
+import { useLoadListRequest, useSubmitRequest, LoadListRequestOptions, LoadListRequestState, SubmitRequestOptions } from "@/hooks/index.uts";
+import { fmtDateDisplay } from "@/utils/index.uts";
+// import { FrScrollList, FrTypographyParagraph, FrAvatar, TPagination } from "@/components/widgets/index.uts";
+import { user } from "@/store/user.uts";
+import FrScrollList from "@/components/widgets/fr-scroll-list.uvue";
+import { TPagination } from "@/components/widgets/type.uts";
+import FrTypographyParagraph from "@/components/widgets/fr-typography-paragraph.uvue";
+import FrAvatar from "@/components/widgets/fr-avatar.uvue";
+import { $i18n_t } from "@/locale/index.uts";
+import { execGTagEvent } from "@/utils/index.uts";
+
+type Props = {
+  data: any;
+};
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "update:height", height: number): void;
+}>();
+
+const windowHeight = uni.getSystemInfoSync().windowHeight;
+const initialHeight = windowHeight * 0.6;
+const closeThreshold = 150;
+
+const containerHeight = ref<number>(0);
+
+let startHeight: number = 0;
+
+const headerRef = ref<UniElement | null>(null);
+const footerRef = ref<UniElement | null>(null);
+// const headerHeight = ref(0);
+// const footerHeight = ref(0);
+
+const commentInputFocus = ref<boolean>(false);
+
+const commentExpandMap = shallowReactive<any>({});
+
+const postData = toRef<PostItem>(props, "data");
+
+const commentInput = ref<string>("");
+const commentInputRef = ref<UniInputElement | null>(null);
+const parentComment = ref<any | null>(null);
+const mentionComment = ref<any | null>(null);
+
+// const scrollViewHeight = computed(() => {
+//   return containerHeight.value - headerHeight.value - footerHeight.value;
+// });
+
+const { loadListRequest, reloadListRequest, loading, result } = useLoadListRequest({
+  url: `posts/${postData.value.id}/comments`,
+  shallow: false,
+  pageSize: 100,
+  defaultParams: {
+    sortBy: "createdAt",
+    sortOrder: "asc",
+  },
+} as LoadListRequestOptions);
+
+const pagination = toRef<TPagination>(result, "pagination");
+
+type CommonSubmitResult = {
+  data: Comment;
+};
+
+type CommonSubmitParams = {
+  parentCommentID: string;
+  mentionUser: UserItem;
+  parent: Comment;
+};
+
+const { submitRequest, submitting } = useSubmitRequest({
+  url: `posts/${postData.value.id}/comment`,
+  onSuccess: ({ data }: CommonSubmitResult, { parentCommentID, mentionUser, parent }: CommonSubmitParams) => {
+    commentInput.value = "";
+    parentComment.value = null;
+    mentionComment.value = null;
+
+    props.data.commentsCount += 1;
+
+    if (!parentCommentID) {
+      result.records.push({
+        author: user.value,
+        ...data,
+      });
+    } else {
+      let replyData: any = {
+        author: user.value,
+        ...data,
+      };
+
+      if (parent) {
+        parent.repliesCount = parent.repliesCount + 1;
+      }
+
+      if (mentionUser) {
+        replyData.mentions = [{ username: mentionUser.username, mentionedUserID: mentionUser.id }];
+      }
+
+      uni.$emit("push:replies", parentCommentID, replyData);
+    }
+
+    // GA 埋点 上报数据：评论成功
+    execGTagEvent("post_comment", { postID: postData.value.id } as AnyObject);
+  },
+} as SubmitRequestOptions);
+
+const { submitRequest: likeRequest, submitting: liking } = useSubmitRequest({
+  url: (p) => (p.isLiked ? `comments/${p.id}/like` : `comments/${p.id}/unlike`),
+} as SubmitRequestOptions);
+
+watch(
+  () => postData.value.id,
+  (postID: string) => {
+    if (postID) {
+      loadListRequest({ postID });
+    }
+  },
+  { immediate: true },
+);
+
+const replyComment: Ref<Comment> = computed<Comment>(() => (mentionComment.value != null ? mentionComment.value : parentComment.value));
+
+const submitComment = (content: string) => {
+  if (content) {
+    let formData = {
+      content: content,
+      postID: postData.value.id,
+      userID: user.value?.id,
+    };
+
+    if (parentComment.value) {
+      formData.parentCommentID = parentComment.value.id;
+      formData.parent = parentComment.value;
+    }
+
+    if (mentionComment.value) {
+      formData.mentionUserIds = [mentionComment.value.author.id];
+      formData.mentionUser = mentionComment.value.author;
+    }
+
+    submitRequest(formData);
+  }
+};
+
+const onLoadMoreComments = ({ page }) => {
+  loadListRequest({ page, postID: postData.value.id });
+};
+
+const sendComment = () => {
+  submitComment(commentInput.value);
+};
+
+const onToggleInputFocus = (focus: boolean) => {
+  commentInputFocus.value = focus;
+  if (focus) {
+    parentComment.value = null;
+    mentionComment.value = null;
+  }
+};
+
+const onInputConfirm = (e) => {
+  let msg = e.detail.value;
+  submitComment(msg);
+};
+
+const startY = ref<number>(0);
+
+const onTouchStart = (event: TouchEvent) => {
+  startY.value = event.touches[0].clientY;
+  startHeight = containerHeight.value;
+};
+
+const onTouchMove = (event: TouchEvent) => {
+  const deltaY = event.touches[0].clientY - startY.value;
+  let newHeight = startHeight - deltaY;
+
+  if (newHeight > initialHeight) {
+    newHeight = initialHeight;
+  }
+
+  if (newHeight < 0) {
+    newHeight = 0;
+  }
+
+  containerHeight.value = newHeight;
+  emit("update:height", newHeight);
+};
+
+// 动画状态变量
+let animationFrameId: number | null = null;
+let animationTargetHeight: number = 0;
+let animationStartTime: number = 0;
+let animationStartValue: number = 0;
+let animationChangeValue: number = 0;
+const animationDuration: number = 300;
+let animationCallback: (() => void) | null = null;
+
+const easeInOutQuad = (t: number, b: number, c: number, d: number): number => {
+  t = t / (d / 2);
+  if (t < 1) return (c / 2) * t * t + b;
+  t--;
+  return (-c / 2) * (t * (t - 2) - 1) + b;
+};
+
+// 声明 animate 函数变量及其类型
+let animate: (() => void) | null = null;
+
+// 定义 animate 函数
+animate = (): void => {
+  const currentTime = Date.now() - animationStartTime;
+  if (currentTime < animationDuration) {
+    const easedHeight = easeInOutQuad(currentTime, animationStartValue, animationChangeValue, animationDuration);
+    containerHeight.value = easedHeight;
+    emit("update:height", easedHeight);
+    // 使用 requestAnimationFrame 进行递归调用
+    animationFrameId = requestAnimationFrame(() => animate!());
+  } else {
+    containerHeight.value = animationTargetHeight;
+    emit("update:height", animationTargetHeight);
+    if (animationCallback != null) {
+      animationCallback!();
+    }
+    if (animationFrameId != null) {
+      cancelAnimationFrame(animationFrameId!);
+    }
+  }
+};
+
+const animateTo = (targetHeight: number, callback: (() => void) | null): void => {
+  animationTargetHeight = targetHeight;
+  animationCallback = callback;
+  animationStartValue = containerHeight.value;
+  animationChangeValue = animationTargetHeight - animationStartValue;
+  animationStartTime = Date.now();
+
+  if (animationFrameId != null) {
+    cancelAnimationFrame(animationFrameId!);
+  }
+  animationFrameId = requestAnimationFrame(() => animate!());
+};
+
+const onCloseHandle = () => {
+  emit("close");
+};
+
+const onTouchEnd = () => {
+  if (containerHeight.value < closeThreshold) {
+    emit("close");
+  } else {
+    animateTo(initialHeight, () => {
+      emit("update:height", initialHeight);
+    });
+  }
+};
+
+// #ifdef WEB
+const onMouseMove = (event: MouseEvent) => {
+  const deltaY = event.clientY - startY.value;
+  let newHeight = startHeight - deltaY;
+  console.log("mousemove", deltaY);
+  if (newHeight > initialHeight) {
+    newHeight = initialHeight;
+  }
+
+  if (newHeight < 0) {
+    newHeight = 0;
+  }
+
+  containerHeight.value = newHeight;
+  emit("update:height", newHeight);
+};
+
+const onMouseDown = (event: MouseEvent) => {
+  startY.value = event.clientY;
+  startHeight = containerHeight.value;
+};
+
+const onMouseUp = () => {
+  if (containerHeight.value < closeThreshold) {
+    emit("close");
+  } else {
+    animateTo(initialHeight, () => {
+      emit("update:height", initialHeight);
+    });
+  }
+};
+// #endif
+
+const replyToComment = (c: Comment) => {
+  // commentInput.value = `@${c.author.username} `;
+  commentInputRef.value?.focus();
+  parentComment.value = c;
+  mentionComment.value = null;
+};
+
+const replyToReply = (pc: Comment, c: Comment) => {
+  // commentInput.value = `@${c.author.username} `;
+  commentInputRef.value?.focus();
+  parentComment.value = pc;
+  mentionComment.value = c;
+};
+
+const toggleReplies = (comment: Comment) => {
+  commentExpandMap[comment.id] = !commentExpandMap[comment.id];
+};
+
+const hasReplies = (comment: Comment) => {
+  return comment.repliesCount > 0;
+};
+
+const toggleCommentLike = (comment: Comment) => {
+  comment.isLiked = !comment.isLiked;
+  likeRequest({ id: comment.id, isLiked: comment.isLiked });
+};
+
+const toggleReplyLike = (comment: Comment) => {
+  comment.isLiked = !comment.isLiked;
+  likeRequest({ id: comment.id, isLiked: comment.isLiked });
+};
+
+onMounted(() => {
+  animateTo(initialHeight, () => {
+    emit("update:height", initialHeight);
+  });
+
+  // 获取头部和底部的高度
+  // if (headerRef.value != null) {
+  //   let rect = headerRef.value.getBoundingClientRect();
+  //     headerHeight.value = rect.height;
+  // }
+  // if (footerRef.value != null) {
+  //   let rect = footerRef.value.getBoundingClientRect();
+  // footerHeight.value = rect.height;
+  // }
+});
+
+defineExpose({
+  animateTo,
+});
+</script>
+
+<style scoped lang="scss">
+.comments-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #1c1c1c;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.comments-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  position: relative;
+}
+
+.drag-handle {
+  width: 46px;
+  height: 4px;
+  background-color: #888;
+  border-radius: 2px;
+  margin-bottom: 16px;
+}
+
+.comments-count {
+  color: #fff;
+  font-size: 14px;
+}
+
+.close-button-wrapper {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  background-color: #404040;
+  border-radius: 10px;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  right: 12px; /* Align to the right */
+  top: 12px; /* Center vertically */
+}
+
+.comments-list {
+  flex: 1;
+  padding: 8px 4px 8px 24px;
+}
+
+.comment-item {
+  display: flex;
+  flex-direction: row;
+  padding-right: 20px;
+  margin-bottom: 20px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 20px;
+  margin-right: 10px;
+}
+
+.comment-content {
+  flex: 1;
+}
+
+.username {
+  color: #707070;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.text {
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  margin-bottom: 5px;
+}
+
+.comment-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: row;
+}
+
+.comment-info {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+}
+
+.time {
+  color: #888;
+  font-size: 12px;
+  margin-right: 15px;
+}
+
+.reply-button {
+  color: #aaa;
+  font-size: 12px;
+}
+
+.like-button {
+  font-size: 18px;
+}
+
+.font_family {
+  font-family: "font_family" !important;
+}
+
+.liked-color {
+  color: $uni-text-color-light;
+}
+
+.default-color {
+  color: #ffffff;
+}
+
+.view-replies {
+  margin-top: 8px;
+}
+
+.view-replies-text {
+  color: #66b3ff;
+  font-size: 13px;
+}
+
+// .replies-list {
+//   margin-top: 15px;
+//   padding-left: 0px;
+//   /* Indent replies */
+//   /* border-left: 2px solid #333; */
+// }
+
+// .reply-item {
+//   margin-bottom: 15px;
+//   padding-right: 0;
+// }
+
+.comment-input-area {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 15px;
+  background-color: #333;
+  border-radius: 20px;
+}
+
+.comment-input {
+  flex: 1;
+  height: 36px;
+  padding: 10px 15px;
+  color: #fff;
+  font-size: 15px;
+  margin-right: 10px;
+}
+
+.emoji-button {
+  font-size: 22px;
+}
+</style>

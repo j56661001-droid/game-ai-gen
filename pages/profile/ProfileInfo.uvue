@@ -1,0 +1,356 @@
+<template>
+  <bp-navigation-bar-title>
+    <view class="container">
+      <!-- 顶部导航栏 -->
+      <view class="header">
+        <view class="header-row">
+          <IconFont name="arrowleft" :size="16" color="#ffffff" style="margin-right: 16px" @click="goBack()" :btnSize="30"></IconFont>
+          <text class="title">{{ profileInfoText }}</text>
+        </view>
+      </view>
+
+      <!-- 2. 个人信息列表 -->
+      <view class="profile-list">
+        <!-- 用户名，账号 -->
+        <view class="list-item">
+          <text class="label-gray">{{ usernameText }}</text>
+          <view class="value-container">
+            <text class="value-text">{{ user?.username }}</text>
+            <!-- 不可编辑，无需箭头 -->
+          </view>
+        </view>
+        <!-- 头像 -->
+        <view class="list-item" @click="uploadAvatar">
+          <text class="label">{{ avatarText }}</text>
+          <view class="value-container">
+            <FrAvatar class="avatar" :size="30" :url="user?.avatar" />
+            <IconFont name="arrowright" :size="12" :opacity="0.7" />
+          </view>
+        </view>
+
+        <!-- 昵称 -->
+        <view class="list-item" @click="openEditModal('nickname', user?.nickname)">
+          <text class="label">{{ nicknameText }}</text>
+          <view class="value-container">
+            <text class="value-text">{{ user?.nickname }}</text>
+            <IconFont name="arrowright" :size="12" :opacity="0.7" />
+          </view>
+        </view>
+
+        <!-- 个人简介 -->
+        <view class="list-item" @click="openEditModal('bio', user?.bio)">
+          <text class="label">{{ bioText }}</text>
+          <view class="value-container">
+            <text class="value-text">{{ user?.bio }}</text>
+            <IconFont name="arrowright" :size="12" :opacity="0.7" />
+          </view>
+        </view>
+      </view>
+
+      <!-- 编辑弹窗 -->
+      <FrModal :visible="showEditModal" @close="closeEditModal">
+        <view class="modal-content">
+          <view class="modal-header">
+            <text class="modal-title">{{ editModalTitle }}</text>
+            <IconFont name="close" :size="12" color="#ffffff" @click="closeEditModal"></IconFont>
+          </view>
+          <FrInput v-model="editValue" :placeholder="editModalPlaceholder" class="modal-input" />
+          <view class="save-button" @click="saveEditedInfo">{{ saveText }}</view>
+        </view>
+      </FrModal>
+    </view>
+  </bp-navigation-bar-title>
+</template>
+
+<script setup lang="uts">
+import { ref, computed } from "vue";
+import { FrAvatar, FrModal, FrInput } from "@/components/widgets";
+import { user } from "../../store/user";
+import { $i18n_t } from "@/locale/index.uts";
+import { goBack } from "@/utils/page";
+import { fileUpload } from "@/api/file.uts";
+import { setUserInfo } from "@/api/user.uts";
+import { UserItem, FileUploadRequest } from "@/types";
+import BpNavigationBarTitle from "@/components/panels/bp-navigation-bar-title.uvue";
+
+const profileInfoText = computed(() => $i18n_t("profile.profileInfo"));
+const avatarText = computed(() => $i18n_t("profile.avatar"));
+const usernameText = computed(() => $i18n_t("profile.username"));
+const nicknameText = computed(() => $i18n_t("profile.nickname"));
+// const genderText = computed(() => $i18n_t("profile.gender"));
+// const regionText = computed(() => $i18n_t("profile.region"));
+// const phoneText = computed(() => $i18n_t("profile.phone"));
+const bioText = computed(() => $i18n_t("profile.bio"));
+const saveText = computed(() => $i18n_t("profile.save"));
+
+// 获取设备状态栏高度，用于导航栏适配
+const statusBarHeight = uni.getSystemInfoSync().statusBarHeight ?? 0;
+
+// 返回上一页的方法
+const navigateBack = () => {
+  uni.navigateBack();
+};
+
+// 头像上传逻辑
+const uploadAvatar = () => {
+  if (user.value == null) {
+    return;
+  }
+  uni.chooseImage({
+    count: 1,
+    sizeType: ["compressed"],
+    sourceType: ["album", "camera"],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0];
+      const fileSize = res.tempFiles[0].size; // 获取文件大小，单位字节
+
+      const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+      const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+      const filename = res.tempFiles[0].name!;
+      const fileExtension = filename.substring(filename.lastIndexOf(".")).toLowerCase();
+
+      if (!allowedExtensions.includes(fileExtension)) {
+        uni.showToast({
+          title: $i18n_t("profile.invalidImageFormat"), // Assuming you'll add this i18n key
+          icon: "none",
+        });
+        return;
+      }
+
+      if (fileSize > MAX_FILE_SIZE) {
+        uni.showToast({
+          title: $i18n_t("profile.avatarTooLarge"),
+          icon: "none",
+        });
+        return;
+      }
+
+      uni.showLoading({
+        title: $i18n_t("common.uploading"),
+      });
+      try {
+        if (user.value == null) {
+          return;
+        }
+        const uploadRes = await fileUpload({
+          file: tempFilePath,
+          category: "avatar",
+        } as FileUploadRequest);
+        if (user.value != null && uploadRes != null && uploadRes.success && uploadRes.data != null) {
+          const newAvatarUrl = uploadRes.data.fileURL;
+          await setUserInfo(user.value.id, { avatar: newAvatarUrl } as UTSJSONObject);
+          user.value.avatar = newAvatarUrl; // 更新本地头像
+          uni.showToast({
+            title: $i18n_t("common.uploadSuccess"),
+            icon: "success",
+          });
+        } else {
+          uni.showToast({
+            title: uploadRes?.error?.message || $i18n_t("common.uploadFailed"),
+            icon: "none",
+          });
+        }
+      } catch (error) {
+        console.error("Upload failed", error);
+        uni.showToast({
+          title: $i18n_t("common.uploadFailed"),
+          icon: "none",
+        });
+      } finally {
+        uni.hideLoading();
+      }
+    },
+    fail: (err) => {
+      // console.log("Choose image failed", err);
+    },
+  });
+};
+
+// 编辑弹窗逻辑
+const showEditModal = ref(false);
+const editModalTitle = ref("");
+const editModalPlaceholder = ref("");
+const editField = ref("");
+const editValue = ref("");
+
+const openEditModal = (field: string, value: string) => {
+  editField.value = field;
+  editValue.value = value;
+  if (field == "nickname") {
+    editModalTitle.value = $i18n_t("profile.nickname");
+  } else if (field == "bio") {
+    editModalTitle.value = $i18n_t("profile.bio");
+  }
+  showEditModal.value = true;
+};
+
+const closeEditModal = () => {
+  showEditModal.value = false;
+};
+
+const saveEditedInfo = async () => {
+  if (user.value == null) return;
+  try {
+    const updateData: UTSJSONObject = {};
+    if (editField.value == "nickname") {
+      updateData.nickname = editValue.value;
+    } else if (editField.value == "bio") {
+      updateData.bio = editValue.value;
+    }
+
+    await setUserInfo(user.value.id, updateData);
+    if (editField.value == "nickname") {
+      user.value.nickname = editValue.value;
+    } else if (editField.value == "bio") {
+      user.value.bio = editValue.value;
+    }
+    uni.showToast({
+      title: $i18n_t("profile.saveSuccess"),
+      icon: "success",
+    });
+    closeEditModal();
+  } catch (error) {
+    console.error("Save failed", error);
+    uni.showToast({
+      title: $i18n_t("profile.save"),
+      icon: "none",
+    });
+  } finally {
+    // uni.hideLoading(); // No showLoading in this function, so hideLoading is not needed.
+  }
+};
+</script>
+
+<style>
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  color: #ffffff;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 顶部区域 */
+.header {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+
+.title {
+  flex: 1;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-right: 16px;
+}
+
+.profile-list {
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.arrow-icon {
+  font-size: 14px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.list-item {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+}
+
+.label {
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.label-gray {
+  font-size: 14px;
+  color: #ddd;
+}
+
+.value-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.value-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-right: 12px;
+}
+
+.avatar {
+  margin-right: 12px;
+}
+
+.chevron-icon {
+  font-size: 14px;
+  font-weight: bold;
+  color: #555555;
+}
+
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  background-color: #1c1c1e; /* Dark background for modal */
+  border-radius: 10px;
+  width: 80%; /* Adjust width as needed */
+  max-width: 400px; /* Max width for larger screens */
+  margin: auto; /* Center the modal */
+}
+
+.modal-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.modal-title {
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.modal-input {
+  background-color: #ffffff;
+  color: #000000;
+  width: 100%; /* Ensure it takes full width within the modal */
+  border-radius: 8px; /* Optional: add some rounded corners */
+  padding: 10px; /* Optional: add some padding */
+}
+
+.save-button {
+  margin-top: 20px;
+  background-color: #ff00d8; /* Blue save button */
+  color: #ffffff;
+  font-weight: bold;
+  border-radius: 18px;
+  height: 36px;
+  padding: 10px 24px;
+  font-size: 16px;
+}
+</style>

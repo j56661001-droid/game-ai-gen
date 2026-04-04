@@ -1,0 +1,74 @@
+// utils/fingerprint.uts
+// This utility provides functions for generating device fingerprints.
+import { setDeviceFingerprint, getDeviceFingerprint } from "@/store/index.uts";
+import { Thumbmark } from '@thumbmarkjs/thumbmarkjs';
+
+/**
+ * Generates a unique device fingerprint.
+ *
+ * This function attempts to use FingerprintJS if available in a web environment.
+ * As a fallback, it constructs a fingerprint from various browser/screen properties.
+ *
+ * @returns {Promise<string | null>} A promise that resolves with the generated fingerprint string, or null if generation fails.
+ */
+export async function generateDeviceFingerprint(): Promise<string | null> {
+  const existingFingerprint = getDeviceFingerprint();
+  if (existingFingerprint) {
+    console.log("Using existing fingerprint:", existingFingerprint);
+    return existingFingerprint;
+  }
+
+  // #ifdef WEB
+  if (typeof window !== "undefined") {
+    try {
+      let fingerprint = null;
+      // Attempt to use FingerprintJS
+      if (window.FingerprintJS) {
+        console.log("using FingerprintJS");
+        const fp = await window.FingerprintJS.load();
+        const result = await fp.get();
+        fingerprint = result.visitorId;
+      } else {
+        console.log("window.FingerprintJS is null")
+        // Fallback: use stable device information to generate a fingerprint
+        const fallback =
+          navigator.userAgent +
+          screen.width +
+          screen.height +
+          screen.colorDepth +
+          navigator.language +
+          navigator.platform +
+          (navigator.hardwareConcurrency || 0) +
+          (screen.pixelDepth || 0);
+        fingerprint = btoa(fallback)
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .substring(0, 32);
+      }
+
+      // Generate thumbmarkjs fingerprint
+      const thumbmark = new Thumbmark();
+      const thumbmarkResult = await thumbmark.get();
+      const thumbmarkFingerprint = thumbmarkResult.thumbmark;
+      if (thumbmarkFingerprint) {
+        if (fingerprint) {
+          fingerprint += thumbmarkFingerprint;
+          console.log("Combined fingerprint with Thumbmark:", fingerprint);
+        } else {
+          fingerprint = thumbmarkFingerprint;
+          console.log("Using Thumbmark fingerprint only:", fingerprint);
+        }
+      }
+
+      if (fingerprint) {
+        setDeviceFingerprint(fingerprint);
+      }
+      return fingerprint;
+
+    } catch (error) {
+      console.error("Failed to generate fingerprint:", error);
+      return null;
+    }
+  }
+  // #endif
+  return null; // Return null for non-web platforms or if window is undefined
+}
